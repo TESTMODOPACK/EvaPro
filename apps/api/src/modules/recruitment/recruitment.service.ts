@@ -419,31 +419,26 @@ export class RecruitmentService {
         dto.status === ProcessStatus.ACTIVE
       ) {
         process.autoClosed = false;
-        // S3.x — Si el proceso se reabre y tenia un winning, lo devolvemos
-        // a candidato regular (no asume que sigue ganando). Tambien
-        // revertimos los 'not_hired' a 'approved' para que vuelvan a ser
-        // candidatos viables. El admin puede ahora elegir uno distinto via
-        // el nuevo modal de hire o cambiar stages manualmente.
-        if (process.winningCandidateId) {
-          // Revertir candidato ganador a 'approved' (era hire)
-          await this.candidateRepo
-            .createQueryBuilder()
-            .update(RecruitmentCandidate)
-            .set({ stage: CandidateStage.APPROVED })
-            .where('id = :wid', { wid: process.winningCandidateId })
-            .andWhere('stage = :hired', { hired: CandidateStage.HIRED })
-            .execute();
-          process.winningCandidateId = null;
-          process.hireData = null as any;
-        }
-        // Revertir todos los not_hired del proceso a approved
-        await this.candidateRepo
-          .createQueryBuilder()
-          .update(RecruitmentCandidate)
-          .set({ stage: CandidateStage.APPROVED })
-          .where('process_id = :pid', { pid: id })
-          .andWhere('stage = :nh', { nh: CandidateStage.NOT_HIRED })
-          .execute();
+        // S3.x v2 — REOPEN ya NO ejecuta el rollback automaticamente.
+        // Antes este path:
+        //   1. Cambiaba candidato HIRED → APPROVED
+        //   2. Cambiaba NOT_HIRED → APPROVED
+        //   3. Limpiaba winningCandidateId y hireData
+        // Pero eso DESTRUIA `hireData.previousUserState` que el boton
+        // "Revertir contratación" necesita para hacer rollback de la
+        // cascada al empleado (dept/cargo/manager + user_movement).
+        //
+        // Nuevo comportamiento: reopen solo cambia status. Si hay un
+        // hired pendiente (process.winningCandidateId), el frontend
+        // muestra el boton "Revertir contratación" en la tarjeta del
+        // candidato — el admin decide explicitamente si quiere:
+        //   (a) Revertir el hire (rollback completo via el boton)
+        //   (b) Reabrir sin revertir (caso: agregar mas candidatos
+        //       a evaluar mientras conserva el hire actual)
+        //
+        // Si winningCandidateId esta seteado, el modal "Generar
+        // contratacion" se va a bloquear con error claro hasta que
+        // el admin haga la reversion explicita.
       }
     }
 
