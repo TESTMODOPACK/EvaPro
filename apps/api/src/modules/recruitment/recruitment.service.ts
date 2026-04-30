@@ -23,6 +23,9 @@ import { AuditService } from '../audit/audit.service';
 import { UsersService } from '../users/users.service';
 import { UserTransferredEvent } from '../users/events/user-transferred.event';
 import { TenantCronRunner } from '../../common/rls/tenant-cron-runner';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationType } from '../notifications/entities/notification.entity';
+import { AuditLog } from '../audit/entities/audit-log.entity';
 
 @Injectable()
 export class RecruitmentService {
@@ -54,6 +57,9 @@ export class RecruitmentService {
     // `user.transferred` para que listeners (evaluaciones, PDI, etc)
     // reaccionen automaticamente.
     private readonly usersService: UsersService,
+    // S4.3 — para notificar tenant_admins de procesos legacy con
+    // posibles cascadas pendientes (pre-S1).
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   // ─── Date & status validators (v3.1 — date flow rules) ──────────────────
@@ -353,12 +359,22 @@ export class RecruitmentService {
    * P5.5 — Secondary cross-tenant: tenantId opcional. resolvePos/resolveDept
    * usan process.tenantId authoritative cuando super_admin hace cross-tenant.
    */
-  async updateProcess(tenantId: string | undefined, id: string, dto: any): Promise<RecruitmentProcess> {
+  async updateProcess(
+    tenantId: string | undefined,
+    id: string,
+    dto: any,
+    callerUserId?: string,
+  ): Promise<RecruitmentProcess> {
     const where = tenantId ? { id, tenantId } : { id };
     const process = await this.processRepo.findOne({ where });
     if (!process) throw new NotFoundException('Proceso no encontrado');
     const effectiveTenantId = process.tenantId;
     const previousStatus = process.status;
+    // S4.1 — snapshot para detectar cambios sensibles (scoringWeights,
+    // requirements). Hacemos una copia profunda barata via JSON para no
+    // capturar referencia mutable que despues se modifique en el merge.
+    const previousScoringWeights = process.scoringWeights ? JSON.parse(JSON.stringify(process.scoringWeights)) : null;
+    const previousRequirements = process.requirements ? JSON.parse(JSON.stringify(process.requirements)) : null;
 
     // processType is immutable after active
     if (dto.processType && process.status !== ProcessStatus.DRAFT) {
@@ -444,18 +460,82 @@ export class RecruitmentService {
 
     const saved = await this.processRepo.save(process);
 
-    // Clean up CV data when process is closed or completed (free DB space).
-    // Solo en la transición real a un estado terminal — no en updates que
-    // no cambian status.
-    const statusChanged = dto.status !== undefined && dto.status !== previousStatus;
-    if (statusChanged && (dto.status === 'closed' || dto.status === 'completed')) {
-      await this.candidateRepo
+    // S4.2 — Al reabrir, restaurar CVs archivados (cv_url_archived → cv_url)
+    // para que el recruiter pueda continuar el proceso con los CVs vigentes.
+    // El flow del archivo es:
+    //   close/complete → cv_url goes to cv_url_archived
+    //   reopen        → cv_url_archived comes back to cv_url
+    // Compliance OK: el clock de 24m se reinicia con cada cierre — si el
+    // admin reabre y vuelve a cerrar, contamos desde el ultimo cierre.
+    // Esta regeneracion solo aplica si el CV NO ha sido purgado por el
+    // cron (que solo dispara despues de 24m de archivado).
+    if (
+      dto.status !== undefined &&
+      dto.status !== previousStatus &&
+      (previousStatus === ProcessStatus.COMPLETED || previousStatus === ProcessStatus.CLOSED) &&
+      dto.status === ProcessStatus.ACTIVE
+    ) {
+      const restoreResult = await this.candidateRepo
         .createQueryBuilder()
         .update()
-        .set({ cvUrl: null })
+        .set({
+          cvUrl: () => 'cv_url_archived',
+          cvUrlArchived: null,
+          cvArchivedAt: null,
+        })
+        .where('process_id = :processId AND cv_url_archived IS NOT NULL', { processId: id })
+        .execute();
+      const restored = restoreResult.affected ?? 0;
+      if (restored > 0) {
+        this.logger.log(`Restored ${restored} archived CV(s) on reopen of process ${id}`);
+        this.auditService
+          .log(effectiveTenantId, callerUserId ?? null, 'recruitment.cvs_restored', 'recruitment_process', id, {
+            count: restored,
+          })
+          .catch(() => {});
+      }
+    }
+
+    // S4.2 — Archivar CVs en lugar de borrarlos al cerrar proceso.
+    // Compliance Chile (Ley 19.628): los CV de procesos de seleccion
+    // deben conservarse 24 meses despues del cierre. Antes de S4 esta
+    // misma rama borraba cv_url destruyendo el dato — esto era una
+    // violacion de retencion legal.
+    //
+    // Nuevo comportamiento (solo si la transicion es real a closed/completed):
+    //   - Mueve cv_url → cv_url_archived (preserva el data URL base64).
+    //   - Setea cv_archived_at = NOW().
+    //   - Setea cv_url = NULL (oculto en UI activa, libera referencias).
+    //
+    // El cron `purgeArchivedCvs` (definido mas abajo, corre diario) se
+    // encarga de la deletion final cuando cv_archived_at < NOW() - 24m.
+    //
+    // Idempotente: el WHERE filtra cv_url IS NOT NULL, asi que un re-run
+    // sobre el mismo proceso (que ya archivo) no toca filas. Si ya hay
+    // valor en cv_url_archived no lo pisa porque la query filtra por
+    // cv_url IS NOT NULL — solo afecta candidatos que tienen CV activo.
+    const statusChanged = dto.status !== undefined && dto.status !== previousStatus;
+    if (statusChanged && (dto.status === 'closed' || dto.status === 'completed')) {
+      const result = await this.candidateRepo
+        .createQueryBuilder()
+        .update()
+        .set({
+          cvUrlArchived: () => 'cv_url',
+          cvArchivedAt: () => 'NOW()',
+          cvUrl: null,
+        })
         .where('process_id = :processId AND cv_url IS NOT NULL', { processId: id })
         .execute();
-      this.logger.log(`Cleaned CV data for closed process ${id}`);
+      const affected = result.affected ?? 0;
+      if (affected > 0) {
+        this.logger.log(`Archived ${affected} CV(s) for closed process ${id} (compliance: 24m retention)`);
+        this.auditService
+          .log(effectiveTenantId, callerUserId ?? null, 'recruitment.cvs_archived', 'recruitment_process', id, {
+            count: affected,
+            reason: dto.status,
+          })
+          .catch(() => {});
+      }
     }
 
     // Audit de eventos de cambio de estado (útil para soporte + compliance).
@@ -468,11 +548,42 @@ export class RecruitmentService {
             ? 'recruitment.process_reopened'
             : 'recruitment.process_status_changed';
       await this.auditService
-        .log(effectiveTenantId, null, action, 'recruitment_process', id, {
+        .log(effectiveTenantId, callerUserId ?? null, action, 'recruitment_process', id, {
           from: previousStatus,
           to: dto.status,
         })
         .catch(() => undefined);
+    }
+
+    // S4.1 — auditar cambios sensibles que afectan el resultado del proceso:
+    //   - scoringWeights: redistribuye los pesos del score final → puede
+    //     cambiar el ranking de candidatos sin re-evaluar entrevistas.
+    //   - requirements: el set de criterios contra el que se mide el cumplimiento
+    //     y, por tanto, el % de match que entra al score.
+    // Loguear ambos eventos por separado para que un audit trail muestre
+    // claramente "el admin X modifico la formula" vs "el admin X cambio que
+    // cuenta como requisito".
+    if (
+      dto.scoringWeights !== undefined &&
+      JSON.stringify(previousScoringWeights) !== JSON.stringify(saved.scoringWeights)
+    ) {
+      this.auditService
+        .log(effectiveTenantId, callerUserId ?? null, 'recruitment.scoring_weights_updated', 'recruitment_process', id, {
+          previous: previousScoringWeights,
+          new: saved.scoringWeights,
+        })
+        .catch(() => {});
+    }
+    if (
+      dto.requirements !== undefined &&
+      JSON.stringify(previousRequirements) !== JSON.stringify(saved.requirements)
+    ) {
+      this.auditService
+        .log(effectiveTenantId, callerUserId ?? null, 'recruitment.requirements_updated', 'recruitment_process', id, {
+          previousCount: Array.isArray(previousRequirements) ? previousRequirements.length : 0,
+          newCount: Array.isArray(saved.requirements) ? saved.requirements.length : 0,
+        })
+        .catch(() => {});
     }
 
     return saved;
@@ -484,9 +595,13 @@ export class RecruitmentService {
    * distinguirlos en UI (badge "Cerrado automáticamente") y permitir
    * reabrir fácilmente.
    *
-   * Corre a las 01:00 UTC (madrugada en LATAM). No dispara emails ni
-   * limpia CV data — el cierre manual existente ya se encarga de eso
-   * (si necesitamos limpiarlos acá, replicar la query de updateProcess).
+   * Corre a las 01:00 UTC (madrugada en LATAM). No dispara emails.
+   *
+   * S4.2 — Ahora SI archiva CVs al cerrar (compliance Chile 24m). El
+   * comentario antiguo decia "no limpia CV data" porque la limpieza
+   * antigua era destructiva (= violacion); con archivado preservamos
+   * el dato 24m via cv_url_archived + cv_archived_at, asi que es seguro
+   * (y necesario) hacerlo aca tambien.
    *
    * Idempotente por diseño: si corre dos veces el mismo día, la segunda
    * corrida encuentra 0 filas porque todas ya están CLOSED.
@@ -523,10 +638,23 @@ export class RecruitmentService {
                   { id: p.id },
                   { status: ProcessStatus.CLOSED, autoClosed: true },
                 );
+                // S4.2 — Archivar CVs (mismo flow que cierre manual).
+                const archiveResult = await this.candidateRepo
+                  .createQueryBuilder()
+                  .update()
+                  .set({
+                    cvUrlArchived: () => 'cv_url',
+                    cvArchivedAt: () => 'NOW()',
+                    cvUrl: null,
+                  })
+                  .where('process_id = :processId AND cv_url IS NOT NULL', { processId: p.id })
+                  .execute();
+                const archivedCount = archiveResult.affected ?? 0;
                 await this.auditService
                   .log(p.tenantId, null, 'recruitment.process_auto_closed', 'recruitment_process', p.id, {
                     title: p.title,
                     closedAt: new Date().toISOString(),
+                    cvsArchived: archivedCount,
                   })
                   .catch(() => undefined);
               } catch (err: any) {
@@ -545,9 +673,232 @@ export class RecruitmentService {
     );
   }
 
+  /**
+   * S4.2 — Cron diario que purga (deletion permanente) CVs archivados
+   * que ya cumplieron los 24 meses de retención post-cierre. Compliance
+   * Chile: la Ley 19.628 + DT 19.628 establece que los datos personales
+   * de procesos de selección no pueden conservarse mas alla del tiempo
+   * necesario para la finalidad — interpretacion conservadora de la
+   * industria es 24 meses post-decision.
+   *
+   * Despues del purge, queda en BD:
+   *   - Audit log del proceso (no contiene CV, solo metadatos).
+   *   - cv_analysis (ya no es PII si el admin lo limpio; futura mejora:
+   *     borrar cv_analysis tambien).
+   *   - El registro del candidato en si (nombre, email) — esto se evalua
+   *     en otro sprint si requiere purge tambien.
+   *
+   * Corre diario a las 02:00 UTC (despues del autoClose). No requiere
+   * iterar por tenant — es una operacion BD-wide segura porque tenant_id
+   * se preserva en la query y RLS no aplica a CRON connection.
+   *
+   * Idempotente: si corre dos veces el mismo día solo afecta filas con
+   * cv_url_archived IS NOT NULL → la segunda corrida encuentra 0.
+   */
+  @Cron(CronExpression.EVERY_DAY_AT_2AM)
+  async purgeArchivedCvs(): Promise<void> {
+    await runWithCronLock(
+      'recruitment.purgeArchivedCvs',
+      this.dataSource,
+      this.logger,
+      async () => {
+        // Borra cv_url_archived + cv_archived_at de filas cuyo archivado
+        // tiene 24m+. Postgres `INTERVAL '24 months'` es seguro y maneja
+        // años bisiestos correctamente.
+        const result = await this.candidateRepo
+          .createQueryBuilder()
+          .update()
+          .set({
+            cvUrlArchived: null,
+            cvArchivedAt: null,
+          })
+          .where('cv_url_archived IS NOT NULL AND cv_archived_at < NOW() - INTERVAL \'24 months\'')
+          .execute();
+        const affected = result.affected ?? 0;
+        if (affected > 0) {
+          this.logger.log(`[purgeArchivedCvs] CVs purgados (24m retention): ${affected}`);
+          await this.auditService
+            .log(null, null, 'recruitment.cvs_purged', 'recruitment_candidate', null as any, {
+              count: affected,
+              retentionMonths: 24,
+            })
+            .catch(() => undefined);
+        }
+      },
+    );
+  }
+
+  /**
+   * S4.3 — Detector semanal de procesos COMPLETED legacy (pre-S1) donde
+   * la cascada al User no se ejecuto.
+   *
+   * Contexto: antes de S1 (Sprint 1) el flow de "marcar como contratado"
+   * solo cambiaba candidate.stage a 'hired' y process.status a 'completed',
+   * pero NO actualizaba users.department/position/manager ni insertaba
+   * user_movements. Esto generaba inconsistencias: el candidato quedaba
+   * marcado como contratado en recruitment, pero su registro en users
+   * no reflejaba el nuevo cargo. El historial de movilidad estaba vacio.
+   *
+   * S1+ todos los hires nuevos pasan por hireCandidate() que ejecuta
+   * la cascada en una transaccion. Los hires post-S1 tienen:
+   *   - process.winningCandidateId set
+   *   - process.hireData con previousUserState/effectiveDate
+   *   - user_movement insertado con effectiveDate del hire
+   *
+   * Este cron busca hires que tienen el primer flag pero no el ultimo
+   * (i.e., hires hechos via UI antigua). Para cada uno detectado:
+   *   1. Crea audit log 'recruitment.legacy_hire_detected' (para dedup
+   *      en futuras corridas).
+   *   2. Notifica al tenant_admin con metadata para que pueda revisar
+   *      manualmente desde el modulo de Mantenedores → Usuarios.
+   *
+   * Idempotencia: chequea audit_logs antes de notificar de nuevo. Si
+   * ya hay un 'recruitment.legacy_hire_detected' para este candidateId,
+   * skip.
+   *
+   * Corre semanal (domingo 03:00 UTC) — es deteccion de edge cases, no
+   * urgente. Tampoco va a producir muchos resultados; despues de la
+   * primera corrida la mayoria queda atendida.
+   */
+  @Cron('0 03 * * 0')
+  async detectLegacyHiresWithoutCascade(): Promise<void> {
+    await runWithCronLock(
+      'recruitment.detectLegacyHiresWithoutCascade',
+      this.dataSource,
+      this.logger,
+      async () => {
+        await this.tenantCronRunner.runForEachTenant(
+          'recruitment.detectLegacyHiresWithoutCascade',
+          async (tenantId) => {
+            // 1. Buscar candidatos internos en stage HIRED cuyo proceso
+            //    esta COMPLETED. Solo internos: externos siempre crean
+            //    User (no hay "estado previo" que podamos verificar).
+            const hiredInternals = await this.candidateRepo.find({
+              where: {
+                tenantId,
+                stage: CandidateStage.HIRED,
+                candidateType: 'internal',
+              },
+              relations: ['process'],
+            });
+
+            if (hiredInternals.length === 0) return;
+
+            // 2. Filtrar a los que NO tienen evidencia de cascada:
+            //    - hireData es null (definitivamente pre-S1), O
+            //    - no existe user_movement con effective_date matching
+            //      el hireData.effectiveDate.
+            const auditRepo = this.dataSource.getRepository(AuditLog);
+            const movementRepo = this.dataSource.getRepository(UserMovement);
+            const flagged: Array<{ candidate: RecruitmentCandidate; reason: string }> = [];
+
+            for (const cand of hiredInternals) {
+              if (!cand.process || cand.process.status !== ProcessStatus.COMPLETED) continue;
+              if (!cand.userId) continue;
+
+              const hireData: any = cand.process.hireData;
+              if (!hireData || !hireData.effectiveDate) {
+                flagged.push({ candidate: cand, reason: 'no_hire_data' });
+                continue;
+              }
+              // Verificar movement existe — si no existe, la cascada
+              // probablemente no corrio. Comparamos como string YYYY-MM-DD
+              // contra la columna `date` para evitar shifts por timezone
+              // (new Date('2025-04-01') seria 2025-04-01T00:00:00Z y al
+              // compararse contra date podria caer en 2025-03-31 segun TZ
+              // del cliente Postgres).
+              const movementCount = await movementRepo
+                .createQueryBuilder('m')
+                .where('m.tenant_id = :tid', { tid: tenantId })
+                .andWhere('m.user_id = :uid', { uid: cand.userId })
+                .andWhere('m.effective_date = :ed::date', { ed: String(hireData.effectiveDate) })
+                .getCount();
+              if (movementCount === 0) {
+                flagged.push({ candidate: cand, reason: 'no_movement_for_effective_date' });
+              }
+            }
+
+            if (flagged.length === 0) return;
+
+            // 3. Para cada flagged, dedup contra audit_logs y notificar.
+            const tenantAdmins = await this.userRepo.find({
+              where: { tenantId, role: 'tenant_admin', isActive: true },
+              select: ['id'],
+            });
+            if (tenantAdmins.length === 0) {
+              this.logger.warn(
+                `[detectLegacyHiresWithoutCascade] tenant=${tenantId.slice(0, 8)} sin tenant_admin activo, skip`,
+              );
+              return;
+            }
+
+            for (const f of flagged) {
+              // Dedup: si ya existe audit log de detection para este
+              // candidato, no re-notificamos (evita spam semanal hasta
+              // que el admin atienda).
+              const existing = await auditRepo.count({
+                where: {
+                  tenantId,
+                  action: 'recruitment.legacy_hire_detected',
+                  entityType: 'recruitment_candidate',
+                  entityId: f.candidate.id,
+                },
+              });
+              if (existing > 0) continue;
+
+              // Audit (registra la deteccion para dedup futuro).
+              await this.auditService
+                .log(tenantId, null, 'recruitment.legacy_hire_detected', 'recruitment_candidate', f.candidate.id, {
+                  processId: f.candidate.processId,
+                  processTitle: f.candidate.process?.title,
+                  userId: f.candidate.userId,
+                  reason: f.reason,
+                })
+                .catch(() => undefined);
+
+              // Notificar a cada tenant_admin activo.
+              const candName = `${f.candidate.firstName ?? ''} ${f.candidate.lastName ?? ''}`.trim() || 'Candidato sin nombre';
+              for (const admin of tenantAdmins) {
+                await this.notificationsService
+                  .create({
+                    tenantId,
+                    userId: admin.id,
+                    type: NotificationType.GENERAL,
+                    title: 'Proceso legacy sin cascada detectado',
+                    message: `El proceso "${f.candidate.process?.title ?? 'sin titulo'}" tiene a ${candName} marcado como contratado, pero no hay registro de cambio de cargo/area en el empleado. Revise y actualice manualmente desde Mantenedores → Usuarios si corresponde.`,
+                    metadata: {
+                      kind: 'recruitment_legacy_hire',
+                      processId: f.candidate.processId,
+                      candidateId: f.candidate.id,
+                      userId: f.candidate.userId,
+                      reason: f.reason,
+                    },
+                  })
+                  .catch((e: any) => {
+                    this.logger.warn(
+                      `[detectLegacyHiresWithoutCascade] no se pudo notificar a admin ${admin.id}: ${e?.message ?? e}`,
+                    );
+                  });
+              }
+            }
+
+            this.logger.log(
+              `[detectLegacyHiresWithoutCascade] tenant=${tenantId.slice(0, 8)} procesos legacy detectados: ${flagged.length}`,
+            );
+          },
+        );
+      },
+    );
+  }
+
   // ─── Candidates ───────────────────────────────────────────────────────
 
-  async addExternalCandidate(tenantId: string | undefined, processId: string, dto: any): Promise<RecruitmentCandidate> {
+  async addExternalCandidate(
+    tenantId: string | undefined,
+    processId: string,
+    dto: any,
+    callerUserId?: string,
+  ): Promise<RecruitmentCandidate> {
     const where = tenantId ? { id: processId, tenantId } : { id: processId };
     const process = await this.processRepo.findOne({ where });
     if (!process) throw new NotFoundException('Proceso no encontrado');
@@ -571,10 +922,23 @@ export class RecruitmentService {
       availability: dto.availability || null,
       salaryExpectation: dto.salaryExpectation || null,
     });
-    return this.candidateRepo.save(candidate);
+    const saved = await this.candidateRepo.save(candidate);
+    // S4.1 — audit log
+    this.auditService
+      .log(effectiveTenantId, callerUserId ?? null, 'recruitment.candidate_added', 'recruitment_candidate', saved.id, {
+        processId, processTitle: process.title, candidateType: 'external',
+        firstName: saved.firstName, lastName: saved.lastName, email: saved.email,
+      })
+      .catch(() => {});
+    return saved;
   }
 
-  async addInternalCandidate(tenantId: string | undefined, processId: string, userId: string): Promise<RecruitmentCandidate> {
+  async addInternalCandidate(
+    tenantId: string | undefined,
+    processId: string,
+    userId: string,
+    callerUserId?: string,
+  ): Promise<RecruitmentCandidate> {
     const where = tenantId ? { id: processId, tenantId } : { id: processId };
     const process = await this.processRepo.findOne({ where });
     if (!process) throw new NotFoundException('Proceso no encontrado');
@@ -595,23 +959,51 @@ export class RecruitmentService {
       lastName: user.lastName,
       email: user.email,
     });
-    return this.candidateRepo.save(candidate);
+    const saved = await this.candidateRepo.save(candidate);
+    // S4.1 — audit log
+    this.auditService
+      .log(effectiveTenantId, callerUserId ?? null, 'recruitment.candidate_added', 'recruitment_candidate', saved.id, {
+        processId, processTitle: process.title, candidateType: 'internal',
+        userId, firstName: user.firstName, lastName: user.lastName,
+      })
+      .catch(() => {});
+    return saved;
   }
 
-  async updateCandidate(tenantId: string | undefined, candidateId: string, dto: any): Promise<RecruitmentCandidate> {
+  async updateCandidate(
+    tenantId: string | undefined,
+    candidateId: string,
+    dto: any,
+    callerUserId?: string,
+  ): Promise<RecruitmentCandidate> {
     const where = tenantId ? { id: candidateId, tenantId } : { id: candidateId };
     const candidate = await this.candidateRepo.findOne({ where });
     if (!candidate) throw new NotFoundException('Candidato no encontrado');
-    if (dto.email !== undefined) candidate.email = dto.email;
-    if (dto.phone !== undefined) candidate.phone = dto.phone;
-    if (dto.linkedIn !== undefined) candidate.linkedIn = dto.linkedIn;
-    if (dto.availability !== undefined) candidate.availability = dto.availability;
-    if (dto.salaryExpectation !== undefined) candidate.salaryExpectation = dto.salaryExpectation;
-    if (dto.recruiterNotes !== undefined) candidate.recruiterNotes = dto.recruiterNotes;
-    return this.candidateRepo.save(candidate);
+    const changedFields: string[] = [];
+    if (dto.email !== undefined && dto.email !== candidate.email) { candidate.email = dto.email; changedFields.push('email'); }
+    if (dto.phone !== undefined && dto.phone !== candidate.phone) { candidate.phone = dto.phone; changedFields.push('phone'); }
+    if (dto.linkedIn !== undefined && dto.linkedIn !== candidate.linkedIn) { candidate.linkedIn = dto.linkedIn; changedFields.push('linkedIn'); }
+    if (dto.availability !== undefined && dto.availability !== candidate.availability) { candidate.availability = dto.availability; changedFields.push('availability'); }
+    if (dto.salaryExpectation !== undefined && dto.salaryExpectation !== candidate.salaryExpectation) { candidate.salaryExpectation = dto.salaryExpectation; changedFields.push('salaryExpectation'); }
+    if (dto.recruiterNotes !== undefined && dto.recruiterNotes !== candidate.recruiterNotes) { candidate.recruiterNotes = dto.recruiterNotes; changedFields.push('recruiterNotes'); }
+    const saved = await this.candidateRepo.save(candidate);
+    // S4.1 — audit log (solo si hubo cambios reales)
+    if (changedFields.length > 0) {
+      this.auditService
+        .log(candidate.tenantId, callerUserId ?? null, 'recruitment.candidate_updated', 'recruitment_candidate', candidateId, {
+          changedFields,
+        })
+        .catch(() => {});
+    }
+    return saved;
   }
 
-  async updateCandidateStage(tenantId: string | undefined, candidateId: string, stage: string): Promise<RecruitmentCandidate> {
+  async updateCandidateStage(
+    tenantId: string | undefined,
+    candidateId: string,
+    stage: string,
+    callerUserId?: string,
+  ): Promise<RecruitmentCandidate> {
     // S1.2 / fix: el cambio a stage='hired' DEBE pasar por hireCandidate
     // (POST /processes/:id/hire/:candidateId) que ejecuta la cascada
     // completa al User + user_movements + audit. Permitir setearlo aqui
@@ -641,8 +1033,20 @@ export class RecruitmentService {
         'No se puede cambiar el estado de un candidato contratado directamente. Para revertir la contratación, use "Reabrir proceso" en Configuración → Estado del Proceso. Eso ejecuta el rollback completo (libera el proceso, revierte cascada al empleado).',
       );
     }
+    const previousStage = candidate.stage;
     candidate.stage = stage as CandidateStage;
-    return this.candidateRepo.save(candidate);
+    const saved = await this.candidateRepo.save(candidate);
+    // S4.1 — audit log (solo si realmente cambia el stage)
+    if (previousStage !== saved.stage) {
+      this.auditService
+        .log(candidate.tenantId, callerUserId ?? null, 'recruitment.candidate_stage_changed', 'recruitment_candidate', candidateId, {
+          from: previousStage,
+          to: saved.stage,
+          processId: candidate.processId,
+        })
+        .catch(() => {});
+    }
+    return saved;
   }
 
   /**
@@ -797,6 +1201,25 @@ export class RecruitmentService {
           autoClosed: false,
         },
       );
+
+      // S4.2 — Si el revert reactiva el proceso (COMPLETED → ACTIVE),
+      // restauramos los CVs archivados. Si el proceso no transiciona
+      // a ACTIVE (ya estaba CLOSED por otro motivo), no restauramos
+      // porque los CVs deben quedar archivados hasta el purge.
+      if (newStatus === ProcessStatus.ACTIVE && process.status === ProcessStatus.COMPLETED) {
+        await candRepo
+          .createQueryBuilder()
+          .update(RecruitmentCandidate)
+          .set({
+            cvUrl: () => 'cv_url_archived',
+            cvUrlArchived: null,
+            cvArchivedAt: null,
+          })
+          .where('process_id = :pid', { pid: process.id })
+          .andWhere('tenant_id = :tid', { tid: tenantId })
+          .andWhere('cv_url_archived IS NOT NULL')
+          .execute();
+      }
     });
 
     // Audit log post-commit
@@ -1206,6 +1629,27 @@ export class RecruitmentService {
         })
         .execute();
 
+      // S4.2 — Archivar CVs del proceso (compliance Chile 24m). Mismo
+      // flow que el cierre via updateProcess: cv_url → cv_url_archived,
+      // cv_archived_at = NOW(), cv_url = NULL. Hire transiciona a
+      // COMPLETED, asi que la regla aplica aca tambien.
+      // Inclusive el CV del candidato contratado: el proceso se cerro,
+      // su CV de seleccion debe archivarse — el contrato laboral es
+      // documentacion separada (modulo contracts), no es el CV de
+      // postulacion.
+      await candidateRepo
+        .createQueryBuilder()
+        .update(RecruitmentCandidate)
+        .set({
+          cvUrlArchived: () => 'cv_url',
+          cvArchivedAt: () => 'NOW()',
+          cvUrl: null,
+        })
+        .where('process_id = :pid', { pid: processId })
+        .andWhere('tenant_id = :tid', { tid: tenantId })
+        .andWhere('cv_url IS NOT NULL')
+        .execute();
+
       // c. Cascada a User. Las UPDATEs atomicas anteriores ya garantizan
       // que el estado en BD es consistente; usamos las variables pre-tx
       // `candidate` y `process` para leer userId, email, title (datos
@@ -1410,16 +1854,32 @@ export class RecruitmentService {
 
   // ─── CV & AI ──────────────────────────────────────────────────────────
 
-  async uploadCv(tenantId: string | undefined, candidateId: string, cvUrl: string): Promise<RecruitmentCandidate> {
+  async uploadCv(
+    tenantId: string | undefined,
+    candidateId: string,
+    cvUrl: string,
+    callerUserId?: string,
+  ): Promise<RecruitmentCandidate> {
     const where = tenantId ? { id: candidateId, tenantId } : { id: candidateId };
     const candidate = await this.candidateRepo.findOne({ where });
     if (!candidate) throw new NotFoundException('Candidato no encontrado');
+    const previousCvUrl = candidate.cvUrl;
+    const previousStage = candidate.stage;
     candidate.cvUrl = cvUrl;
     // Auto-advance stage to cv_review when CV is uploaded
     if (candidate.stage === CandidateStage.REGISTERED) {
       candidate.stage = CandidateStage.CV_REVIEW;
     }
-    return this.candidateRepo.save(candidate);
+    const saved = await this.candidateRepo.save(candidate);
+    // S4.1 — audit log
+    this.auditService
+      .log(candidate.tenantId, callerUserId ?? null, 'recruitment.cv_uploaded', 'recruitment_candidate', candidateId, {
+        processId: candidate.processId,
+        replaced: !!previousCvUrl,
+        stageAdvanced: previousStage !== saved.stage ? { from: previousStage, to: saved.stage } : null,
+      })
+      .catch(() => {});
+    return saved;
   }
 
   async analyzeCvWithAi(tenantId: string | undefined, candidateId: string, generatedBy: string): Promise<any> {
@@ -1475,6 +1935,17 @@ export class RecruitmentService {
     candidate.cvAnalysis = analysis.content;
     await this.candidateRepo.save(candidate);
 
+    // S4.1 — audit log
+    this.auditService
+      .log(effectiveTenantId, generatedBy, 'recruitment.cv_analyzed', 'recruitment_candidate', candidateId, {
+        processId: candidate.processId,
+        candidateType: candidate.candidateType,
+        // Metadatos de la respuesta de IA — util para debug de tasa de fallos
+        // y auditar cambios en formato/version del modelo.
+        analysisLength: typeof analysis?.content === 'string' ? analysis.content.length : null,
+      })
+      .catch(() => {});
+
     return analysis;
   }
 
@@ -1484,12 +1955,28 @@ export class RecruitmentService {
     return { cvUrl: candidate.cvUrl, cvAnalysis: candidate.cvAnalysis, recruiterNotes: candidate.recruiterNotes };
   }
 
-  async addRecruiterNotes(tenantId: string | undefined, candidateId: string, notes: string): Promise<void> {
+  async addRecruiterNotes(
+    tenantId: string | undefined,
+    candidateId: string,
+    notes: string,
+    callerUserId?: string,
+  ): Promise<void> {
     const where = tenantId ? { id: candidateId, tenantId } : { id: candidateId };
     const candidate = await this.candidateRepo.findOne({ where });
     if (!candidate) throw new NotFoundException('Candidato no encontrado');
+    const previousNotes = candidate.recruiterNotes;
     candidate.recruiterNotes = notes;
     await this.candidateRepo.save(candidate);
+    // S4.1 — audit log (solo si realmente cambian las notas para evitar
+    // ruido por re-saves idempotentes desde el frontend).
+    if (previousNotes !== notes) {
+      this.auditService
+        .log(candidate.tenantId, callerUserId ?? null, 'recruitment.recruiter_notes_updated', 'recruitment_candidate', candidateId, {
+          processId: candidate.processId,
+          hadPreviousNotes: !!previousNotes,
+        })
+        .catch(() => {});
+    }
   }
 
   // ─── Interviews ───────────────────────────────────────────────────────
@@ -1500,6 +1987,7 @@ export class RecruitmentService {
     if (!candidate) throw new NotFoundException('Candidato no encontrado');
 
     let interview = await this.interviewRepo.findOne({ where: { candidateId, evaluatorId } });
+    const isUpdate = !!interview;
     if (interview) {
       interview.requirementChecks = dto.requirementChecks || [];
       interview.comments = dto.comments || null;
@@ -1524,6 +2012,20 @@ export class RecruitmentService {
 
     // Recalculate candidate final score + auto-advance to scored
     await this.recalculateScore(tenantId, candidateId);
+
+    // S4.1 — audit log (después del save + recalc para que cualquier
+    // error en esos pasos no genere un log "fantasma" de evento exitoso).
+    this.auditService
+      .log(candidate.tenantId, evaluatorId, 'recruitment.interview_submitted', 'recruitment_interview', saved.id, {
+        candidateId,
+        processId: candidate.processId,
+        action: isUpdate ? 'updated' : 'created',
+        globalScore: saved.globalScore,
+        manualScore: saved.manualScore,
+        requirementChecksCount: Array.isArray(saved.requirementChecks) ? saved.requirementChecks.length : 0,
+      })
+      .catch(() => {});
+
     return saved;
   }
 
@@ -1618,15 +2120,35 @@ export class RecruitmentService {
     };
   }
 
-  async adjustScore(tenantId: string | undefined, candidateId: string, adjustment: number, justification: string): Promise<void> {
+  async adjustScore(
+    tenantId: string | undefined,
+    candidateId: string,
+    adjustment: number,
+    justification: string,
+    callerUserId?: string,
+  ): Promise<void> {
     const where = tenantId ? { id: candidateId, tenantId } : { id: candidateId };
     const candidate = await this.candidateRepo.findOne({ where });
     if (!candidate) throw new NotFoundException('Candidato no encontrado');
+    const previousAdjustment = candidate.scoreAdjustment;
+    const previousJustification = candidate.scoreJustification;
     candidate.scoreAdjustment = adjustment;
     candidate.scoreJustification = justification;
     await this.candidateRepo.save(candidate);
     // Recalculate with adjustment usando el tenantId authoritative del candidato.
     await this.recalculateScore(candidate.tenantId, candidateId);
+    // S4.1 — audit log (siempre, incluso si valores iguales: el admin
+    // pudo "reescribir" la justificacion intencionalmente y eso debe
+    // quedar trazado para compliance/transparencia del proceso).
+    this.auditService
+      .log(candidate.tenantId, callerUserId ?? null, 'recruitment.score_adjusted', 'recruitment_candidate', candidateId, {
+        processId: candidate.processId,
+        previousAdjustment,
+        newAdjustment: adjustment,
+        previousJustification,
+        newJustification: justification,
+      })
+      .catch(() => {});
   }
 
   /**
