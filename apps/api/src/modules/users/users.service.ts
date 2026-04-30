@@ -618,26 +618,43 @@ export class UsersService {
     const useManager = manager ?? null;
     const userRepoEff = useManager ? useManager.getRepository(User) : this.userRepository;
     const movementRepoEff = useManager ? useManager.getRepository(UserMovement) : this.movementRepo;
+    // CRITICAL FIX (prod 500 Internal Server Error):
+    // eva360 corre con `extra: { max: 1 }` (single-connection pool por
+    // RLS). Cuando transferUser se invoca DESDE una transaccion (ej.
+    // hireCandidate pasa `manager`), la unica conexion del pool ya esta
+    // ocupada por la tx. Si las validaciones de dept/pos/manager usan
+    // los repos NO-scoped (`this.departmentRepo`, etc), TypeORM intenta
+    // checkout una segunda conexion → bloquea esperando indefinidamente
+    // → statement_timeout aborta la query → la tx queda en estado de
+    // error pero el rollback no libera el lock inmediatamente porque el
+    // request del cliente ya se cancelo → siguientes hires al mismo
+    // candidato timeoutean en el lock pendiente.
+    //
+    // Fix: cuando hay manager, TODOS los reads usan el manager-scoped
+    // repo (misma conexion que la tx, no necesita checkout).
+    const deptRepoEff = useManager ? useManager.getRepository(Department) : this.departmentRepo;
+    const positionRepoEff = useManager ? useManager.getRepository(Position) : this.positionRepo;
 
     const user = await userRepoEff.findOne({ where: { id: userId, tenantId } });
     if (!user) throw new NotFoundException('Usuario no encontrado');
 
     // Resolver nuevos dept/pos/manager (con tenant scope)
     const newDept = dto.newDepartmentId
-      ? await this.departmentRepo.findOne({ where: { id: dto.newDepartmentId, tenantId } })
+      ? await deptRepoEff.findOne({ where: { id: dto.newDepartmentId, tenantId } })
       : null;
     if (dto.newDepartmentId && !newDept) {
       throw new BadRequestException('Departamento destino no existe en este tenant');
     }
     const newPos = dto.newPositionId
-      ? await this.positionRepo.findOne({ where: { id: dto.newPositionId, tenantId } })
+      ? await positionRepoEff.findOne({ where: { id: dto.newPositionId, tenantId } })
       : null;
     if (dto.newPositionId && !newPos) {
       throw new BadRequestException('Cargo destino no existe en este tenant');
     }
     let newManager: User | null = null;
     if (dto.newManagerId) {
-      newManager = await this.userRepository.findOne({ where: { id: dto.newManagerId, tenantId } });
+      // userRepoEff ya esta scoped al manager si esta presente (single-conn fix).
+      newManager = await userRepoEff.findOne({ where: { id: dto.newManagerId, tenantId } });
       if (!newManager) {
         throw new BadRequestException('Manager destino no existe en este tenant');
       }
@@ -1668,6 +1685,155 @@ export class UsersService {
       order: { effectiveDate: 'DESC' },
       relations: ['user'],
     });
+  }
+
+  /**
+   * S3.1 — Timeline unificado del empleado.
+   *
+   * Combina en orden cronologico DESCENDENTE eventos de:
+   * - `joined`: ingreso a la empresa (de `user.hireDate` o `user.createdAt`)
+   * - `movement`: cada fila de `user_movements`
+   * - `departure`: cada fila de `user_departures`
+   * - `recruitment_candidate`: cada proceso de seleccion donde participo
+   *   (interno como candidato — ganador o no). Se filtra solo
+   *   `candidate_type='internal'` con `user_id=:userId` y excluye stage
+   *   'registered' (candidaturas que ni siquiera empezaron a evaluarse).
+   *
+   * Cada evento tiene `{ type, date, payload }`. Frontend renderiza
+   * iconos / colores diferentes segun `type`.
+   *
+   * Usa raw SQL para `recruitment_candidates` y `recruitment_processes`
+   * para evitar circular dep con RecruitmentModule (UsersModule no debe
+   * depender de RecruitmentModule porque RecruitmentModule depende de
+   * UsersModule via UsersService.transferUser).
+   */
+  async getUserTimeline(userId: string, tenantId: string): Promise<Array<{
+    type: 'joined' | 'movement' | 'departure' | 'reactivation' | 'recruitment_candidate';
+    date: string; // ISO date string YYYY-MM-DD
+    payload: any;
+  }>> {
+    const events: Array<{ type: any; date: string; payload: any; sortMs: number }> = [];
+
+    // 1. Joined event: hireDate (preferido) o createdAt como fallback
+    const user = await this.userRepository.findOne({
+      where: { id: userId, tenantId },
+      select: ['id', 'firstName', 'lastName', 'hireDate', 'createdAt', 'department', 'position', 'isActive'],
+    });
+    if (user) {
+      const joinedDate = user.hireDate
+        ? new Date(user.hireDate).toISOString().slice(0, 10)
+        : new Date(user.createdAt).toISOString().slice(0, 10);
+      events.push({
+        type: 'joined',
+        date: joinedDate,
+        payload: {
+          department: user.department,
+          position: user.position,
+          fromHireDate: !!user.hireDate,
+        },
+        sortMs: new Date(joinedDate).getTime(),
+      });
+    }
+
+    // 2. Movements
+    const movs = await this.movementRepo.find({
+      where: { userId, tenantId },
+      order: { effectiveDate: 'DESC' },
+    });
+    for (const m of movs) {
+      const dateStr = new Date(m.effectiveDate).toISOString().slice(0, 10);
+      events.push({
+        type: 'movement',
+        date: dateStr,
+        payload: {
+          id: m.id,
+          movementType: m.movementType,
+          fromDepartment: m.fromDepartment,
+          toDepartment: m.toDepartment,
+          fromPosition: m.fromPosition,
+          toPosition: m.toPosition,
+          reason: m.reason,
+          approvedBy: m.approvedBy,
+        },
+        sortMs: new Date(m.effectiveDate).getTime(),
+      });
+    }
+
+    // 3. Departures (un user puede tener varias si fue reactivado y
+    //    re-desvinculado posteriormente).
+    const deps = await this.departureRepo.find({
+      where: { userId, tenantId },
+      order: { departureDate: 'DESC' },
+    });
+    for (const d of deps) {
+      const dateStr = new Date(d.departureDate).toISOString().slice(0, 10);
+      events.push({
+        type: 'departure',
+        date: dateStr,
+        payload: {
+          id: d.id,
+          departureType: d.departureType,
+          reasonCategory: d.reasonCategory,
+          // El campo descriptivo en UserDeparture se llama reasonDetail
+          // (no `reason`). Nullable.
+          reasonDetail: d.reasonDetail,
+          replacementManagerId: (d as any).replacementManagerId ?? null,
+        },
+        sortMs: new Date(d.departureDate).getTime(),
+      });
+    }
+
+    // 4. Recruitment candidaturas internas (donde el user participo).
+    //    Excluimos stage='registered' (candidato registrado pero nunca
+    //    se le hizo CV review ni entrevista — no aporta valor al timeline).
+    //    LEFT JOIN al proceso para mostrar titulo + tipo de proceso.
+    //    process.created_at como fecha del evento (no hay applied_at por
+    //    candidato; el proceso es la unidad temporal mas cercana).
+    const recRows = await this.dataSource.query(
+      `SELECT
+         c.id AS candidate_id, c.stage, c.final_score, c.created_at AS applied_at,
+         p.id AS process_id, p.title AS process_title, p.process_type, p.position AS process_position,
+         p.status AS process_status, p.winning_candidate_id
+       FROM recruitment_candidates c
+       INNER JOIN recruitment_processes p ON p.id = c.process_id AND p.tenant_id = c.tenant_id
+       WHERE c.tenant_id = $1 AND c.user_id = $2 AND c.candidate_type = 'internal'
+         AND c.stage <> 'registered'
+       ORDER BY c.created_at DESC`,
+      [tenantId, userId],
+    );
+    for (const r of recRows) {
+      const dateStr = new Date(r.applied_at).toISOString().slice(0, 10);
+      const isWinner = r.winning_candidate_id === r.candidate_id;
+      events.push({
+        type: 'recruitment_candidate',
+        date: dateStr,
+        payload: {
+          candidateId: r.candidate_id,
+          processId: r.process_id,
+          processTitle: r.process_title,
+          processType: r.process_type,
+          processPosition: r.process_position,
+          processStatus: r.process_status,
+          stage: r.stage,
+          finalScore: r.final_score != null ? Number(r.final_score) : null,
+          isWinner,
+        },
+        sortMs: new Date(r.applied_at).getTime(),
+      });
+    }
+
+    // Sort DESC por sortMs (timestamp); dentro del mismo dia, prioridad
+    // explicita por tipo: departure > movement > recruitment > joined.
+    const TYPE_ORDER: Record<string, number> = {
+      departure: 4, movement: 3, recruitment_candidate: 2, reactivation: 1, joined: 0,
+    };
+    events.sort((a, b) => {
+      if (b.sortMs !== a.sortMs) return b.sortMs - a.sortMs;
+      return (TYPE_ORDER[b.type] ?? 0) - (TYPE_ORDER[a.type] ?? 0);
+    });
+
+    // Eliminar el campo helper sortMs antes de retornar
+    return events.map(({ sortMs, ...rest }) => rest);
   }
 
   // ─── Bulk Import ──────────────────────────────────────────────────────────

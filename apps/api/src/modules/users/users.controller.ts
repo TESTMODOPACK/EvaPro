@@ -381,6 +381,28 @@ export class UsersController {
     return this.usersService.getUserMovements(id, req.user.tenantId);
   }
 
+  /**
+   * S3.1 — GET /users/:id/timeline
+   *
+   * Timeline unificado del empleado: combina ingreso a la empresa,
+   * movimientos internos, salidas y candidaturas de seleccion en una
+   * lista cronologica DESC. Frontend lo renderiza como timeline visual
+   * en la pagina del usuario.
+   *
+   * Mismo guard que /movements: admin (incluyendo super_admin) +
+   * managers que sean superiores del user (assertCanAccessUser).
+   */
+  @Get(':id/timeline')
+  @Roles('super_admin', 'tenant_admin', 'manager')
+  async getUserTimeline(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+  ) {
+    const scopedTenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    await this.usersService.assertCanAccessUser(req.user.userId, req.user.role, id, scopedTenantId);
+    return this.usersService.getUserTimeline(id, req.user.tenantId);
+  }
+
   // ─── User Notes (HR Reports) ───────────────────────────────────────────────
 
   /** GET /users/:id/notes

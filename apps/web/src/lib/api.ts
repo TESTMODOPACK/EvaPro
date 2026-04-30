@@ -769,6 +769,12 @@ export const api = {
       request<any[]>(`/users/${userId}/departures`, {}, token),
     listMovements: (token: string, userId: string) =>
       request<any[]>(`/users/${userId}/movements`, {}, token),
+    /**
+     * S3.1 — Timeline unificado del empleado: ingreso + movimientos +
+     * salidas + candidaturas de seleccion ordenadas DESC.
+     */
+    timeline: (token: string, userId: string) =>
+      request<Array<{ type: string; date: string; payload: any }>>(`/users/${userId}/timeline`, {}, token),
     registerMovement: (
       token: string,
       userId: string,

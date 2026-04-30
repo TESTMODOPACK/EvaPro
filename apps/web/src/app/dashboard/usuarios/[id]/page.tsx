@@ -137,6 +137,11 @@ export default function UserProfilePage() {
   // Movement tracking
   const [movements, setMovements] = useState<any[]>([]);
   const [departures, setDepartures] = useState<any[]>([]);
+  // S3.1 — eventos extra del timeline unificado (ingreso a la empresa
+  // + procesos de seleccion donde el user fue candidato). Los movimientos
+  // y salidas siguen viniendo de sus endpoints especificos para preservar
+  // la UI existente de edit/cancel.
+  const [timelineExtra, setTimelineExtra] = useState<Array<{ type: string; date: string; payload: any }>>([]);
   const [showMovementForm, setShowMovementForm] = useState(false);
   const [movForm, setMovForm] = useState({ movementType: 'department_change', effectiveDate: new Date().toISOString().split('T')[0], fromDepartment: '', toDepartment: '', fromPosition: '', toPosition: '', reason: '' });
   const [savingMovement, setSavingMovement] = useState(false);
@@ -194,12 +199,22 @@ export default function UserProfilePage() {
         api.users.getById(token, userData.managerId).then(setManager).catch(() => {});
       }
 
-      // Load movements & departures
+      // Load movements & departures + timeline (S3.1)
       if (isManager) {
         Promise.all([
           fetch(`${API}/users/${userId}/movements`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.ok ? r.json() : []),
           fetch(`${API}/users/${userId}/departures`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.ok ? r.json() : []),
-        ]).then(([movs, deps]) => { setMovements(movs); setDepartures(deps); }).catch(() => {});
+          api.users.timeline(token, userId).catch(() => []),
+        ]).then(([movs, deps, timeline]) => {
+          setMovements(movs);
+          setDepartures(deps);
+          // Solo guardamos los tipos NUEVOS — joined + recruitment_candidate.
+          // Movements y departures ya vienen renderizados en su propia
+          // seccion con UI de edit/cancel.
+          const extras = (Array.isArray(timeline) ? timeline : [])
+            .filter((e: any) => e.type === 'joined' || e.type === 'recruitment_candidate');
+          setTimelineExtra(extras);
+        }).catch(() => {});
 
         // Retroalimentación recibida (evaluaciones donde este user es el evaluado)
         setLoadingReceivedEvals(true);
@@ -793,6 +808,95 @@ export default function UserProfilePage() {
               </table>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ─── S3.1 Trayectoria — ingreso + selección de personal ─────────────
+          Seccion NUEVA que muestra el ingreso a la empresa y los procesos
+          de seleccion en los que el colaborador participo (interno).
+          Es complementaria a "Historial de Movimientos" (movimientos +
+          salidas) que se renderiza abajo. Ambas secciones coexisten para
+          no tocar la UI existente de edit/cancel de salidas. */}
+      {isManager && timelineExtra.length > 0 && (
+        <div className="animate-fade-up-delay-2" style={cardStyle}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+            <div>
+              <h2 style={{ fontWeight: 700, fontSize: '0.975rem', marginBottom: '0.15rem' }}>Trayectoria</h2>
+              <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                Ingreso a la empresa y procesos de selección en los que participó
+              </p>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            {timelineExtra.map((evt, idx) => {
+              if (evt.type === 'joined') {
+                const p = evt.payload || {};
+                return (
+                  <div key={`joined-${idx}`} style={{ padding: '0.85rem 1rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm, 8px)', borderLeft: '3px solid #10b981' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '1rem' }} aria-hidden="true">🎉</span>
+                        <span style={{ fontWeight: 700, fontSize: '0.88rem' }}>Ingreso a la empresa</span>
+                        {p.position && <span style={badgeStyle('#10b981')}>{p.position}</span>}
+                        {p.department && <span style={badgeStyle('#64748b')}>{p.department}</span>}
+                        {!p.fromHireDate && (
+                          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                            (estimado del registro — no hay hire date)
+                          </span>
+                        )}
+                      </div>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{fmtDate(evt.date)}</span>
+                    </div>
+                  </div>
+                );
+              }
+              if (evt.type === 'recruitment_candidate') {
+                const p = evt.payload || {};
+                const stageColors: Record<string, string> = {
+                  cv_review: '#94a3b8', interviewing: '#6366f1',
+                  scored: '#f59e0b', approved: '#10b981', rejected: '#ef4444', hired: '#10b981',
+                };
+                const stageLabels: Record<string, string> = {
+                  cv_review: 'CV en revisión', interviewing: 'En entrevistas',
+                  scored: 'Evaluado', approved: 'Aprobado', rejected: 'Rechazado', hired: 'Contratado',
+                };
+                return (
+                  <div key={`rec-${p.candidateId}`} style={{ padding: '0.85rem 1rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm, 8px)', borderLeft: `3px solid ${p.isWinner ? '#10b981' : '#6366f1'}` }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.3rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '1rem' }} aria-hidden="true">{p.isWinner ? '🏆' : '📝'}</span>
+                        <span style={{ fontWeight: 700, fontSize: '0.88rem' }}>
+                          {p.isWinner ? 'Ganador del proceso' : 'Candidato en proceso'}
+                        </span>
+                        <span style={badgeStyle(stageColors[p.stage] || '#64748b')}>
+                          {stageLabels[p.stage] || p.stage}
+                        </span>
+                        {typeof p.finalScore === 'number' && (
+                          <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                            Score: {p.finalScore.toFixed(1)}
+                          </span>
+                        )}
+                      </div>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{fmtDate(evt.date)}</span>
+                    </div>
+                    <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+                      <a
+                        href={`/dashboard/postulantes/${p.processId}`}
+                        style={{ color: 'var(--accent)', textDecoration: 'none', fontWeight: 600 }}
+                      >
+                        {p.processTitle}
+                      </a>
+                      <span style={{ color: 'var(--text-muted)' }}>
+                        {' — '}{p.processPosition} ({p.processType === 'internal' ? 'interno' : 'externo'})
+                      </span>
+                    </div>
+                  </div>
+                );
+              }
+              return null;
+            })}
+          </div>
         </div>
       )}
 
