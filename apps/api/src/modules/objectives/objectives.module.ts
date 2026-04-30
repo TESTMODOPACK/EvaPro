@@ -9,6 +9,7 @@ import { User } from '../users/entities/user.entity';
 import { EvaluationCycle } from '../evaluations/entities/evaluation-cycle.entity';
 import { ObjectivesService } from './objectives.service';
 import { ObjectivesController } from './objectives.controller';
+import { ObjectivesUserTransferredListener } from './listeners/user-transferred.listener';
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { RecognitionModule } from '../recognition/recognition.module';
@@ -22,7 +23,12 @@ import { RecognitionModule } from '../recognition/recognition.module';
     TypeOrmModule.forFeature([Objective, ObjectiveUpdate, ObjectiveComment, KeyResult, User, EvaluationCycle]),
   ],
   controllers: [ObjectivesController],
-  providers: [ObjectivesService],
+  providers: [
+    ObjectivesService,
+    // S2.3 — listener async de user.transferred. Notifica al nuevo
+    // manager (con prioridad si hay objetivos pendientes de aprobacion).
+    ObjectivesUserTransferredListener,
+  ],
   exports: [ObjectivesService],
 })
 export class ObjectivesModule {}
