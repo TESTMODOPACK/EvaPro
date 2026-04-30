@@ -6,7 +6,8 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository, IsNull, Not, In } from 'typeorm';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { DataSource, Repository, IsNull, Not, In, EntityManager } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { User } from './entities/user.entity';
 import { UserNote } from './entities/user-note.entity';
@@ -27,6 +28,11 @@ import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { EmailService } from '../notifications/email.service';
 import { looksLikeRut, normalizeRut, validateRut } from '../../common/utils/rut-validator';
+import {
+  USER_TRANSFERRED_EVENT,
+  UserTransferredEvent,
+  CascadePolicy,
+} from './events/user-transferred.event';
 
 @Injectable()
 export class UsersService {
@@ -52,6 +58,11 @@ export class UsersService {
     private readonly notificationsService: NotificationsService,
     private readonly emailService: EmailService,
     private readonly dataSource: DataSource,
+    // S2 — bus de eventos interno. Provisto globalmente por
+    // EventEmitterModule.forRoot() en app.module. Tests existentes
+    // usan mocks de UsersService (`useValue`), no instancian la
+    // clase directamente, asi que esta inyeccion no los afecta.
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   private static readonly DEFAULT_DEPARTMENTS = [
@@ -539,6 +550,268 @@ export class UsersService {
       this.syncDeptPosToSettings(user.tenantId).catch(() => {});
     }
     return saved;
+  }
+
+  // ─── S2 — Transfer User (movilidad con cascade event-driven) ──────────
+
+  /**
+   * S2.1 — `transferUser`: cambio orquestado de dept/cargo/manager con
+   * insercion de `user_movement`, audit log y emision del evento
+   * `user.transferred` para que listeners en otros modulos reaccionen.
+   *
+   * **Por que existe a pesar de `update()`**: `update()` es genérico —
+   * mezcla cambios de password, rol, datos demograficos, etc. Para una
+   * MOVILIDAD necesitamos atomicidad sobre dept+pos+manager + emitir un
+   * evento estructurado con payload completo (prev/current). Hacerlo en
+   * `update()` complicaria el flow (efectos secundarios condicionales) y
+   * mezclaria semánticas. `transferUser` es el primitivo dedicado.
+   *
+   * Lo usan:
+   * - `RecruitmentService.hireCandidate` (S1) cuando interno gana proceso
+   * - `UsersController` cuando admin hace cambio explícito desde UI de
+   *   Mantenedores → Movilidad (frontend a implementar en sprint UX)
+   *
+   * Contract:
+   * - Si NADA cambio (mismos dept/pos/manager) → no-op, retorna user sin
+   *   emitir evento ni crear movement. Caller es libre de chequear.
+   * - Si cambian campos pero `userMutator` los aplico antes de llamar a
+   *   transferUser (caso S1 hireCandidate dentro de su tx), se pasa el
+   *   `manager` (EntityManager) para que la insercion del movement +
+   *   save del user se hagan en la MISMA transaccion que el caller.
+   * - El evento se emite SIEMPRE post-commit (despues que el callee
+   *   retorna del save). Si el caller esta en una tx, el evento se emite
+   *   cuando la tx commitea (caller controla esto via timing).
+   *
+   * Inputs:
+   * - `userId`: usuario a transferir
+   * - `tenantId`: scope (super_admin debe pasar el tenant del user)
+   * - `dto`: { newDepartmentId, newPositionId, newManagerId, effectiveDate, reason, triggerSource, cascadePolicy }
+   * - `triggeredByUserId`: quien dispara (admin, sistema)
+   * - `manager` (opcional): EntityManager si el caller lo invoca dentro
+   *   de su propia transaccion. Si null/undefined, transferUser abre
+   *   su propia tx interna.
+   */
+  async transferUser(
+    userId: string,
+    tenantId: string,
+    dto: {
+      newDepartmentId?: string | null;
+      newPositionId?: string | null;
+      newManagerId?: string | null;
+      effectiveDate: string; // YYYY-MM-DD
+      reason?: string | null;
+      triggerSource: 'recruitment_hire' | 'manual' | 'org_restructure';
+      cascadePolicy?: CascadePolicy;
+    },
+    triggeredByUserId: string,
+    manager?: EntityManager,
+  ): Promise<{
+    user: User;
+    moved: boolean;
+    event: UserTransferredEvent | null;
+  }> {
+    // Validacion basica del effectiveDate
+    if (!dto.effectiveDate || !/^\d{4}-\d{2}-\d{2}$/.test(dto.effectiveDate)) {
+      throw new BadRequestException('effectiveDate debe ser ISO YYYY-MM-DD');
+    }
+
+    const useManager = manager ?? null;
+    const userRepoEff = useManager ? useManager.getRepository(User) : this.userRepository;
+    const movementRepoEff = useManager ? useManager.getRepository(UserMovement) : this.movementRepo;
+
+    const user = await userRepoEff.findOne({ where: { id: userId, tenantId } });
+    if (!user) throw new NotFoundException('Usuario no encontrado');
+
+    // Resolver nuevos dept/pos/manager (con tenant scope)
+    const newDept = dto.newDepartmentId
+      ? await this.departmentRepo.findOne({ where: { id: dto.newDepartmentId, tenantId } })
+      : null;
+    if (dto.newDepartmentId && !newDept) {
+      throw new BadRequestException('Departamento destino no existe en este tenant');
+    }
+    const newPos = dto.newPositionId
+      ? await this.positionRepo.findOne({ where: { id: dto.newPositionId, tenantId } })
+      : null;
+    if (dto.newPositionId && !newPos) {
+      throw new BadRequestException('Cargo destino no existe en este tenant');
+    }
+    let newManager: User | null = null;
+    if (dto.newManagerId) {
+      newManager = await this.userRepository.findOne({ where: { id: dto.newManagerId, tenantId } });
+      if (!newManager) {
+        throw new BadRequestException('Manager destino no existe en este tenant');
+      }
+      if (newManager.role !== 'manager' && newManager.role !== 'tenant_admin') {
+        throw new BadRequestException('Manager destino no tiene rol de jefatura');
+      }
+      if (newManager.id === userId) {
+        throw new BadRequestException('Un usuario no puede ser su propio manager');
+      }
+      // Validacion de jerarquia consistente con UsersService.update():
+      // el manager debe tener nivel jerarquico SUPERIOR (numero MENOR)
+      // al cargo destino. Si newPos cambia, el level destino es el del
+      // nuevo Position; si no, el level actual del user. Si alguno de
+      // los dos es null, no se valida (datos incompletos en catalogo).
+      const effectiveLevel = newPos?.level ?? user.hierarchyLevel;
+      if (newManager.hierarchyLevel != null && effectiveLevel != null
+          && newManager.hierarchyLevel >= effectiveLevel) {
+        throw new BadRequestException(
+          `La jefatura seleccionada (${newManager.firstName} ${newManager.lastName}, Nv.${newManager.hierarchyLevel}) debe tener un nivel jerarquico superior (numero menor) al cargo destino (Nv.${effectiveLevel}).`,
+        );
+      }
+    }
+
+    // Snapshot de "antes"
+    const previous = {
+      department: user.department,
+      departmentId: user.departmentId,
+      position: user.position,
+      positionId: user.positionId,
+      managerId: user.managerId,
+      hierarchyLevel: user.hierarchyLevel,
+    };
+
+    // Aplicar cambios al user (dual-write text + ID)
+    if (newDept) {
+      user.department = newDept.name;
+      user.departmentId = newDept.id;
+    }
+    if (newPos) {
+      user.position = newPos.name;
+      user.positionId = newPos.id;
+      user.hierarchyLevel = newPos.level;
+    }
+    if (newManager) {
+      user.managerId = newManager.id;
+    } else if (dto.newManagerId === null) {
+      // Permitir setear managerId=null explicitamente (ej. CEO sin jefe)
+      user.managerId = null as any;
+    }
+
+    const deptChanged = previous.department !== user.department || previous.departmentId !== user.departmentId;
+    const posChanged = previous.position !== user.position || previous.positionId !== user.positionId;
+    const managerChanged = previous.managerId !== user.managerId;
+
+    // Caso no-op: nada cambio. Salir sin tocar BD ni emitir evento.
+    if (!deptChanged && !posChanged && !managerChanged) {
+      return { user, moved: false, event: null };
+    }
+
+    await userRepoEff.save(user);
+
+    // Insertar user_movement SOLO si cambio dept o pos. Cambio solo de
+    // manager queda en audit log (mismo criterio que hireCandidate S1).
+    if (deptChanged || posChanged) {
+      const movType = (() => {
+        const prevLevel = previous.hierarchyLevel;
+        const newLevel = newPos?.level ?? null;
+        if (posChanged && prevLevel != null && newLevel != null) {
+          if (newLevel < prevLevel) return MovementType.PROMOTION;
+          if (newLevel > prevLevel) return MovementType.DEMOTION;
+        }
+        if (deptChanged && posChanged) return MovementType.LATERAL_TRANSFER;
+        if (deptChanged) return MovementType.DEPARTMENT_CHANGE;
+        return MovementType.POSITION_CHANGE;
+      })();
+
+      await movementRepoEff.save(movementRepoEff.create({
+        tenantId,
+        userId: user.id,
+        movementType: movType,
+        effectiveDate: new Date(dto.effectiveDate),
+        fromDepartment: previous.department || null,
+        toDepartment: user.department || null,
+        fromPosition: previous.position || null,
+        toPosition: user.position || null,
+        reason: dto.reason || null,
+        approvedBy: triggeredByUserId,
+      }));
+    }
+
+    // Audit log (post-save, antes del event emit)
+    try {
+      await this.auditService.log(
+        tenantId, triggeredByUserId,
+        'user.transferred',
+        'user', user.id,
+        {
+          triggerSource: dto.triggerSource,
+          cascadePolicy: dto.cascadePolicy ?? 'manual',
+          previous: {
+            department: previous.department,
+            departmentId: previous.departmentId,
+            position: previous.position,
+            positionId: previous.positionId,
+            managerId: previous.managerId,
+          },
+          current: {
+            department: user.department,
+            departmentId: user.departmentId,
+            position: user.position,
+            positionId: user.positionId,
+            managerId: user.managerId,
+          },
+          effectiveDate: dto.effectiveDate,
+          reason: dto.reason ?? null,
+        },
+      );
+    } catch (e) {
+      // audit no bloquea — solo log
+    }
+
+    // Emitir evento. Listeners corren async (no bloquean este return).
+    const event = new UserTransferredEvent(
+      tenantId,
+      user.id,
+      dto.effectiveDate,
+      previous,
+      {
+        department: user.department,
+        departmentId: user.departmentId,
+        position: user.position,
+        positionId: user.positionId,
+        managerId: user.managerId,
+        hierarchyLevel: user.hierarchyLevel,
+      },
+      dto.triggerSource,
+      triggeredByUserId,
+      dto.cascadePolicy ?? 'manual',
+      dto.reason ?? null,
+    );
+
+    // Si el caller esta dentro de una transaccion, NO emitimos hasta que
+    // commitee (de lo contrario los listeners verian datos no commiteados).
+    // Caller debe llamar a `emitTransferredEvent(event)` post-commit.
+    // Si NO esta en tx (manager null), emitimos inmediatamente.
+    if (!useManager) {
+      this.emitTransferredEvent(event);
+    }
+
+    if (deptChanged || posChanged) {
+      this.syncDeptPosToSettings(tenantId).catch(() => {});
+    }
+
+    return { user, moved: true, event };
+  }
+
+  /**
+   * Helper publico para que callers que llamaron a `transferUser` dentro
+   * de su propia transaccion puedan emitir el evento POST-COMMIT.
+   *
+   * Uso tipico:
+   *   const { event } = await this.dataSource.transaction(async (mgr) => {
+   *     return await this.usersService.transferUser(...args, mgr);
+   *   });
+   *   if (event) this.usersService.emitTransferredEvent(event);
+   */
+  emitTransferredEvent(event: UserTransferredEvent): void {
+    try {
+      this.eventEmitter.emit(USER_TRANSFERRED_EVENT, event);
+    } catch (e: any) {
+      // El bus puede fallar si no esta wired (tests). Loguear sin romper.
+      // eslint-disable-next-line no-console
+      console.warn(`[UsersService] emit ${USER_TRANSFERRED_EVENT} fallo: ${e?.message ?? e}`);
+    }
   }
 
   /**

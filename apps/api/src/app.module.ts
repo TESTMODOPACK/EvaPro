@@ -3,6 +3,7 @@ import { CacheModule } from '@nestjs/cache-manager';
 import { PrometheusModule } from '@willsoto/nestjs-prometheus';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { LoggerModule } from 'nestjs-pino';
 import { SentryGlobalFilter, SentryModule } from '@sentry/nestjs/setup';
@@ -65,6 +66,18 @@ import { CsrfGuard } from './common/guards/csrf.guard';
     // que reemplaza al default de Nest.
     LoggerModule.forRoot(pinoLoggerConfig),
     ScheduleModule.forRoot(),
+    // S2 — event bus interno para cascadas cross-module (movilidad,
+    // bajas, etc). Loose coupling: UsersService emite `user.transferred`
+    // y EvaluationsService / DevelopmentService / MeetingsService /
+    // ObjectivesService escuchan via @OnEvent sin import directo
+    // (evita circular deps + no bloquea el flow del emisor).
+    // wildcard:true permite patrones `user.*` en listeners agregados.
+    EventEmitterModule.forRoot({
+      wildcard: true,
+      delimiter: '.',
+      maxListeners: 20,
+      verboseMemoryLeak: false,
+    }),
     // Prometheus metrics — expone /metrics con metricas default (CPU,
     // memoria, event loop, GC) + custom (http requests, duration).
     // Protegido: solo accesible desde localhost / red interna (Nginx

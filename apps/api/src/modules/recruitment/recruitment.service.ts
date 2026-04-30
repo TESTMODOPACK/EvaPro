@@ -20,6 +20,8 @@ import { Department } from '../tenants/entities/department.entity';
 import { Position } from '../tenants/entities/position.entity';
 import { AiInsightsService } from '../ai-insights/ai-insights.service';
 import { AuditService } from '../audit/audit.service';
+import { UsersService } from '../users/users.service';
+import { UserTransferredEvent } from '../users/events/user-transferred.event';
 import { TenantCronRunner } from '../../common/rls/tenant-cron-runner';
 
 @Injectable()
@@ -47,6 +49,11 @@ export class RecruitmentService {
     private readonly dataSource: DataSource,
     // F4 A3 — para setear app.current_tenant_id en crons.
     private readonly tenantCronRunner: TenantCronRunner,
+    // S2.1 — para delegar la cascada de cambio de dept/cargo/manager
+    // al primitivo `transferUser` que centraliza la logica + emite
+    // `user.transferred` para que listeners (evaluaciones, PDI, etc)
+    // reaccionen automaticamente.
+    private readonly usersService: UsersService,
   ) {}
 
   // ─── Date & status validators (v3.1 — date flow rules) ──────────────────
@@ -834,93 +841,113 @@ export class RecruitmentService {
     }
 
     // 6. Transaccion: candidate + process + user + movement (atomico).
+    //    S2.1 — capturamos el evento `user.transferred` para emitirlo
+    //    POST-COMMIT (asi los listeners ven datos persistidos).
+    //    S2.4 — SELECT FOR UPDATE pesimista sobre el proceso al inicio
+    //    de la tx para serializar hires concurrentes. Sin esto, dos
+    //    admins clickeando "Marcar como contratado" en paralelo veian
+    //    cada uno winningCandidateId=null en su snapshot MVCC, ambos
+    //    procedian, y el segundo COMMIT sobreescribia al primero
+    //    (ambos candidatos quedaban hired pero solo uno como winning).
+    //    Con FOR UPDATE, la 2da tx espera al COMMIT/ROLLBACK de la 1ra
+    //    y reevalua winningCandidateId, encontrandolo ya seteado y
+    //    fallando con el guard correspondiente.
     let resultUserId = '';
+    let pendingTransferEvent: UserTransferredEvent | null = null;
     await this.dataSource.transaction(async (manager) => {
       const candidateRepo = manager.getRepository(RecruitmentCandidate);
       const processRepo = manager.getRepository(RecruitmentProcess);
       const userRepoTx = manager.getRepository(User);
       const movementRepoTx = manager.getRepository(UserMovement);
 
+      // S2.4 — Re-fetch del proceso CON LOCK + re-validar dentro de la tx.
+      // Si otra tx commiteo un hire en el medio, este findOne va a
+      // devolver el estado actualizado y los guards van a fallar.
+      const lockedProcess = await processRepo
+        .createQueryBuilder('p')
+        .where('p.id = :id', { id: processId })
+        .andWhere('p.tenantId = :tenantId', { tenantId })
+        .setLock('pessimistic_write')
+        .getOne();
+      if (!lockedProcess) {
+        throw new NotFoundException('Proceso no encontrado (race con delete)');
+      }
+      if (lockedProcess.status !== ProcessStatus.ACTIVE) {
+        throw new BadRequestException(
+          `El proceso cambio de estado durante el hire (ahora ${lockedProcess.status}). Recargue y vuelva a intentar.`,
+        );
+      }
+      if (lockedProcess.winningCandidateId && lockedProcess.winningCandidateId !== candidateId) {
+        throw new BadRequestException(
+          'Otro admin contrato a un candidato distinto en este proceso justo ahora. Recargue para ver el estado actual.',
+        );
+      }
+      // Reusamos `lockedProcess` para los writes — gana sobre el `process`
+      // en memoria leido antes de la tx.
+
       // a. Marcar candidato como contratado.
-      candidate.stage = CandidateStage.HIRED;
-      await candidateRepo.save(candidate);
+      // Re-fetch tambien con lock para evitar race en el candidato (ej.
+      // marcado a 'rejected' por otro admin entre validacion y commit).
+      const lockedCandidate = await candidateRepo
+        .createQueryBuilder('c')
+        .where('c.id = :id', { id: candidateId })
+        .andWhere('c.tenantId = :tenantId', { tenantId })
+        .setLock('pessimistic_write')
+        .getOne();
+      if (!lockedCandidate) {
+        throw new NotFoundException('Candidato no encontrado (race con delete)');
+      }
+      if (lockedCandidate.stage === CandidateStage.HIRED) {
+        throw new BadRequestException('El candidato ya fue contratado por otro admin justo ahora.');
+      }
+      if (lockedCandidate.stage === CandidateStage.REJECTED) {
+        throw new BadRequestException('El candidato fue rechazado por otro admin durante el hire. Operacion abortada.');
+      }
+      lockedCandidate.stage = CandidateStage.HIRED;
+      await candidateRepo.save(lockedCandidate);
 
-      // b. Marcar proceso completado.
-      process.status = ProcessStatus.COMPLETED;
-      process.winningCandidateId = candidate.id;
-      process.hireData = hireData;
-      process.autoClosed = false;
-      await processRepo.save(process);
+      // b. Marcar proceso completado (sobre el row lockeado).
+      lockedProcess.status = ProcessStatus.COMPLETED;
+      lockedProcess.winningCandidateId = lockedCandidate.id;
+      lockedProcess.hireData = hireData;
+      lockedProcess.autoClosed = false;
+      await processRepo.save(lockedProcess);
 
-      // c. Cascada a User.
+      // c. Cascada a User. S2.4 — usamos lockedCandidate / lockedProcess
+      // para los reads adentro de la tx (userId y title vienen de los
+      // rows lockeados; siguen siendo los mismos datos, pero por
+      // consistencia conceptual leemos del row lockeado y no del
+      // snapshot pre-tx).
       if (isInternal) {
-        const user = await userRepoTx.findOne({ where: { id: candidate.userId!, tenantId } });
-        if (!user) throw new NotFoundException('Usuario interno asociado no encontrado');
-
-        const prevDept = user.department;
-        const prevPos = user.position;
-        const prevManagerId = user.managerId;
-        const prevLevel = user.hierarchyLevel;
-
-        // Aplicar cambios (dual-write text + ID)
-        if (newDept) {
-          user.department = newDept.name;
-          user.departmentId = newDept.id;
-        }
-        if (newPos) {
-          user.position = newPos.name;
-          user.positionId = newPos.id;
-          user.hierarchyLevel = newPos.level;
-        }
-        if (newManager) {
-          user.managerId = newManager.id;
-        }
-        await userRepoTx.save(user);
-
-        const deptChanged = !!newDept && prevDept !== user.department;
-        const posChanged = !!newPos && prevPos !== user.position;
-        const managerChanged = !!newManager && prevManagerId !== user.managerId;
-
-        // Solo creamos `user_movement` si hay cambio de DEPT o POSITION
-        // (mismo criterio que UsersService.update). Cambio solo de
-        // managerId queda registrado en audit log mas abajo, no como
-        // movimiento (no hay un MovementType MANAGER_CHANGE en el enum
-        // y forzar POSITION_CHANGE con same-pos seria misleading en
-        // reportes de movilidad).
-        if (deptChanged || posChanged) {
-          const movType = this.detectMovementType({
-            deptChanged,
-            posChanged,
-            prevLevel,
-            newLevel: newPos?.level ?? null,
-          });
-          await movementRepoTx.save(movementRepoTx.create({
-            tenantId,
-            userId: user.id,
-            movementType: movType,
-            effectiveDate: new Date(hireData.effectiveDate),
-            fromDepartment: prevDept || null,
-            toDepartment: user.department || null,
-            fromPosition: prevPos || null,
-            toPosition: user.position || null,
-            reason: `Hire interno desde proceso "${process.title}"${hireData.notes ? ` — ${hireData.notes}` : ''}`,
-            approvedBy: callerUserId,
-          }));
-        }
-        // Cambio de manager se registra implicitamente en el audit log
-        // de hire (recruitment.candidate_hired metadata.hireData.newManagerId).
-        // No referencia explicita aqui porque managerChanged no genera fila
-        // en user_movements por las razones del comentario superior.
-        void managerChanged;
-
-        resultUserId = user.id;
+        // S2.1 — delegar la actualizacion del User + insercion del
+        // user_movement al primitivo centralizado `transferUser`. Pasamos
+        // el EntityManager para que la operacion ocurra en la MISMA
+        // transaccion (atomicidad del flow hire). El evento queda
+        // capturado en `pendingTransferEvent` y se emite POST-COMMIT.
+        const transferResult = await this.usersService.transferUser(
+          lockedCandidate.userId!,
+          tenantId,
+          {
+            newDepartmentId: hireData.newDepartmentId,
+            newPositionId: hireData.newPositionId,
+            newManagerId: hireData.newManagerId,
+            effectiveDate: hireData.effectiveDate,
+            reason: `Hire interno desde proceso "${lockedProcess.title}"${hireData.notes ? ` — ${hireData.notes}` : ''}`,
+            triggerSource: 'recruitment_hire',
+            cascadePolicy: 'manual', // S2.2 — admin decide caso a caso por defecto
+          },
+          callerUserId,
+          manager,
+        );
+        resultUserId = transferResult.user.id;
+        pendingTransferEvent = transferResult.event;
       } else {
-        // Externo: crear nuevo User
+        // Externo: crear nuevo User. Usamos lockedCandidate por consistencia.
         const newUser = userRepoTx.create({
           tenantId,
-          email: candidate.email!,
-          firstName: candidate.firstName!,
-          lastName: candidate.lastName!,
+          email: lockedCandidate.email!,
+          firstName: lockedCandidate.firstName!,
+          lastName: lockedCandidate.lastName!,
           passwordHash: passwordHash!,
           role: 'employee',
           managerId: newManager?.id ?? null,
@@ -950,7 +977,7 @@ export class RecruitmentService {
           toDepartment: savedUser.department || null,
           fromPosition: null,
           toPosition: savedUser.position || null,
-          reason: `Contratacion externa desde proceso "${process.title}"${hireData.notes ? ` — ${hireData.notes}` : ''}`,
+          reason: `Contratacion externa desde proceso "${lockedProcess.title}"${hireData.notes ? ` — ${hireData.notes}` : ''}`,
           approvedBy: callerUserId,
         }));
 
@@ -982,6 +1009,14 @@ export class RecruitmentService {
       );
     } catch (e: any) {
       this.logger.warn(`Audit log de hire fallo: ${e?.message ?? e}`);
+    }
+
+    // S2.1 — emitir `user.transferred` POST-COMMIT para que listeners
+    // (evaluaciones, PDI, meetings) reaccionen sobre datos persistidos.
+    // Solo aplica para hires INTERNOS — externos crean usuario nuevo
+    // (no hay "transfer" desde un estado anterior).
+    if (pendingTransferEvent) {
+      this.usersService.emitTransferredEvent(pendingTransferEvent);
     }
 
     // 8. Reload entidades actualizadas.

@@ -11,6 +11,7 @@ import { TalentAssessment } from '../talent/entities/talent-assessment.entity';
 import { Position } from '../tenants/entities/position.entity';
 import { DevelopmentService } from './development.service';
 import { DevelopmentController } from './development.controller';
+import { DevelopmentUserTransferredListener } from './listeners/user-transferred.listener';
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { RecognitionModule } from '../recognition/recognition.module';
@@ -24,7 +25,12 @@ import { RecognitionModule } from '../recognition/recognition.module';
     TypeOrmModule.forFeature([Competency, RoleCompetency, DevelopmentPlan, DevelopmentAction, DevelopmentComment, User, TalentAssessment, Position]),
   ],
   controllers: [DevelopmentController],
-  providers: [DevelopmentService],
+  providers: [
+    DevelopmentService,
+    // S2.3 — listener async de user.transferred. Notifica al nuevo
+    // manager + anterior sobre PDIs activos heredados.
+    DevelopmentUserTransferredListener,
+  ],
   exports: [DevelopmentService],
 })
 export class DevelopmentModule {}

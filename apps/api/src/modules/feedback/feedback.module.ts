@@ -11,6 +11,7 @@ import { Recognition } from '../recognition/entities/recognition.entity';
 import { Competency } from '../development/entities/competency.entity';
 import { FeedbackService } from './feedback.service';
 import { FeedbackController } from './feedback.controller';
+import { FeedbackUserTransferredListener } from './listeners/user-transferred.listener';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 import { AuditModule } from '../audit/audit.module';
@@ -37,7 +38,13 @@ import { RlsModule } from '../../common/rls/rls.module';
     RlsModule,
   ],
   controllers: [FeedbackController],
-  providers: [FeedbackService],
+  providers: [
+    FeedbackService,
+    // S2.3 — listener async de user.transferred. Cancela check-ins
+    // futuros agendados con el manager anterior (escritura real, no
+    // solo notif: `checkins.manager_id` esta desnormalizado).
+    FeedbackUserTransferredListener,
+  ],
   exports: [FeedbackService],
 })
 export class FeedbackModule {}
