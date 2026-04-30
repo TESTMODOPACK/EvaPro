@@ -153,6 +153,15 @@ export class RecruitmentProcess {
       managerId: string | null;
       hierarchyLevel: number | null;
     } | null;
+    /**
+     * S3.x — Snapshot del stage de TODOS los candidatos del proceso al
+     * momento del hire. Map { candidateId: stage } con los valores
+     * previos (antes de transicionar el ganador a HIRED y los demas a
+     * NOT_HIRED). Usado por revertHire para restaurar el estado EXACTO
+     * de cada candidato (en lugar de homogeneizar a 'approved' que
+     * pierde info: scored vs interviewing vs approved).
+     */
+    previousCandidateStages?: Record<string, string> | null;
   } | null;
 
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })

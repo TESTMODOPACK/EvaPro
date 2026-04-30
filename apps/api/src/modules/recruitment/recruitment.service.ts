@@ -692,6 +692,8 @@ export class RecruitmentService {
     // Si existe, en la tx revertimos los cambios al User y borramos el
     // user_movement insertado por el hire.
     const previousUserState = (process.hireData as any)?.previousUserState ?? null;
+    const previousCandidateStages: Record<string, string> | null =
+      (process.hireData as any)?.previousCandidateStages ?? null;
     const hireEffectiveDate = (process.hireData as any)?.effectiveDate ?? null;
     const isInternalHire = candidate.candidateType === 'internal' && !!candidate.userId;
 
@@ -701,11 +703,12 @@ export class RecruitmentService {
       const userRepoTx = manager.getRepository(User);
       const movementRepoTx = manager.getRepository(UserMovement);
 
-      // 1. candidate.stage HIRED → APPROVED (atomico, valida que no haya
-      //    cambiado entre el findOne pre-tx y este UPDATE).
+      // 1. candidate.stage HIRED → estado previo (de previousCandidateStages
+      //    si existe, sino fallback a APPROVED).
+      const winnerPrevStage = (previousCandidateStages?.[candidateId] as CandidateStage) ?? CandidateStage.APPROVED;
       const c1 = await candRepo.update(
         { id: candidateId, tenantId, stage: CandidateStage.HIRED },
-        { stage: CandidateStage.APPROVED },
+        { stage: winnerPrevStage },
       );
       if (!c1.affected) {
         throw new BadRequestException(
@@ -713,16 +716,35 @@ export class RecruitmentService {
         );
       }
 
-      // 2. Otros candidatos del proceso en NOT_HIRED → APPROVED (vuelven
-      //    a ser viables). Bulk update.
-      await candRepo
-        .createQueryBuilder()
-        .update(RecruitmentCandidate)
-        .set({ stage: CandidateStage.APPROVED })
-        .where('process_id = :pid', { pid: candidate.processId })
-        .andWhere('tenant_id = :tid', { tid: tenantId })
-        .andWhere('stage = :nh', { nh: CandidateStage.NOT_HIRED })
-        .execute();
+      // 2. Restaurar otros candidatos a su estado previo (de
+      //    previousCandidateStages). Si no hay snapshot, fallback al
+      //    comportamiento anterior: NOT_HIRED → APPROVED.
+      if (previousCandidateStages && Object.keys(previousCandidateStages).length > 0) {
+        // Para cada otro candidato con snapshot, restaurarlo a su stage
+        // previo SOLO si esta actualmente en NOT_HIRED (no pisar cambios
+        // posteriores al hire que pudieran existir).
+        for (const [cid, prevStage] of Object.entries(previousCandidateStages)) {
+          if (cid === candidateId) continue; // ya manejado arriba
+          await candRepo
+            .createQueryBuilder()
+            .update(RecruitmentCandidate)
+            .set({ stage: prevStage as CandidateStage })
+            .where('id = :cid', { cid })
+            .andWhere('tenant_id = :tid', { tid: tenantId })
+            .andWhere('stage = :nh', { nh: CandidateStage.NOT_HIRED })
+            .execute();
+        }
+      } else {
+        // Backward compat: hires viejos sin snapshot → fallback a APPROVED
+        await candRepo
+          .createQueryBuilder()
+          .update(RecruitmentCandidate)
+          .set({ stage: CandidateStage.APPROVED })
+          .where('process_id = :pid', { pid: candidate.processId })
+          .andWhere('tenant_id = :tid', { tid: tenantId })
+          .andWhere('stage = :nh', { nh: CandidateStage.NOT_HIRED })
+          .execute();
+      }
 
       // 3. ROLLBACK CASCADA AL USER (solo internos con previousUserState).
       // Restauramos dept/cargo/manager al estado pre-hire. Si no tenemos
@@ -1064,6 +1086,19 @@ export class RecruitmentService {
       // AND (winning IS NULL OR winning=$1). result.affected=0 → race
       // perdida → throw error claro.
 
+      // S3.x — Capturar el stage ACTUAL de TODOS los candidatos del
+      // proceso ANTES del hire. Esto se usa en revertHire para
+      // restaurar exactamente el estado previo (en lugar de
+      // homogeneizar a 'approved'). Map { candidateId: stage }.
+      const allProcessCandidates = await candidateRepo.find({
+        where: { processId, tenantId },
+        select: ['id', 'stage'],
+      });
+      const previousCandidateStages: Record<string, string> = {};
+      for (const ac of allProcessCandidates) {
+        previousCandidateStages[ac.id] = ac.stage;
+      }
+
       // a. Marcar candidato como contratado (UPDATE atomico con guard).
       // Solo actualiza si stage es uno de los hireables Y no esta ya hired.
       const candResult = await candidateRepo.update(
@@ -1119,7 +1154,7 @@ export class RecruitmentService {
           };
         }
       }
-      const fullHireData = { ...hireData, previousUserState };
+      const fullHireData = { ...hireData, previousUserState, previousCandidateStages };
 
       // b. Marcar proceso completado (UPDATE atomico).
       // Condiciones: status='active' Y (winning IS NULL OR winning=candidateId).
@@ -1189,7 +1224,7 @@ export class RecruitmentService {
             newPositionId: hireData.newPositionId,
             newManagerId: hireData.newManagerId,
             effectiveDate: hireData.effectiveDate,
-            reason: `Hire interno desde proceso "${process.title}"${hireData.notes ? ` — ${hireData.notes}` : ''}`,
+            reason: `Contratación interna desde proceso "${process.title}"${hireData.notes ? ` — ${hireData.notes}` : ''}`,
             triggerSource: 'recruitment_hire',
             cascadePolicy: 'manual', // S2.2 — admin decide caso a caso por defecto
           },
@@ -1234,7 +1269,7 @@ export class RecruitmentService {
           toDepartment: savedUser.department || null,
           fromPosition: null,
           toPosition: savedUser.position || null,
-          reason: `Contratacion externa desde proceso "${process.title}"${hireData.notes ? ` — ${hireData.notes}` : ''}`,
+          reason: `Contratación externa desde proceso "${process.title}"${hireData.notes ? ` — ${hireData.notes}` : ''}`,
           approvedBy: callerUserId,
         }));
 
