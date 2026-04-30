@@ -353,12 +353,22 @@ export class RecruitmentService {
    * P5.5 — Secondary cross-tenant: tenantId opcional. resolvePos/resolveDept
    * usan process.tenantId authoritative cuando super_admin hace cross-tenant.
    */
-  async updateProcess(tenantId: string | undefined, id: string, dto: any): Promise<RecruitmentProcess> {
+  async updateProcess(
+    tenantId: string | undefined,
+    id: string,
+    dto: any,
+    callerUserId?: string,
+  ): Promise<RecruitmentProcess> {
     const where = tenantId ? { id, tenantId } : { id };
     const process = await this.processRepo.findOne({ where });
     if (!process) throw new NotFoundException('Proceso no encontrado');
     const effectiveTenantId = process.tenantId;
     const previousStatus = process.status;
+    // S4.1 — snapshot para detectar cambios sensibles (scoringWeights,
+    // requirements). Hacemos una copia profunda barata via JSON para no
+    // capturar referencia mutable que despues se modifique en el merge.
+    const previousScoringWeights = process.scoringWeights ? JSON.parse(JSON.stringify(process.scoringWeights)) : null;
+    const previousRequirements = process.requirements ? JSON.parse(JSON.stringify(process.requirements)) : null;
 
     // processType is immutable after active
     if (dto.processType && process.status !== ProcessStatus.DRAFT) {
@@ -468,11 +478,42 @@ export class RecruitmentService {
             ? 'recruitment.process_reopened'
             : 'recruitment.process_status_changed';
       await this.auditService
-        .log(effectiveTenantId, null, action, 'recruitment_process', id, {
+        .log(effectiveTenantId, callerUserId ?? null, action, 'recruitment_process', id, {
           from: previousStatus,
           to: dto.status,
         })
         .catch(() => undefined);
+    }
+
+    // S4.1 — auditar cambios sensibles que afectan el resultado del proceso:
+    //   - scoringWeights: redistribuye los pesos del score final → puede
+    //     cambiar el ranking de candidatos sin re-evaluar entrevistas.
+    //   - requirements: el set de criterios contra el que se mide el cumplimiento
+    //     y, por tanto, el % de match que entra al score.
+    // Loguear ambos eventos por separado para que un audit trail muestre
+    // claramente "el admin X modifico la formula" vs "el admin X cambio que
+    // cuenta como requisito".
+    if (
+      dto.scoringWeights !== undefined &&
+      JSON.stringify(previousScoringWeights) !== JSON.stringify(saved.scoringWeights)
+    ) {
+      this.auditService
+        .log(effectiveTenantId, callerUserId ?? null, 'recruitment.scoring_weights_updated', 'recruitment_process', id, {
+          previous: previousScoringWeights,
+          new: saved.scoringWeights,
+        })
+        .catch(() => {});
+    }
+    if (
+      dto.requirements !== undefined &&
+      JSON.stringify(previousRequirements) !== JSON.stringify(saved.requirements)
+    ) {
+      this.auditService
+        .log(effectiveTenantId, callerUserId ?? null, 'recruitment.requirements_updated', 'recruitment_process', id, {
+          previousCount: Array.isArray(previousRequirements) ? previousRequirements.length : 0,
+          newCount: Array.isArray(saved.requirements) ? saved.requirements.length : 0,
+        })
+        .catch(() => {});
     }
 
     return saved;
@@ -547,7 +588,12 @@ export class RecruitmentService {
 
   // ─── Candidates ───────────────────────────────────────────────────────
 
-  async addExternalCandidate(tenantId: string | undefined, processId: string, dto: any): Promise<RecruitmentCandidate> {
+  async addExternalCandidate(
+    tenantId: string | undefined,
+    processId: string,
+    dto: any,
+    callerUserId?: string,
+  ): Promise<RecruitmentCandidate> {
     const where = tenantId ? { id: processId, tenantId } : { id: processId };
     const process = await this.processRepo.findOne({ where });
     if (!process) throw new NotFoundException('Proceso no encontrado');
@@ -571,10 +617,23 @@ export class RecruitmentService {
       availability: dto.availability || null,
       salaryExpectation: dto.salaryExpectation || null,
     });
-    return this.candidateRepo.save(candidate);
+    const saved = await this.candidateRepo.save(candidate);
+    // S4.1 — audit log
+    this.auditService
+      .log(effectiveTenantId, callerUserId ?? null, 'recruitment.candidate_added', 'recruitment_candidate', saved.id, {
+        processId, processTitle: process.title, candidateType: 'external',
+        firstName: saved.firstName, lastName: saved.lastName, email: saved.email,
+      })
+      .catch(() => {});
+    return saved;
   }
 
-  async addInternalCandidate(tenantId: string | undefined, processId: string, userId: string): Promise<RecruitmentCandidate> {
+  async addInternalCandidate(
+    tenantId: string | undefined,
+    processId: string,
+    userId: string,
+    callerUserId?: string,
+  ): Promise<RecruitmentCandidate> {
     const where = tenantId ? { id: processId, tenantId } : { id: processId };
     const process = await this.processRepo.findOne({ where });
     if (!process) throw new NotFoundException('Proceso no encontrado');
@@ -595,23 +654,51 @@ export class RecruitmentService {
       lastName: user.lastName,
       email: user.email,
     });
-    return this.candidateRepo.save(candidate);
+    const saved = await this.candidateRepo.save(candidate);
+    // S4.1 — audit log
+    this.auditService
+      .log(effectiveTenantId, callerUserId ?? null, 'recruitment.candidate_added', 'recruitment_candidate', saved.id, {
+        processId, processTitle: process.title, candidateType: 'internal',
+        userId, firstName: user.firstName, lastName: user.lastName,
+      })
+      .catch(() => {});
+    return saved;
   }
 
-  async updateCandidate(tenantId: string | undefined, candidateId: string, dto: any): Promise<RecruitmentCandidate> {
+  async updateCandidate(
+    tenantId: string | undefined,
+    candidateId: string,
+    dto: any,
+    callerUserId?: string,
+  ): Promise<RecruitmentCandidate> {
     const where = tenantId ? { id: candidateId, tenantId } : { id: candidateId };
     const candidate = await this.candidateRepo.findOne({ where });
     if (!candidate) throw new NotFoundException('Candidato no encontrado');
-    if (dto.email !== undefined) candidate.email = dto.email;
-    if (dto.phone !== undefined) candidate.phone = dto.phone;
-    if (dto.linkedIn !== undefined) candidate.linkedIn = dto.linkedIn;
-    if (dto.availability !== undefined) candidate.availability = dto.availability;
-    if (dto.salaryExpectation !== undefined) candidate.salaryExpectation = dto.salaryExpectation;
-    if (dto.recruiterNotes !== undefined) candidate.recruiterNotes = dto.recruiterNotes;
-    return this.candidateRepo.save(candidate);
+    const changedFields: string[] = [];
+    if (dto.email !== undefined && dto.email !== candidate.email) { candidate.email = dto.email; changedFields.push('email'); }
+    if (dto.phone !== undefined && dto.phone !== candidate.phone) { candidate.phone = dto.phone; changedFields.push('phone'); }
+    if (dto.linkedIn !== undefined && dto.linkedIn !== candidate.linkedIn) { candidate.linkedIn = dto.linkedIn; changedFields.push('linkedIn'); }
+    if (dto.availability !== undefined && dto.availability !== candidate.availability) { candidate.availability = dto.availability; changedFields.push('availability'); }
+    if (dto.salaryExpectation !== undefined && dto.salaryExpectation !== candidate.salaryExpectation) { candidate.salaryExpectation = dto.salaryExpectation; changedFields.push('salaryExpectation'); }
+    if (dto.recruiterNotes !== undefined && dto.recruiterNotes !== candidate.recruiterNotes) { candidate.recruiterNotes = dto.recruiterNotes; changedFields.push('recruiterNotes'); }
+    const saved = await this.candidateRepo.save(candidate);
+    // S4.1 — audit log (solo si hubo cambios reales)
+    if (changedFields.length > 0) {
+      this.auditService
+        .log(candidate.tenantId, callerUserId ?? null, 'recruitment.candidate_updated', 'recruitment_candidate', candidateId, {
+          changedFields,
+        })
+        .catch(() => {});
+    }
+    return saved;
   }
 
-  async updateCandidateStage(tenantId: string | undefined, candidateId: string, stage: string): Promise<RecruitmentCandidate> {
+  async updateCandidateStage(
+    tenantId: string | undefined,
+    candidateId: string,
+    stage: string,
+    callerUserId?: string,
+  ): Promise<RecruitmentCandidate> {
     // S1.2 / fix: el cambio a stage='hired' DEBE pasar por hireCandidate
     // (POST /processes/:id/hire/:candidateId) que ejecuta la cascada
     // completa al User + user_movements + audit. Permitir setearlo aqui
@@ -641,8 +728,20 @@ export class RecruitmentService {
         'No se puede cambiar el estado de un candidato contratado directamente. Para revertir la contratación, use "Reabrir proceso" en Configuración → Estado del Proceso. Eso ejecuta el rollback completo (libera el proceso, revierte cascada al empleado).',
       );
     }
+    const previousStage = candidate.stage;
     candidate.stage = stage as CandidateStage;
-    return this.candidateRepo.save(candidate);
+    const saved = await this.candidateRepo.save(candidate);
+    // S4.1 — audit log (solo si realmente cambia el stage)
+    if (previousStage !== saved.stage) {
+      this.auditService
+        .log(candidate.tenantId, callerUserId ?? null, 'recruitment.candidate_stage_changed', 'recruitment_candidate', candidateId, {
+          from: previousStage,
+          to: saved.stage,
+          processId: candidate.processId,
+        })
+        .catch(() => {});
+    }
+    return saved;
   }
 
   /**
@@ -1410,16 +1509,32 @@ export class RecruitmentService {
 
   // ─── CV & AI ──────────────────────────────────────────────────────────
 
-  async uploadCv(tenantId: string | undefined, candidateId: string, cvUrl: string): Promise<RecruitmentCandidate> {
+  async uploadCv(
+    tenantId: string | undefined,
+    candidateId: string,
+    cvUrl: string,
+    callerUserId?: string,
+  ): Promise<RecruitmentCandidate> {
     const where = tenantId ? { id: candidateId, tenantId } : { id: candidateId };
     const candidate = await this.candidateRepo.findOne({ where });
     if (!candidate) throw new NotFoundException('Candidato no encontrado');
+    const previousCvUrl = candidate.cvUrl;
+    const previousStage = candidate.stage;
     candidate.cvUrl = cvUrl;
     // Auto-advance stage to cv_review when CV is uploaded
     if (candidate.stage === CandidateStage.REGISTERED) {
       candidate.stage = CandidateStage.CV_REVIEW;
     }
-    return this.candidateRepo.save(candidate);
+    const saved = await this.candidateRepo.save(candidate);
+    // S4.1 — audit log
+    this.auditService
+      .log(candidate.tenantId, callerUserId ?? null, 'recruitment.cv_uploaded', 'recruitment_candidate', candidateId, {
+        processId: candidate.processId,
+        replaced: !!previousCvUrl,
+        stageAdvanced: previousStage !== saved.stage ? { from: previousStage, to: saved.stage } : null,
+      })
+      .catch(() => {});
+    return saved;
   }
 
   async analyzeCvWithAi(tenantId: string | undefined, candidateId: string, generatedBy: string): Promise<any> {
@@ -1475,6 +1590,17 @@ export class RecruitmentService {
     candidate.cvAnalysis = analysis.content;
     await this.candidateRepo.save(candidate);
 
+    // S4.1 — audit log
+    this.auditService
+      .log(effectiveTenantId, generatedBy, 'recruitment.cv_analyzed', 'recruitment_candidate', candidateId, {
+        processId: candidate.processId,
+        candidateType: candidate.candidateType,
+        // Metadatos de la respuesta de IA — util para debug de tasa de fallos
+        // y auditar cambios en formato/version del modelo.
+        analysisLength: typeof analysis?.content === 'string' ? analysis.content.length : null,
+      })
+      .catch(() => {});
+
     return analysis;
   }
 
@@ -1484,12 +1610,28 @@ export class RecruitmentService {
     return { cvUrl: candidate.cvUrl, cvAnalysis: candidate.cvAnalysis, recruiterNotes: candidate.recruiterNotes };
   }
 
-  async addRecruiterNotes(tenantId: string | undefined, candidateId: string, notes: string): Promise<void> {
+  async addRecruiterNotes(
+    tenantId: string | undefined,
+    candidateId: string,
+    notes: string,
+    callerUserId?: string,
+  ): Promise<void> {
     const where = tenantId ? { id: candidateId, tenantId } : { id: candidateId };
     const candidate = await this.candidateRepo.findOne({ where });
     if (!candidate) throw new NotFoundException('Candidato no encontrado');
+    const previousNotes = candidate.recruiterNotes;
     candidate.recruiterNotes = notes;
     await this.candidateRepo.save(candidate);
+    // S4.1 — audit log (solo si realmente cambian las notas para evitar
+    // ruido por re-saves idempotentes desde el frontend).
+    if (previousNotes !== notes) {
+      this.auditService
+        .log(candidate.tenantId, callerUserId ?? null, 'recruitment.recruiter_notes_updated', 'recruitment_candidate', candidateId, {
+          processId: candidate.processId,
+          hadPreviousNotes: !!previousNotes,
+        })
+        .catch(() => {});
+    }
   }
 
   // ─── Interviews ───────────────────────────────────────────────────────
@@ -1500,6 +1642,7 @@ export class RecruitmentService {
     if (!candidate) throw new NotFoundException('Candidato no encontrado');
 
     let interview = await this.interviewRepo.findOne({ where: { candidateId, evaluatorId } });
+    const isUpdate = !!interview;
     if (interview) {
       interview.requirementChecks = dto.requirementChecks || [];
       interview.comments = dto.comments || null;
@@ -1524,6 +1667,20 @@ export class RecruitmentService {
 
     // Recalculate candidate final score + auto-advance to scored
     await this.recalculateScore(tenantId, candidateId);
+
+    // S4.1 — audit log (después del save + recalc para que cualquier
+    // error en esos pasos no genere un log "fantasma" de evento exitoso).
+    this.auditService
+      .log(candidate.tenantId, evaluatorId, 'recruitment.interview_submitted', 'recruitment_interview', saved.id, {
+        candidateId,
+        processId: candidate.processId,
+        action: isUpdate ? 'updated' : 'created',
+        globalScore: saved.globalScore,
+        manualScore: saved.manualScore,
+        requirementChecksCount: Array.isArray(saved.requirementChecks) ? saved.requirementChecks.length : 0,
+      })
+      .catch(() => {});
+
     return saved;
   }
 
@@ -1618,15 +1775,35 @@ export class RecruitmentService {
     };
   }
 
-  async adjustScore(tenantId: string | undefined, candidateId: string, adjustment: number, justification: string): Promise<void> {
+  async adjustScore(
+    tenantId: string | undefined,
+    candidateId: string,
+    adjustment: number,
+    justification: string,
+    callerUserId?: string,
+  ): Promise<void> {
     const where = tenantId ? { id: candidateId, tenantId } : { id: candidateId };
     const candidate = await this.candidateRepo.findOne({ where });
     if (!candidate) throw new NotFoundException('Candidato no encontrado');
+    const previousAdjustment = candidate.scoreAdjustment;
+    const previousJustification = candidate.scoreJustification;
     candidate.scoreAdjustment = adjustment;
     candidate.scoreJustification = justification;
     await this.candidateRepo.save(candidate);
     // Recalculate with adjustment usando el tenantId authoritative del candidato.
     await this.recalculateScore(candidate.tenantId, candidateId);
+    // S4.1 — audit log (siempre, incluso si valores iguales: el admin
+    // pudo "reescribir" la justificacion intencionalmente y eso debe
+    // quedar trazado para compliance/transparencia del proceso).
+    this.auditService
+      .log(candidate.tenantId, callerUserId ?? null, 'recruitment.score_adjusted', 'recruitment_candidate', candidateId, {
+        processId: candidate.processId,
+        previousAdjustment,
+        newAdjustment: adjustment,
+        previousJustification,
+        newJustification: justification,
+      })
+      .catch(() => {});
   }
 
   /**
