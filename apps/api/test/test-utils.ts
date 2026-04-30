@@ -89,6 +89,7 @@ export function createMockQueryBuilder<T extends ObjectLiteral = any>(): Partial
   qb.getRawMany = jest.fn().mockResolvedValue([]);
   qb.getRawOne = jest.fn().mockResolvedValue(null);
   qb.getCount = jest.fn().mockResolvedValue(0);
+  qb.getRawAndEntities = jest.fn().mockResolvedValue({ entities: [], raw: [] });
   qb.execute = jest.fn().mockResolvedValue({ affected: 0 });
   // Alias
   qb.alias = 'entity';

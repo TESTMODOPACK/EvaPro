@@ -510,6 +510,119 @@ function getCategoryLabel(key: string, t: (k: string) => string): string {
   return translated !== `postulantes.reqCategories.${cleaned.toLowerCase()}` ? translated : cleaned.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+/* ── S5.2 — Banner de CV archivado (compliance Chile 24m) ──────────
+   Mostrado solo a tenant_admin cuando el candidato tiene CV archivado
+   (proceso cerrado, cv_url null pero cv_archived_at != null). Permite
+   solicitar acceso justificando con un texto >=20 chars que se persiste
+   en audit_logs. El CV se renderiza inline en iframe sandboxed. */
+function ArchivedCvBanner({ candidate, token }: { candidate: any; token: string | null }) {
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [cvUrl, setCvUrl] = useState<string | null>(null);
+
+  const archivedAt = candidate.cvArchivedAt
+    ? new Date(candidate.cvArchivedAt).toLocaleDateString('es-CL', { year: 'numeric', month: 'long', day: 'numeric' })
+    : '';
+
+  const handleAccess = async () => {
+    if (!token) return;
+    if (reason.trim().length < 20) {
+      setError('La razon debe tener al menos 20 caracteres.');
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const r = await api.recruitment.getArchivedCv(token, candidate.id, reason.trim());
+      setCvUrl(r.cvUrl);
+    } catch (e: any) {
+      setError(e?.message || 'No se pudo cargar el CV archivado.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div style={{
+      padding: '1rem',
+      background: 'rgba(99,102,241,0.04)',
+      border: '1px solid rgba(99,102,241,0.2)',
+      borderRadius: 'var(--radius-sm)',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+        <span style={{ fontSize: '1rem' }}>🗄️</span>
+        <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>CV archivado</span>
+        <span style={{ fontSize: '0.7rem', background: 'rgba(99,102,241,0.1)', color: '#6366f1', padding: '0.1rem 0.4rem', borderRadius: 8 }}>
+          Compliance 24m
+        </span>
+      </div>
+      <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', margin: '0 0 0.6rem', lineHeight: 1.5 }}>
+        Archivado el {archivedAt}. Por compliance (Ley 19.628 Chile) el CV se conserva 24 meses
+        post-cierre del proceso y luego se purga automaticamente. Solo admin puede acceder, justificando
+        la razon de acceso (queda registrada en audit log).
+      </p>
+      {!open && !cvUrl && (
+        <button
+          className="btn-ghost"
+          onClick={() => setOpen(true)}
+          style={{ fontSize: '0.78rem' }}
+        >
+          Ver CV archivado
+        </button>
+      )}
+      {open && !cvUrl && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
+          <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+            Razon de acceso (min 20 caracteres) *
+          </label>
+          <textarea
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="Ej: requerimiento legal del candidato segun ley 19.628 art. 12..."
+            rows={3}
+            className="input"
+            style={{ resize: 'vertical', fontSize: '0.82rem' }}
+          />
+          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+            {reason.trim().length} / 20 caracteres minimos
+          </div>
+          {error && (
+            <div style={{ fontSize: '0.78rem', color: 'var(--danger)' }}>{error}</div>
+          )}
+          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+            <button className="btn-ghost" onClick={() => { setOpen(false); setReason(''); setError(null); }} style={{ fontSize: '0.78rem' }}>
+              Cancelar
+            </button>
+            <button
+              className="btn-primary"
+              onClick={handleAccess}
+              disabled={loading || reason.trim().length < 20}
+              style={{ fontSize: '0.78rem' }}
+            >
+              {loading ? 'Cargando…' : 'Solicitar acceso'}
+            </button>
+          </div>
+        </div>
+      )}
+      {cvUrl && (
+        <div style={{ marginTop: '0.5rem' }}>
+          <iframe
+            src={cvUrl}
+            sandbox=""
+            style={{ width: '100%', height: 600, border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)' }}
+            title="CV archivado"
+          />
+          <div style={{ marginTop: '0.5rem', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+            Este acceso quedo registrado en audit_logs (recruitment.archived_cv_accessed).
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 
 /* ── Admin read-only evaluation view ──────────────────────────────── */
 function AdminEvaluationView({ candidate, token, onViewScorecard, t }: { candidate: any; token: string | null; onViewScorecard: () => void; t: (key: string, opts?: any) => string }) {
@@ -1364,8 +1477,11 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                           </div>
                         </div>
 
-                        {/* Step 1: Upload or use profile CV */}
-                        {!c.cvUrl && !cvFromProfile ? (
+                        {/* S5.2 — CV archivado (proceso cerrado, compliance Chile 24m).
+                            Solo admin puede solicitar acceso, requiere razon. */}
+                        {!c.cvUrl && !cvFromProfile && c.cvArchivedAt && isAdmin ? (
+                          <ArchivedCvBanner candidate={c} token={token} />
+                        ) : !c.cvUrl && !cvFromProfile ? (
                           <div style={{ textAlign: 'center', padding: '1.5rem', border: '2px dashed var(--border)', borderRadius: 'var(--radius-sm)' }}>
                             <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
                               {c.candidateType === 'internal'

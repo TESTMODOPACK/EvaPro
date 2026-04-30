@@ -712,6 +712,16 @@ export const api = {
         { method: "POST" },
         token,
       ),
+    /**
+     * S5.2 — Vista admin del CV archivado (compliance Chile 24m).
+     * Requiere reason >=20 chars (audit trail). Solo tenant_admin.
+     */
+    getArchivedCv: (token: string, candidateId: string, reason: string) =>
+      request<{ cvUrl: string; archivedAt: string }>(
+        `/recruitment/candidates/${candidateId}/archived-cv?reason=${encodeURIComponent(reason)}`,
+        {},
+        token,
+      ),
   },
 
   users: {

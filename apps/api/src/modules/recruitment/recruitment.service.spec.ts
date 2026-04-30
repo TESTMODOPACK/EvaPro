@@ -464,6 +464,74 @@ describe('RecruitmentService', () => {
     });
   });
 
+  // ─── getArchivedCv (S5.2) ─────────────────────────────────────────
+
+  describe('getArchivedCv', () => {
+    const candidateId = fakeUuid(300);
+
+    it('lanza si reason es < 20 chars', async () => {
+      await expect(
+        service.getArchivedCv(TENANT_ID, candidateId, 'corto', ADMIN_ID),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('lanza si reason es vacio', async () => {
+      await expect(
+        service.getArchivedCv(TENANT_ID, candidateId, '', ADMIN_ID),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('lanza si candidato no existe', async () => {
+      const qb = candidateRepo.createQueryBuilder();
+      qb.getRawAndEntities.mockResolvedValue({ entities: [], raw: [] });
+      await expect(
+        service.getArchivedCv(
+          TENANT_ID, candidateId,
+          'requerimiento legal del candidato',
+          ADMIN_ID,
+        ),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('lanza si CV no esta archivado', async () => {
+      const qb = candidateRepo.createQueryBuilder();
+      qb.getRawAndEntities.mockResolvedValue({
+        entities: [{ id: candidateId, tenantId: TENANT_ID, cvArchivedAt: null }],
+        raw: [{ c_cv_url_archived: null }],
+      });
+      await expect(
+        service.getArchivedCv(
+          TENANT_ID, candidateId,
+          'requerimiento legal del candidato',
+          ADMIN_ID,
+        ),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('retorna CV + audit log con reason', async () => {
+      const archivedAt = new Date('2026-04-01T00:00:00Z');
+      const qb = candidateRepo.createQueryBuilder();
+      qb.getRawAndEntities.mockResolvedValue({
+        entities: [{ id: candidateId, tenantId: TENANT_ID, cvArchivedAt: archivedAt }],
+        raw: [{ c_cv_url_archived: 'data:application/pdf;base64,abc...' }],
+      });
+
+      const result = await service.getArchivedCv(
+        TENANT_ID, candidateId,
+        'requerimiento legal del candidato',
+        ADMIN_ID,
+      );
+
+      expect(result.cvUrl).toBe('data:application/pdf;base64,abc...');
+      expect(result.archivedAt).toBe(archivedAt);
+      const auditCall = (auditService.log as jest.Mock).mock.calls.find(
+        (c) => c[2] === 'recruitment.archived_cv_accessed',
+      );
+      expect(auditCall).toBeDefined();
+      expect(auditCall[5].reason).toBe('requerimiento legal del candidato');
+    });
+  });
+
   // ─── resendWelcomeEmail (S5.1) ────────────────────────────────────
 
   describe('resendWelcomeEmail', () => {

@@ -2194,6 +2194,75 @@ export class RecruitmentService {
     return { emailSent };
   }
 
+  /**
+   * S5.2 — Acceso admin al CV archivado de un candidato (compliance Chile).
+   *
+   * Despues del cierre del proceso, `cv_url` se nulifica y el data URL se
+   * mueve a `cv_url_archived` (S4.2). Esta funcion expone el archivado al
+   * admin que necesite recuperarlo (ej. requerimiento legal de un
+   * candidato no contratado pidiendo acceso a sus datos).
+   *
+   * Reglas:
+   *   - Solo se puede invocar desde el controller con guard tenant_admin
+   *     (no super_admin — alineado con F-001).
+   *   - El admin DEBE proveer una razon de >=20 caracteres. Se persiste
+   *     en audit_logs.metadata.reason para trazabilidad de quien accedio
+   *     a que CV y por que.
+   *   - 404 si el candidato no tiene CV archivado (ya purgado por cron
+   *     o nunca tuvo CV).
+   *
+   * Retorna { cvUrl, archivedAt } — el cvUrl es el data URL base64 que
+   * el frontend renderiza inline en un iframe sandboxed (no descarga
+   * a disco automaticamente).
+   */
+  async getArchivedCv(
+    tenantId: string,
+    candidateId: string,
+    reason: string,
+    callerUserId: string,
+  ): Promise<{ cvUrl: string; archivedAt: Date }> {
+    if (!reason || reason.trim().length < 20) {
+      throw new BadRequestException(
+        'Debe proporcionar una razon de acceso de al menos 20 caracteres (compliance audit trail).',
+      );
+    }
+
+    // Cargar el candidato con cv_url_archived explicito (select:false en
+    // entity, pero addSelect lo trae bajo demanda).
+    const row = await this.candidateRepo
+      .createQueryBuilder('c')
+      .select(['c.id', 'c.tenantId', 'c.cvArchivedAt'])
+      .addSelect('c.cvUrlArchived', 'c_cv_url_archived')
+      .where('c.id = :candidateId', { candidateId })
+      .andWhere('c.tenantId = :tenantId', { tenantId })
+      .getRawAndEntities();
+
+    const candidate = row.entities[0];
+    const cvUrlArchived = (row.raw[0] as any)?.c_cv_url_archived as string | null | undefined;
+
+    if (!candidate) {
+      throw new NotFoundException('Candidato no encontrado');
+    }
+    if (!cvUrlArchived || !candidate.cvArchivedAt) {
+      throw new NotFoundException(
+        'No hay CV archivado para este candidato (nunca se subio o ya fue purgado por retencion 24m).',
+      );
+    }
+
+    // Audit obligatorio.
+    await this.auditService
+      .log(tenantId, callerUserId, 'recruitment.archived_cv_accessed', 'recruitment_candidate', candidateId, {
+        reason: reason.trim().slice(0, 500),
+        archivedAt: candidate.cvArchivedAt.toISOString?.() ?? String(candidate.cvArchivedAt),
+      })
+      .catch(() => undefined);
+
+    return {
+      cvUrl: cvUrlArchived,
+      archivedAt: candidate.cvArchivedAt,
+    };
+  }
+
   async getCandidateProfile(tenantId: string, candidateId: string): Promise<any> {
     const candidate = await this.candidateRepo
       .createQueryBuilder('c')

@@ -166,6 +166,26 @@ export class RecruitmentController {
     return this.service.resendWelcomeEmail(tenantId, candidateId, req.user.userId);
   }
 
+  /**
+   * S5.2 — Vista admin del CV archivado (compliance Chile).
+   *
+   * Devuelve el data URL base64 del CV cuyo proceso ya cerro. Solo
+   * tenant_admin (alineado con F-001 — super_admin no tiene injerencia
+   * operacional). Requiere `reason` >=20 chars en query param para
+   * audit trail (recruitment.archived_cv_accessed).
+   *
+   * Si el CV ya fue purgado por el cron de 24m, responde 404.
+   */
+  @Get('candidates/:id/archived-cv')
+  @Roles('tenant_admin')
+  getArchivedCv(
+    @Request() req: any,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('reason') reason: string,
+  ) {
+    return this.service.getArchivedCv(req.user.tenantId, id, reason || '', req.user.userId);
+  }
+
   @Get('candidates/:id/profile')
   getCandidateProfile(@Request() req: any, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.getCandidateProfile(req.user.tenantId, id);
