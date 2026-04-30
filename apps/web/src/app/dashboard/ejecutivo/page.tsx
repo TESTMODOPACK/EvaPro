@@ -35,6 +35,10 @@ export default function DashboardEjecutivoPage() {
   const [orgPlans, setOrgPlans] = useState<any[]>([]);
   const [atRiskObjectives, setAtRiskObjectives] = useState<any[]>([]);
   const [recognitionStats, setRecognitionStats] = useState<any>(null);
+  // S3.3 — Movilidad Interna: hires internos + procesos en curso para
+  // que el CHRO vea de un vistazo el flujo de movilidad organizacional.
+  const [mobilityData, setMobilityData] = useState<any>(null);
+  const [activeInternalProcesses, setActiveInternalProcesses] = useState<number>(0);
   const [chartsLoading, setChartsLoading] = useState(true);
 
   // Phase 1: Load KPI summary
@@ -61,13 +65,23 @@ export default function DashboardEjecutivoPage() {
       api.orgDevelopment.plans.list(token).catch(() => []),
       api.objectives.atRisk(token).catch(() => []),
       api.recognition.stats(token).catch(() => null),
-    ]).then(([analyticsData, trends, surveyResults, plans, atRisk, recStats]) => {
+      // S3.3 — Movilidad: ultimos 12m por defecto (mismo response shape
+      // que el de analytics-rotacion). El widget muestra solo un subset.
+      api.reports.movements(token).catch(() => null),
+      // Procesos internos ACTIVE: cuenta lo que esta en curso ahora.
+      api.recruitment.processes.list(token, 'active').catch(() => []),
+    ]).then(([analyticsData, trends, surveyResults, plans, atRisk, recStats, mobility, activeProcesses]) => {
       setAnalytics(analyticsData);
       setSurveyTrends(trends || []);
       setLatestSurveyResults(surveyResults);
       setOrgPlans(plans || []);
       setAtRiskObjectives(atRisk || []);
       setRecognitionStats(recStats);
+      setMobilityData(mobility);
+      const internalActives = (Array.isArray(activeProcesses) ? activeProcesses : []).filter(
+        (p: any) => p.processType === 'internal',
+      ).length;
+      setActiveInternalProcesses(internalActives);
     }).finally(() => setChartsLoading(false));
   }, [token, selectedCycleId, summary?.performance?.cycleId, summary?.enps?.surveyId]);
 
@@ -396,6 +410,52 @@ export default function DashboardEjecutivoPage() {
               <StatRow label="Insignias Otorgadas" value={recognitionStats.badgesAwarded ?? 0} />
             </div>
           ) : <EmptyChart message="Sin datos de reconocimiento" />}
+        </div>
+
+        {/* S3.3 — Widget Movilidad Interna. Snapshot de los ultimos 12m
+            + procesos internos en curso. Linkea al reporte completo en
+            /dashboard/analytics-rotacion (tab Movimientos). */}
+        <div className="card" style={{ padding: '1.25rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+            <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700 }}>Movilidad Interna</h4>
+            <a
+              href="/dashboard/analytics-rotacion"
+              style={{ fontSize: '0.72rem', color: 'var(--accent)', textDecoration: 'none', fontWeight: 600 }}
+              title="Ver reporte completo en Análisis de Rotación"
+            >
+              Ver detalle →
+            </a>
+          </div>
+          {mobilityData ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', padding: '0.5rem 0' }}>
+              <StatRow
+                label="Procesos internos en curso"
+                value={activeInternalProcesses}
+              />
+              <StatRow
+                label="Hires internos (12m)"
+                value={mobilityData.internalHires ?? 0}
+              />
+              <StatRow
+                label="Promociones (12m)"
+                value={mobilityData.promotions ?? 0}
+              />
+              <StatRow
+                label="Transferencias (12m)"
+                value={mobilityData.lateralTransfers ?? 0}
+              />
+              <StatRow
+                label="Retención post-movilidad"
+                value={
+                  mobilityData.retention12m?.rate != null
+                    ? `${mobilityData.retention12m.rate}%`
+                    : '—'
+                }
+              />
+            </div>
+          ) : (
+            <EmptyChart message="Sin datos de movilidad" />
+          )}
         </div>
       </div>
       </>)}
