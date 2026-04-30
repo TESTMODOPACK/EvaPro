@@ -400,58 +400,77 @@ function FormView(props: any) {
           />
         </Field>
 
-        {/* Grid 2 cols: dept + posicion */}
+        {/* Grid 2 cols: dept + posicion (READONLY — vienen del proceso).
+            Estos datos se definen al crear el proceso de seleccion: cuando
+            se publica el cargo, ya esta decidido a que dept y que cargo
+            apunta. Cambiarlos al hire seria una incongruencia (¿contrataste
+            para Analista de Datos pero asignaste a Diseñador?). Los
+            mostramos como solo-lectura para que el admin vea claramente
+            la estructura sin riesgo de cambiarla por error. Si necesita
+            ajustarlos, debe editar el proceso de seleccion. */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.85rem' }}>
-          <Field label="Departamento" hint="Pre-poblado del proceso">
-            <select
-              className="input"
-              value={newDepartmentId}
-              onChange={(e) => setNewDepartmentId(e.target.value)}
-              disabled={submitting}
-            >
-              <option value="">— Sin cambio —</option>
-              {(departments || []).map((d: any) => (
-                <option key={d.id} value={d.id}>{d.name}</option>
-              ))}
-            </select>
+          <Field label="Departamento" hint="Definido en el proceso de selección">
+            <ReadOnlyField
+              value={(departments || []).find((d: any) => d.id === newDepartmentId)?.name || '—'}
+            />
           </Field>
-          <Field label="Cargo" hint="Pre-poblado del proceso">
-            <select
-              className="input"
-              value={newPositionId}
-              onChange={(e) => setNewPositionId(e.target.value)}
-              disabled={submitting}
-            >
-              <option value="">— Sin cambio —</option>
-              {(positions || []).map((p: any) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </select>
+          <Field label="Cargo" hint="Definido en el proceso de selección">
+            <ReadOnlyField
+              value={(positions || []).find((p: any) => p.id === newPositionId)?.name || '—'}
+            />
           </Field>
         </div>
 
-        {/* Manager */}
-        <Field label="Jefatura directa" hint="Manager o admin que reportará el empleado">
-          <select
-            className="input"
-            value={newManagerId}
-            onChange={(e) => setNewManagerId(e.target.value)}
-            disabled={submitting}
-          >
-            <option value="">— Sin cambio / sin asignar —</option>
-            {eligibleManagers.map((u: any) => {
-              // Etiqueta enriquecida: "Nombre Apellido — Cargo · Depto (admin)".
-              // Si el cargo o dept no estan, los omitimos sin romper layout.
-              const roleSuffix = u.role === 'tenant_admin' ? ' (admin)' : '';
-              const positionPart = u.position ? ` — ${u.position}` : '';
-              const deptPart = u.department ? ` · ${u.department}` : '';
+        {/* Manager — auto-detectado desde el dept (head) o el manager
+            actual del candidato interno. Si no hay un head claro del dept,
+            permitimos seleccionar (caso edge). En la mayoria de los casos
+            el admin no necesita tocar este campo. */}
+        <Field
+          label="Jefatura directa"
+          hint={
+            (() => {
+              const selected = eligibleManagers.find((u: any) => u.id === newManagerId);
+              if (selected) {
+                return `Reportará a ${selected.firstName} ${selected.lastName}${selected.position ? ` — ${selected.position}` : ''}`;
+              }
+              return 'Sin manager asignado en el departamento — seleccionar manualmente';
+            })()
+          }
+        >
+          {(() => {
+            // Si hay un manager auto-detectado y bloqueado, mostramos readonly.
+            // Solo permitimos editar si NO hay manager pre-poblado (caso edge:
+            // dept sin head claro). Esto cubre 95% de los casos sin friccion.
+            const selected = eligibleManagers.find((u: any) => u.id === newManagerId);
+            if (selected) {
               return (
-                <option key={u.id} value={u.id}>
-                  {u.firstName} {u.lastName}{positionPart}{deptPart}{roleSuffix}
-                </option>
+                <ReadOnlyField
+                  value={`${selected.firstName} ${selected.lastName}${selected.position ? ` — ${selected.position}` : ''}${selected.department ? ` · ${selected.department}` : ''}${selected.role === 'tenant_admin' ? ' (admin)' : ''}`}
+                />
               );
-            })}
-          </select>
+            }
+            // Fallback: permitir seleccionar manualmente cuando no hay auto-detect
+            return (
+              <select
+                className="input"
+                value={newManagerId}
+                onChange={(e) => setNewManagerId(e.target.value)}
+                disabled={submitting}
+              >
+                <option value="">— Sin asignar —</option>
+                {eligibleManagers.map((u: any) => {
+                  const roleSuffix = u.role === 'tenant_admin' ? ' (admin)' : '';
+                  const positionPart = u.position ? ` — ${u.position}` : '';
+                  const deptPart = u.department ? ` · ${u.department}` : '';
+                  return (
+                    <option key={u.id} value={u.id}>
+                      {u.firstName} {u.lastName}{positionPart}{deptPart}{roleSuffix}
+                    </option>
+                  );
+                })}
+              </select>
+            );
+          })()}
         </Field>
 
         {/* Salario + contractType */}
@@ -618,6 +637,33 @@ function SuccessView(props: any) {
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────
+
+/**
+ * ReadOnlyField — caja con apariencia de input pero no editable. Se usa
+ * para mostrar datos heredados del proceso de seleccion (dept, cargo,
+ * jefatura) que el admin no debe poder cambiar al hire.
+ */
+function ReadOnlyField({ value }: { value: string }) {
+  return (
+    <div
+      style={{
+        padding: '0.5rem 0.75rem',
+        background: 'var(--bg-base, #f7f7f7)',
+        border: '1px solid var(--border)',
+        borderRadius: 'var(--radius-sm, 6px)',
+        fontSize: '0.9rem',
+        color: 'var(--text-primary)',
+        fontWeight: 500,
+        minHeight: '38px',
+        display: 'flex',
+        alignItems: 'center',
+      }}
+      aria-readonly="true"
+    >
+      {value}
+    </div>
+  );
+}
 
 function Field({
   label, hint, required, children,

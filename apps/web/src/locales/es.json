@@ -1263,6 +1263,7 @@
     "stages": {
       "draft": "Borrador",
       "active": "Activo",
+      "completed": "Completado",
       "closed": "Cerrado",
       "cancelled": "Cancelado",
       "registered": "Registrado",

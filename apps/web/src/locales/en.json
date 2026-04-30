@@ -1259,6 +1259,11 @@
       "internalDesc": "Organization employees. History, comparison and AI recommendation."
     },
     "stages": {
+      "draft": "Draft",
+      "active": "Active",
+      "completed": "Completed",
+      "closed": "Closed",
+      "cancelled": "Cancelled",
       "registered": "Registered",
       "cv_review": "CV Review",
       "interviewing": "Interviewing",

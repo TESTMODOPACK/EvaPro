@@ -1241,6 +1241,11 @@
       "internalDesc": "Colaboradores da organização. Histórico, comparativo e recomendação IA."
     },
     "stages": {
+      "draft": "Rascunho",
+      "active": "Ativo",
+      "completed": "Concluído",
+      "closed": "Fechado",
+      "cancelled": "Cancelado",
       "registered": "Registrado",
       "cv_review": "CV em revisão",
       "interviewing": "Em entrevista",
