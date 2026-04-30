@@ -855,11 +855,13 @@ export default function UserProfilePage() {
                 const p = evt.payload || {};
                 const stageColors: Record<string, string> = {
                   cv_review: '#94a3b8', interviewing: '#6366f1',
-                  scored: '#f59e0b', approved: '#10b981', rejected: '#ef4444', hired: '#10b981',
+                  scored: '#f59e0b', approved: '#10b981', rejected: '#ef4444',
+                  hired: '#10b981', not_hired: '#94a3b8',
                 };
                 const stageLabels: Record<string, string> = {
                   cv_review: 'CV en revisión', interviewing: 'En entrevistas',
-                  scored: 'Evaluado', approved: 'Aprobado', rejected: 'Rechazado', hired: 'Contratado',
+                  scored: 'Evaluado', approved: 'Aprobado', rejected: 'Rechazado',
+                  hired: 'Contratado', not_hired: 'No contratado',
                 };
                 return (
                   <div key={`rec-${p.candidateId}`} style={{ padding: '0.85rem 1rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm, 8px)', borderLeft: `3px solid ${p.isWinner ? '#10b981' : '#6366f1'}` }}>
