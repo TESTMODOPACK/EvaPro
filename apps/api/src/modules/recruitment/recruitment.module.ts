@@ -19,6 +19,7 @@ import { AuditModule } from '../audit/audit.module';
 import { AiInsightsModule } from '../ai-insights/ai-insights.module';
 import { UsersModule } from '../users/users.module';
 import { RlsModule } from '../../common/rls/rls.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
@@ -48,6 +49,9 @@ import { RlsModule } from '../../common/rls/rls.module';
     // user.transferred (listeners reaccionan en otros modulos).
     UsersModule,
     RlsModule,
+    // S4.3 — para enviar notificacion al tenant_admin cuando un proceso
+    // legacy (pre-S1) tiene candidato 'hired' sin cascada al User.
+    NotificationsModule,
   ],
   controllers: [RecruitmentController],
   providers: [RecruitmentService],

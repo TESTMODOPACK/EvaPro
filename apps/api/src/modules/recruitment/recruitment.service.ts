@@ -23,6 +23,9 @@ import { AuditService } from '../audit/audit.service';
 import { UsersService } from '../users/users.service';
 import { UserTransferredEvent } from '../users/events/user-transferred.event';
 import { TenantCronRunner } from '../../common/rls/tenant-cron-runner';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationType } from '../notifications/entities/notification.entity';
+import { AuditLog } from '../audit/entities/audit-log.entity';
 
 @Injectable()
 export class RecruitmentService {
@@ -54,6 +57,9 @@ export class RecruitmentService {
     // `user.transferred` para que listeners (evaluaciones, PDI, etc)
     // reaccionen automaticamente.
     private readonly usersService: UsersService,
+    // S4.3 — para notificar tenant_admins de procesos legacy con
+    // posibles cascadas pendientes (pre-S1).
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   // ─── Date & status validators (v3.1 — date flow rules) ──────────────────
@@ -718,6 +724,169 @@ export class RecruitmentService {
             })
             .catch(() => undefined);
         }
+      },
+    );
+  }
+
+  /**
+   * S4.3 — Detector semanal de procesos COMPLETED legacy (pre-S1) donde
+   * la cascada al User no se ejecuto.
+   *
+   * Contexto: antes de S1 (Sprint 1) el flow de "marcar como contratado"
+   * solo cambiaba candidate.stage a 'hired' y process.status a 'completed',
+   * pero NO actualizaba users.department/position/manager ni insertaba
+   * user_movements. Esto generaba inconsistencias: el candidato quedaba
+   * marcado como contratado en recruitment, pero su registro en users
+   * no reflejaba el nuevo cargo. El historial de movilidad estaba vacio.
+   *
+   * S1+ todos los hires nuevos pasan por hireCandidate() que ejecuta
+   * la cascada en una transaccion. Los hires post-S1 tienen:
+   *   - process.winningCandidateId set
+   *   - process.hireData con previousUserState/effectiveDate
+   *   - user_movement insertado con effectiveDate del hire
+   *
+   * Este cron busca hires que tienen el primer flag pero no el ultimo
+   * (i.e., hires hechos via UI antigua). Para cada uno detectado:
+   *   1. Crea audit log 'recruitment.legacy_hire_detected' (para dedup
+   *      en futuras corridas).
+   *   2. Notifica al tenant_admin con metadata para que pueda revisar
+   *      manualmente desde el modulo de Mantenedores → Usuarios.
+   *
+   * Idempotencia: chequea audit_logs antes de notificar de nuevo. Si
+   * ya hay un 'recruitment.legacy_hire_detected' para este candidateId,
+   * skip.
+   *
+   * Corre semanal (domingo 03:00 UTC) — es deteccion de edge cases, no
+   * urgente. Tampoco va a producir muchos resultados; despues de la
+   * primera corrida la mayoria queda atendida.
+   */
+  @Cron('0 03 * * 0')
+  async detectLegacyHiresWithoutCascade(): Promise<void> {
+    await runWithCronLock(
+      'recruitment.detectLegacyHiresWithoutCascade',
+      this.dataSource,
+      this.logger,
+      async () => {
+        await this.tenantCronRunner.runForEachTenant(
+          'recruitment.detectLegacyHiresWithoutCascade',
+          async (tenantId) => {
+            // 1. Buscar candidatos internos en stage HIRED cuyo proceso
+            //    esta COMPLETED. Solo internos: externos siempre crean
+            //    User (no hay "estado previo" que podamos verificar).
+            const hiredInternals = await this.candidateRepo.find({
+              where: {
+                tenantId,
+                stage: CandidateStage.HIRED,
+                candidateType: 'internal',
+              },
+              relations: ['process'],
+            });
+
+            if (hiredInternals.length === 0) return;
+
+            // 2. Filtrar a los que NO tienen evidencia de cascada:
+            //    - hireData es null (definitivamente pre-S1), O
+            //    - no existe user_movement con effective_date matching
+            //      el hireData.effectiveDate.
+            const auditRepo = this.dataSource.getRepository(AuditLog);
+            const movementRepo = this.dataSource.getRepository(UserMovement);
+            const flagged: Array<{ candidate: RecruitmentCandidate; reason: string }> = [];
+
+            for (const cand of hiredInternals) {
+              if (!cand.process || cand.process.status !== ProcessStatus.COMPLETED) continue;
+              if (!cand.userId) continue;
+
+              const hireData: any = cand.process.hireData;
+              if (!hireData || !hireData.effectiveDate) {
+                flagged.push({ candidate: cand, reason: 'no_hire_data' });
+                continue;
+              }
+              // Verificar movement existe — si no existe, la cascada
+              // probablemente no corrio. Comparamos como string YYYY-MM-DD
+              // contra la columna `date` para evitar shifts por timezone
+              // (new Date('2025-04-01') seria 2025-04-01T00:00:00Z y al
+              // compararse contra date podria caer en 2025-03-31 segun TZ
+              // del cliente Postgres).
+              const movementCount = await movementRepo
+                .createQueryBuilder('m')
+                .where('m.tenant_id = :tid', { tid: tenantId })
+                .andWhere('m.user_id = :uid', { uid: cand.userId })
+                .andWhere('m.effective_date = :ed::date', { ed: String(hireData.effectiveDate) })
+                .getCount();
+              if (movementCount === 0) {
+                flagged.push({ candidate: cand, reason: 'no_movement_for_effective_date' });
+              }
+            }
+
+            if (flagged.length === 0) return;
+
+            // 3. Para cada flagged, dedup contra audit_logs y notificar.
+            const tenantAdmins = await this.userRepo.find({
+              where: { tenantId, role: 'tenant_admin', isActive: true },
+              select: ['id'],
+            });
+            if (tenantAdmins.length === 0) {
+              this.logger.warn(
+                `[detectLegacyHiresWithoutCascade] tenant=${tenantId.slice(0, 8)} sin tenant_admin activo, skip`,
+              );
+              return;
+            }
+
+            for (const f of flagged) {
+              // Dedup: si ya existe audit log de detection para este
+              // candidato, no re-notificamos (evita spam semanal hasta
+              // que el admin atienda).
+              const existing = await auditRepo.count({
+                where: {
+                  tenantId,
+                  action: 'recruitment.legacy_hire_detected',
+                  entityType: 'recruitment_candidate',
+                  entityId: f.candidate.id,
+                },
+              });
+              if (existing > 0) continue;
+
+              // Audit (registra la deteccion para dedup futuro).
+              await this.auditService
+                .log(tenantId, null, 'recruitment.legacy_hire_detected', 'recruitment_candidate', f.candidate.id, {
+                  processId: f.candidate.processId,
+                  processTitle: f.candidate.process?.title,
+                  userId: f.candidate.userId,
+                  reason: f.reason,
+                })
+                .catch(() => undefined);
+
+              // Notificar a cada tenant_admin activo.
+              const candName = `${f.candidate.firstName ?? ''} ${f.candidate.lastName ?? ''}`.trim() || 'Candidato sin nombre';
+              for (const admin of tenantAdmins) {
+                await this.notificationsService
+                  .create({
+                    tenantId,
+                    userId: admin.id,
+                    type: NotificationType.GENERAL,
+                    title: 'Proceso legacy sin cascada detectado',
+                    message: `El proceso "${f.candidate.process?.title ?? 'sin titulo'}" tiene a ${candName} marcado como contratado, pero no hay registro de cambio de cargo/area en el empleado. Revise y actualice manualmente desde Mantenedores → Usuarios si corresponde.`,
+                    metadata: {
+                      kind: 'recruitment_legacy_hire',
+                      processId: f.candidate.processId,
+                      candidateId: f.candidate.id,
+                      userId: f.candidate.userId,
+                      reason: f.reason,
+                    },
+                  })
+                  .catch((e: any) => {
+                    this.logger.warn(
+                      `[detectLegacyHiresWithoutCascade] no se pudo notificar a admin ${admin.id}: ${e?.message ?? e}`,
+                    );
+                  });
+              }
+            }
+
+            this.logger.log(
+              `[detectLegacyHiresWithoutCascade] tenant=${tenantId.slice(0, 8)} procesos legacy detectados: ${flagged.length}`,
+            );
+          },
+        );
       },
     );
   }
