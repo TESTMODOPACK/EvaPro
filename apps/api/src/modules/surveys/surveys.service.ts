@@ -640,9 +640,24 @@ export class SurveysService {
       }
     }
 
-    // For anonymous surveys, check via assignment to prevent double submissions
+    // T7 — validar que el usuario tenga asignacion para esta encuesta.
+    // Antes solo se chequeaba el `status` del assignment para detectar
+    // double-submit en anonimas, pero NUNCA se validaba EXISTENCIA. Eso
+    // dejaba un bypass: un user de un departamento NO incluido en la
+    // audiencia podia responder via POST directo a /surveys/:id/respond
+    // y el response quedaba contabilizado, contaminando metricas.
+    //
+    // Ahora exigimos assignment. Si la encuesta fue lanzada antes de T7
+    // sin assignments (caso historico improbable), el response sera 403
+    // y el admin debe relanzar la encuesta (el launch resuelve target
+    // users y crea assignments).
     const assignment = await this.assignmentRepo.findOne({ where: { surveyId, userId, tenantId } });
-    if (survey.isAnonymous && assignment?.status === 'completed') {
+    if (!assignment) {
+      throw new ForbiddenException(
+        'No tienes una asignacion activa para esta encuesta. Si crees que es un error, contacta al administrador.',
+      );
+    }
+    if (survey.isAnonymous && assignment.status === 'completed') {
       throw new BadRequestException('Ya has respondido esta encuesta.');
     }
 
