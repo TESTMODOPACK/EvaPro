@@ -2195,6 +2195,177 @@ export class RecruitmentService {
   }
 
   /**
+   * S6.2 — Cambio de stage en bulk de N candidatos.
+   *
+   * Reglas:
+   *   - Bloquea explicitamente transitions a `hired` (forzar uso de hireCandidate).
+   *   - Bloquea explicitamente transitions DESDE `hired` (forzar revertHire).
+   *   - Solo afecta candidatos del mismo tenant — query con tenant_id en
+   *     where filtra accidental cross-tenant si admin pasa IDs ajenos.
+   *   - Atomic: UPDATE WHERE id IN (...) — single query.
+   *   - Audit log por candidato (no bulk audit, para rastreabilidad fina).
+   *   - Stage history por candidato afectado.
+   *
+   * Retorna { affected, skipped, blocked } con detalle:
+   *   - affected: cantidad realmente actualizada.
+   *   - skipped: IDs que no pertenecen al tenant o no existen.
+   *   - blocked: IDs ya en stage 'hired' que no se tocaron.
+   */
+  async bulkUpdateStage(
+    tenantId: string,
+    candidateIds: string[],
+    newStage: string,
+    callerUserId: string,
+  ): Promise<{ affected: number; skipped: string[]; blocked: string[] }> {
+    if (!Array.isArray(candidateIds) || candidateIds.length === 0) {
+      throw new BadRequestException('Debe proporcionar al menos un candidato.');
+    }
+    if (candidateIds.length > 200) {
+      throw new BadRequestException('Maximo 200 candidatos por operacion bulk.');
+    }
+    if (newStage === CandidateStage.HIRED || newStage === 'hired') {
+      throw new BadRequestException(
+        'No se puede contratar en bulk. Use el flow individual hireCandidate para cada caso.',
+      );
+    }
+    // Validar que el stage destino sea uno valido del enum.
+    if (!Object.values(CandidateStage).includes(newStage as CandidateStage)) {
+      throw new BadRequestException(`Stage invalido: ${newStage}.`);
+    }
+
+    // Cargar candidatos para evaluar quienes se afectan/skippean/bloquean.
+    const candidates = await this.candidateRepo.find({
+      where: { tenantId, id: In(candidateIds) },
+    });
+    const foundIds = new Set(candidates.map((c) => c.id));
+    const skipped = candidateIds.filter((id) => !foundIds.has(id));
+    const blocked = candidates.filter((c) => c.stage === CandidateStage.HIRED).map((c) => c.id);
+    const eligible = candidates.filter((c) => c.stage !== CandidateStage.HIRED);
+
+    if (eligible.length === 0) {
+      return { affected: 0, skipped, blocked };
+    }
+
+    // Atomic UPDATE con guard de stage != HIRED y tenant_id correcto.
+    const eligibleIds = eligible.map((c) => c.id);
+    const updateResult = await this.candidateRepo
+      .createQueryBuilder()
+      .update(RecruitmentCandidate)
+      .set({ stage: newStage as CandidateStage })
+      .whereInIds(eligibleIds)
+      .andWhere('tenant_id = :tid', { tid: tenantId })
+      .andWhere('stage != :hired', { hired: CandidateStage.HIRED })
+      .execute();
+    const affected = updateResult.affected ?? 0;
+
+    // Audit + history por cada candidato afectado.
+    const historyRows: RecruitmentCandidateStageHistory[] = [];
+    for (const c of eligible) {
+      // Skip si stage previo es igual al nuevo (no es realmente un cambio).
+      if (c.stage === newStage) continue;
+      this.auditService
+        .log(tenantId, callerUserId, 'recruitment.candidate_stage_changed', 'recruitment_candidate', c.id, {
+          from: c.stage,
+          to: newStage,
+          processId: c.processId,
+          source: 'bulk',
+        })
+        .catch(() => undefined);
+      historyRows.push(
+        this.stageHistoryRepo.create({
+          candidateId: c.id,
+          tenantId,
+          fromStage: c.stage,
+          toStage: newStage,
+          changedBy: callerUserId,
+          source: 'bulk',
+        }),
+      );
+    }
+    if (historyRows.length > 0) {
+      await this.stageHistoryRepo.save(historyRows).catch((e: any) => {
+        this.logger.warn(`[bulkUpdateStage] history save fallo: ${e?.message ?? e}`);
+      });
+    }
+
+    return { affected, skipped, blocked };
+  }
+
+  /**
+   * S6.2 — Borrado en bulk de candidatos.
+   *
+   * Reglas:
+   *   - tenant_admin only (validado en controller).
+   *   - Bloquea si CUALQUIERA de los IDs esta en stage 'hired' (la
+   *     operacion debe ser revertHire primero).
+   *   - Atomic: la query DELETE corre con WHERE id IN AND tenant_id =
+   *     AND stage != hired. Si alguno pasa esos filtros pero algun otro
+   *     no, la query borra los que pasan — pero antes hacemos un check
+   *     explicito y throw si hay hired.
+   *   - Cascada: las interviews del candidato tienen ON DELETE CASCADE en
+   *     la FK, asi que se limpian automaticamente. CV archivado se purga
+   *     al borrar la fila (no quedan huerfanos).
+   *   - Audit log por candidato (rastreabilidad fina).
+   */
+  async bulkDeleteCandidates(
+    tenantId: string,
+    candidateIds: string[],
+    callerUserId: string,
+  ): Promise<{ deleted: number; skipped: string[] }> {
+    if (!Array.isArray(candidateIds) || candidateIds.length === 0) {
+      throw new BadRequestException('Debe proporcionar al menos un candidato.');
+    }
+    if (candidateIds.length > 100) {
+      throw new BadRequestException('Maximo 100 candidatos por operacion bulk delete.');
+    }
+
+    const candidates = await this.candidateRepo.find({
+      where: { tenantId, id: In(candidateIds) },
+    });
+    const foundIds = new Set(candidates.map((c) => c.id));
+    const skipped = candidateIds.filter((id) => !foundIds.has(id));
+    const hired = candidates.filter((c) => c.stage === CandidateStage.HIRED);
+    if (hired.length > 0) {
+      throw new BadRequestException(
+        `No se puede borrar candidatos en estado contratado (hired). ${hired.length} candidato(s) afectado(s) — debe ejecutar Revertir contratacion primero.`,
+      );
+    }
+
+    if (candidates.length === 0) {
+      return { deleted: 0, skipped };
+    }
+
+    // Audit ANTES del delete (despues no hay registro accesible).
+    for (const c of candidates) {
+      this.auditService
+        .log(tenantId, callerUserId, 'recruitment.candidate_deleted', 'recruitment_candidate', c.id, {
+          processId: c.processId,
+          stage: c.stage,
+          candidateType: c.candidateType,
+          firstName: c.firstName,
+          lastName: c.lastName,
+          email: c.email,
+          source: 'bulk',
+        })
+        .catch(() => undefined);
+    }
+
+    const deleteResult = await this.candidateRepo
+      .createQueryBuilder()
+      .delete()
+      .from(RecruitmentCandidate)
+      .whereInIds(candidates.map((c) => c.id))
+      .andWhere('tenant_id = :tid', { tid: tenantId })
+      .andWhere('stage != :hired', { hired: CandidateStage.HIRED })
+      .execute();
+
+    return {
+      deleted: deleteResult.affected ?? 0,
+      skipped,
+    };
+  }
+
+  /**
    * S5.2 — Acceso admin al CV archivado de un candidato (compliance Chile).
    *
    * Despues del cierre del proceso, `cv_url` se nulifica y el data URL se

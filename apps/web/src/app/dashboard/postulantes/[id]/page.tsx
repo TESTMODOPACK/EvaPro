@@ -799,6 +799,12 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
   const [editForm, setEditForm] = useState({ email: '', phone: '', linkedIn: '', availability: '', salaryExpectation: '', recruiterNotes: '' });
   const [savingEdit, setSavingEdit] = useState(false);
 
+  // S6.2 — bulk selection state. Solo activado cuando admin entra en
+  // modo seleccion (toggle). Los IDs seleccionados son ids de candidatos.
+  const [bulkMode, setBulkMode] = useState(false);
+  const [selectedCandidateIds, setSelectedCandidateIds] = useState<Set<string>>(new Set());
+  const [bulkProcessing, setBulkProcessing] = useState(false);
+
   const fetchProcess = async () => {
     if (!token) return;
     setLoading(true);
@@ -1210,6 +1216,123 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
             <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>{t('postulantes.detail.noCandidates') || 'No hay candidatos en este proceso'}</div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              {/* S6.2 — Bulk actions toolbar (admin only, no en proceso readonly).
+                  Toggle "Seleccionar varios" muestra checkboxes en cada card.
+                  Cuando hay >=1 seleccionado, muestra acciones bulk. */}
+              {isAdmin && process.status !== 'completed' && process.status !== 'closed' && (
+                <div className="card" style={{
+                  padding: '0.6rem 0.9rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  flexWrap: 'wrap',
+                  gap: '0.5rem',
+                  background: bulkMode ? 'rgba(99,102,241,0.04)' : undefined,
+                  borderColor: bulkMode ? 'rgba(99,102,241,0.25)' : undefined,
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', fontSize: '0.82rem' }}>
+                    <button
+                      type="button"
+                      className={bulkMode ? 'btn-primary' : 'btn-ghost'}
+                      onClick={() => {
+                        setBulkMode(!bulkMode);
+                        setSelectedCandidateIds(new Set());
+                      }}
+                      style={{ fontSize: '0.78rem' }}
+                    >
+                      {bulkMode ? '✕ Cancelar selección' : '☑ Seleccionar varios'}
+                    </button>
+                    {bulkMode && (
+                      <span style={{ color: 'var(--text-secondary)' }}>
+                        {selectedCandidateIds.size} seleccionado{selectedCandidateIds.size === 1 ? '' : 's'}
+                        {selectedCandidateIds.size > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setSelectedCandidateIds(new Set())}
+                            style={{ marginLeft: '0.5rem', background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: '0.72rem', textDecoration: 'underline' }}
+                          >
+                            Limpiar
+                          </button>
+                        )}
+                      </span>
+                    )}
+                    {bulkMode && selectedCandidateIds.size === 0 && (
+                      <button
+                        type="button"
+                        className="btn-ghost"
+                        onClick={() => setSelectedCandidateIds(new Set(candidates.map((c: any) => c.id)))}
+                        style={{ fontSize: '0.72rem', padding: '0.18rem 0.45rem' }}
+                      >
+                        Seleccionar todos
+                      </button>
+                    )}
+                  </div>
+                  {bulkMode && selectedCandidateIds.size > 0 && (
+                    <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                      {['scored', 'approved', 'rejected'].map((stg) => (
+                        <button
+                          key={stg}
+                          type="button"
+                          className="btn-ghost"
+                          disabled={bulkProcessing}
+                          onClick={async () => {
+                            if (!token) return;
+                            const ids = Array.from(selectedCandidateIds);
+                            const ok = window.confirm(`Cambiar ${ids.length} candidato(s) a "${stageLabel(stg)}"?`);
+                            if (!ok) return;
+                            setBulkProcessing(true);
+                            try {
+                              const r = await api.recruitment.bulkUpdateStage(token, ids, stg);
+                              const parts: string[] = [];
+                              parts.push(`${r.affected} actualizados`);
+                              if (r.skipped.length) parts.push(`${r.skipped.length} no encontrados`);
+                              if (r.blocked.length) parts.push(`${r.blocked.length} bloqueados (hired)`);
+                              toast(parts.join(' · '), r.affected > 0 ? 'success' : 'info');
+                              setSelectedCandidateIds(new Set());
+                              fetchProcess();
+                            } catch (err: any) {
+                              toast(err?.message || 'Error en bulk update', 'error');
+                            } finally {
+                              setBulkProcessing(false);
+                            }
+                          }}
+                          style={{ fontSize: '0.72rem', padding: '0.18rem 0.45rem' }}
+                        >
+                          → {stageLabel(stg)}
+                        </button>
+                      ))}
+                      <button
+                        type="button"
+                        className="btn-ghost"
+                        disabled={bulkProcessing}
+                        onClick={async () => {
+                          if (!token) return;
+                          const ids = Array.from(selectedCandidateIds);
+                          const confirmText = window.prompt(
+                            `Borrar ${ids.length} candidato(s) PERMANENTEMENTE?\n\nEsta accion no se puede deshacer. Bloqueada si alguno esta hired.\n\nTipea ELIMINAR para confirmar:`,
+                          );
+                          if (confirmText !== 'ELIMINAR') return;
+                          setBulkProcessing(true);
+                          try {
+                            const r = await api.recruitment.bulkDeleteCandidates(token, ids);
+                            toast(`${r.deleted} candidato(s) borrado(s)`, 'success');
+                            setSelectedCandidateIds(new Set());
+                            setBulkMode(false);
+                            fetchProcess();
+                          } catch (err: any) {
+                            toast(err?.message || 'Error en bulk delete', 'error');
+                          } finally {
+                            setBulkProcessing(false);
+                          }
+                        }}
+                        style={{ fontSize: '0.72rem', padding: '0.18rem 0.45rem', borderColor: '#ef4444', color: '#ef4444' }}
+                      >
+                        🗑 Borrar
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
               {/* S3.x — cuando el proceso esta completed/closed, los
                   candidatos son SOLO LECTURA (banner ya lo dice). Aqui
                   derivamos el flag para deshabilitar / ocultar las
@@ -1236,11 +1359,30 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                 const showCv = c.candidateType === 'external' || process.requireCvForInternal;
 
                 return (
-                  <div key={c.id} className="card" style={{ padding: '1.25rem' }}>
+                  <div key={c.id} className="card" style={{
+                    padding: '1.25rem',
+                    borderColor: bulkMode && selectedCandidateIds.has(c.id) ? 'rgba(99,102,241,0.5)' : undefined,
+                    borderWidth: bulkMode && selectedCandidateIds.has(c.id) ? 2 : undefined,
+                  }}>
                     {/* Header: Name + badges + score */}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
                       <div style={{ flex: 1 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.3rem', flexWrap: 'wrap' }}>
+                          {/* S6.2 — Checkbox de seleccion bulk (solo en bulkMode). */}
+                          {bulkMode && (
+                            <input
+                              type="checkbox"
+                              checked={selectedCandidateIds.has(c.id)}
+                              onChange={(e) => {
+                                const next = new Set(selectedCandidateIds);
+                                if (e.target.checked) next.add(c.id);
+                                else next.delete(c.id);
+                                setSelectedCandidateIds(next);
+                              }}
+                              style={{ marginRight: '0.25rem', cursor: 'pointer', width: 16, height: 16 }}
+                              aria-label={`Seleccionar candidato ${name}`}
+                            />
+                          )}
                           <span style={{ fontWeight: 700, fontSize: '1rem' }}>{name}</span>
                           {c.candidateType === 'internal' && (
                             <span style={{ fontSize: '0.68rem', background: 'rgba(99,102,241,0.1)', color: '#6366f1', padding: '0.15rem 0.5rem', borderRadius: 10, fontWeight: 700 }}>{t('postulantes.detail.internal')}</span>

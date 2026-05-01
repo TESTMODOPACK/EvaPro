@@ -464,6 +464,98 @@ describe('RecruitmentService', () => {
     });
   });
 
+  // ─── Bulk operations (S6.2) ───────────────────────────────────────
+
+  describe('bulkUpdateStage', () => {
+    it('lanza si lista vacia', async () => {
+      await expect(
+        service.bulkUpdateStage(TENANT_ID, [], 'approved', ADMIN_ID),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('lanza si > 200 candidatos', async () => {
+      const ids = Array(201).fill(0).map((_, i) => fakeUuid(1000 + i));
+      await expect(
+        service.bulkUpdateStage(TENANT_ID, ids, 'approved', ADMIN_ID),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('lanza si stage destino es hired', async () => {
+      await expect(
+        service.bulkUpdateStage(TENANT_ID, [fakeUuid(300)], 'hired', ADMIN_ID),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('lanza si stage es invalido', async () => {
+      await expect(
+        service.bulkUpdateStage(TENANT_ID, [fakeUuid(300)], 'invalid_stage', ADMIN_ID),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('actualiza eligibles, marca skipped + blocked', async () => {
+      const id1 = fakeUuid(300), id2 = fakeUuid(301), id3 = fakeUuid(302), id4 = fakeUuid(303);
+      // Solo retornamos id1, id2, id3 (id4 no existe en BD).
+      // id3 esta en HIRED — debe ser blocked.
+      candidateRepo.find.mockResolvedValue([
+        { id: id1, tenantId: TENANT_ID, stage: CandidateStage.SCORED, processId: fakeUuid(200) },
+        { id: id2, tenantId: TENANT_ID, stage: CandidateStage.INTERVIEWING, processId: fakeUuid(200) },
+        { id: id3, tenantId: TENANT_ID, stage: CandidateStage.HIRED, processId: fakeUuid(200) },
+      ]);
+      const qb = candidateRepo.createQueryBuilder();
+      qb.execute.mockResolvedValue({ affected: 2 });
+
+      const result = await service.bulkUpdateStage(TENANT_ID, [id1, id2, id3, id4], 'approved', ADMIN_ID);
+
+      expect(result.affected).toBe(2);
+      expect(result.skipped).toEqual([id4]);
+      expect(result.blocked).toEqual([id3]);
+    });
+  });
+
+  describe('bulkDeleteCandidates', () => {
+    it('lanza si lista vacia', async () => {
+      await expect(
+        service.bulkDeleteCandidates(TENANT_ID, [], ADMIN_ID),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('lanza si > 100 candidatos', async () => {
+      const ids = Array(101).fill(0).map((_, i) => fakeUuid(2000 + i));
+      await expect(
+        service.bulkDeleteCandidates(TENANT_ID, ids, ADMIN_ID),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('lanza si alguno esta hired', async () => {
+      const id1 = fakeUuid(300), id2 = fakeUuid(301);
+      candidateRepo.find.mockResolvedValue([
+        { id: id1, tenantId: TENANT_ID, stage: CandidateStage.HIRED },
+        { id: id2, tenantId: TENANT_ID, stage: CandidateStage.SCORED },
+      ]);
+      await expect(
+        service.bulkDeleteCandidates(TENANT_ID, [id1, id2], ADMIN_ID),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('borra candidatos eligibles + audit por cada uno', async () => {
+      const id1 = fakeUuid(300), id2 = fakeUuid(301);
+      candidateRepo.find.mockResolvedValue([
+        { id: id1, tenantId: TENANT_ID, stage: CandidateStage.SCORED, processId: fakeUuid(200), firstName: 'Juan', lastName: 'P', email: 'j@p.com', candidateType: 'external' },
+        { id: id2, tenantId: TENANT_ID, stage: CandidateStage.REJECTED, processId: fakeUuid(200), firstName: 'Maria', lastName: 'L', email: 'm@l.com', candidateType: 'external' },
+      ]);
+      const qb = candidateRepo.createQueryBuilder();
+      qb.execute.mockResolvedValue({ affected: 2 });
+
+      const result = await service.bulkDeleteCandidates(TENANT_ID, [id1, id2], ADMIN_ID);
+
+      expect(result.deleted).toBe(2);
+      const auditCalls = (auditService.log as jest.Mock).mock.calls.filter(
+        (c) => c[2] === 'recruitment.candidate_deleted',
+      );
+      expect(auditCalls).toHaveLength(2);
+    });
+  });
+
   // ─── getArchivedCv (S5.2) ─────────────────────────────────────────
 
   describe('getArchivedCv', () => {

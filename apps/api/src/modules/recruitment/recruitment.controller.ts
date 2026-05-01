@@ -167,6 +167,36 @@ export class RecruitmentController {
   }
 
   /**
+   * S6.2 — Bulk: cambio de stage para N candidatos.
+   * Body: { candidateIds: string[], stage: string }
+   */
+  @Patch('candidates/bulk-stage')
+  @Roles('super_admin', 'tenant_admin')
+  bulkUpdateStage(
+    @Request() req: any,
+    @Body() dto: { candidateIds: string[]; stage: string },
+  ) {
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('super_admin debe operar dentro de un tenant especifico para bulk operations.');
+    }
+    return this.service.bulkUpdateStage(tenantId, dto.candidateIds, dto.stage, req.user.userId);
+  }
+
+  /**
+   * S6.2 — Bulk: borrado de candidatos. Bloqueado si hay hired.
+   * Body: { candidateIds: string[] }
+   */
+  @Post('candidates/bulk-delete')
+  @Roles('tenant_admin')
+  bulkDeleteCandidates(
+    @Request() req: any,
+    @Body() dto: { candidateIds: string[] },
+  ) {
+    return this.service.bulkDeleteCandidates(req.user.tenantId, dto.candidateIds, req.user.userId);
+  }
+
+  /**
    * S5.2 — Vista admin del CV archivado (compliance Chile).
    *
    * Devuelve el data URL base64 del CV cuyo proceso ya cerro. Solo

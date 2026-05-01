@@ -722,6 +722,24 @@ export const api = {
         {},
         token,
       ),
+    /**
+     * S6.2 — Bulk: cambia stage a N candidatos. Bloquea hired source/dest.
+     */
+    bulkUpdateStage: (token: string, candidateIds: string[], stage: string) =>
+      request<{ affected: number; skipped: string[]; blocked: string[] }>(
+        `/recruitment/candidates/bulk-stage`,
+        { method: "PATCH", body: JSON.stringify({ candidateIds, stage }) },
+        token,
+      ),
+    /**
+     * S6.2 — Bulk: borra candidatos. Lanza si alguno esta hired.
+     */
+    bulkDeleteCandidates: (token: string, candidateIds: string[]) =>
+      request<{ deleted: number; skipped: string[] }>(
+        `/recruitment/candidates/bulk-delete`,
+        { method: "POST", body: JSON.stringify({ candidateIds }) },
+        token,
+      ),
   },
 
   users: {
