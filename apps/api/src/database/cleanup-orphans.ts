@@ -273,6 +273,48 @@ async function main() {
       )`,
       `CREATE INDEX IF NOT EXISTS idx_cew_cycle ON cycle_evaluatee_weights(cycle_id)`,
       `CREATE INDEX IF NOT EXISTS idx_cew_tenant ON cycle_evaluatee_weights(tenant_id)`,
+      // S6.1 — historial de transiciones de stage de candidatos.
+      // Cada fila representa un cambio de candidate.stage. Permite a S6.3
+      // calcular avgDaysInStage, conversionRate y time-to-hire sin perder
+      // resolucion temporal (audit_logs lo registra pero la tabla
+      // dedicada es mas eficiente para metricas).
+      `CREATE TABLE IF NOT EXISTS recruitment_candidate_stage_history (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        candidate_id uuid NOT NULL,
+        tenant_id uuid NOT NULL,
+        from_stage varchar(30) NULL,
+        to_stage varchar(30) NOT NULL,
+        changed_at timestamptz NOT NULL DEFAULT now(),
+        changed_by uuid NULL,
+        source varchar(30) NOT NULL DEFAULT 'manual',
+        created_at timestamptz NOT NULL DEFAULT now()
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_rcsh_candidate_changed ON recruitment_candidate_stage_history(candidate_id, changed_at)`,
+      `CREATE INDEX IF NOT EXISTS idx_rcsh_tenant_changed ON recruitment_candidate_stage_history(tenant_id, changed_at)`,
+      // S7.1 — Indice unico parcial para public_slug por tenant.
+      // Permite NULL multiple (procesos no publicos) sin colisionar.
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_rp_tenant_pubslug ON recruitment_processes(tenant_id, public_slug) WHERE public_slug IS NOT NULL`,
+      // S7.2 — slots de entrevistas agendadas con .ics + recordatorios.
+      `CREATE TABLE IF NOT EXISTS recruitment_interview_slots (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id uuid NOT NULL,
+        candidate_id uuid NOT NULL,
+        evaluator_id uuid NOT NULL,
+        scheduled_at timestamptz NOT NULL,
+        duration_minutes int NOT NULL DEFAULT 60,
+        meeting_url text NULL,
+        status varchar(20) NOT NULL DEFAULT 'scheduled',
+        cancel_reason text NULL,
+        admin_notes text NULL,
+        created_by uuid NOT NULL,
+        reminder_sent_24h boolean NOT NULL DEFAULT false,
+        reminder_sent_1h boolean NOT NULL DEFAULT false,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now()
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_ris_evaluator_scheduled ON recruitment_interview_slots(evaluator_id, scheduled_at)`,
+      `CREATE INDEX IF NOT EXISTS idx_ris_candidate_scheduled ON recruitment_interview_slots(candidate_id, scheduled_at)`,
+      `CREATE INDEX IF NOT EXISTS idx_ris_tenant_status ON recruitment_interview_slots(tenant_id, status)`,
     ];
     for (const sql of tableFixes) {
       try { await client.query(sql); } catch { /* already exists */ }
@@ -329,6 +371,8 @@ async function main() {
       // borra definitivamente cuando vencen los 24m.
       { table: 'recruitment_candidates', column: 'cv_url_archived', sql: `ALTER TABLE "recruitment_candidates" ADD COLUMN IF NOT EXISTS "cv_url_archived" text NULL` },
       { table: 'recruitment_candidates', column: 'cv_archived_at', sql: `ALTER TABLE "recruitment_candidates" ADD COLUMN IF NOT EXISTS "cv_archived_at" timestamptz NULL` },
+      // S7.1 — slug publico para job board.
+      { table: 'recruitment_processes', column: 'public_slug', sql: `ALTER TABLE "recruitment_processes" ADD COLUMN IF NOT EXISTS "public_slug" varchar(60) NULL` },
     ];
 
     for (const fix of columnFixes) {

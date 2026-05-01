@@ -38,12 +38,35 @@ export class RecruitmentController {
     return this.service.getProcess(req.user.tenantId, id);
   }
 
+  /**
+   * S6.3 — Metricas del proceso (KPIs para widget en detalle).
+   * Visible para roles que ya pueden ver el proceso (super_admin/tenant_admin/manager).
+   */
+  @Get('processes/:id/metrics')
+  getProcessMetrics(@Request() req: any, @Param('id', ParseUUIDPipe) id: string) {
+    return this.service.getProcessMetrics(req.user.tenantId, id);
+  }
+
   /** P5.5 — Secondary cross-tenant: super_admin → undefined. */
   @Patch('processes/:id')
   @Roles('super_admin', 'tenant_admin')
   updateProcess(@Request() req: any, @Param('id', ParseUUIDPipe) id: string, @Body() dto: any) {
     const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
     return this.service.updateProcess(tenantId, id, dto, req.user.userId);
+  }
+
+  /**
+   * S7.1 — Setear/limpiar slug publico para job board.
+   * Body: { slug: string | null }
+   */
+  @Patch('processes/:id/public-slug')
+  @Roles('tenant_admin')
+  setPublicSlug(
+    @Request() req: any,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: { slug: string | null },
+  ) {
+    return this.service.setPublicSlug(req.user.tenantId, id, dto.slug ?? null, req.user.userId);
   }
 
   // ─── Candidates ───────────────────────────────────────────────────
@@ -144,6 +167,78 @@ export class RecruitmentController {
     return this.service.revertHire(tenantId, candidateId, req.user.userId);
   }
 
+  /**
+   * S5.1 — Reenviar email de bienvenida al ganador externo. Rota
+   * tempPassword (el viejo deja de servir) y manda email nuevo. Solo
+   * aplica a candidatos external + stage='hired'.
+   *
+   * Uso: el modal post-hire muestra este boton si emailSent=false, o
+   * el admin puede invocarlo manualmente desde el detalle del candidato
+   * si el ganador reporta no haber recibido el email.
+   */
+  @Post('candidates/:candidateId/resend-welcome-email')
+  @Roles('super_admin', 'tenant_admin')
+  resendWelcomeEmail(
+    @Request() req: any,
+    @Param('candidateId', ParseUUIDPipe) candidateId: string,
+  ) {
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('super_admin debe operar dentro de un tenant especifico para reenviar el email.');
+    }
+    return this.service.resendWelcomeEmail(tenantId, candidateId, req.user.userId);
+  }
+
+  /**
+   * S6.2 — Bulk: cambio de stage para N candidatos.
+   * Body: { candidateIds: string[], stage: string }
+   */
+  @Patch('candidates/bulk-stage')
+  @Roles('super_admin', 'tenant_admin')
+  bulkUpdateStage(
+    @Request() req: any,
+    @Body() dto: { candidateIds: string[]; stage: string },
+  ) {
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('super_admin debe operar dentro de un tenant especifico para bulk operations.');
+    }
+    return this.service.bulkUpdateStage(tenantId, dto.candidateIds, dto.stage, req.user.userId);
+  }
+
+  /**
+   * S6.2 — Bulk: borrado de candidatos. Bloqueado si hay hired.
+   * Body: { candidateIds: string[] }
+   */
+  @Post('candidates/bulk-delete')
+  @Roles('tenant_admin')
+  bulkDeleteCandidates(
+    @Request() req: any,
+    @Body() dto: { candidateIds: string[] },
+  ) {
+    return this.service.bulkDeleteCandidates(req.user.tenantId, dto.candidateIds, req.user.userId);
+  }
+
+  /**
+   * S5.2 — Vista admin del CV archivado (compliance Chile).
+   *
+   * Devuelve el data URL base64 del CV cuyo proceso ya cerro. Solo
+   * tenant_admin (alineado con F-001 — super_admin no tiene injerencia
+   * operacional). Requiere `reason` >=20 chars en query param para
+   * audit trail (recruitment.archived_cv_accessed).
+   *
+   * Si el CV ya fue purgado por el cron de 24m, responde 404.
+   */
+  @Get('candidates/:id/archived-cv')
+  @Roles('tenant_admin')
+  getArchivedCv(
+    @Request() req: any,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('reason') reason: string,
+  ) {
+    return this.service.getArchivedCv(req.user.tenantId, id, reason || '', req.user.userId);
+  }
+
   @Get('candidates/:id/profile')
   getCandidateProfile(@Request() req: any, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.getCandidateProfile(req.user.tenantId, id);
@@ -195,6 +290,50 @@ export class RecruitmentController {
   ) {
     const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
     return this.service.submitInterview(tenantId, req.user.userId, candidateId, dto);
+  }
+
+  /**
+   * S7.2 — Agendar slot de entrevista (envia .ics + recordatorios).
+   * Body: { evaluatorId, scheduledAt (ISO), durationMinutes?, meetingUrl?, adminNotes? }
+   */
+  @Post('candidates/:id/schedule-interview')
+  @Roles('super_admin', 'tenant_admin')
+  scheduleInterview(
+    @Request() req: any,
+    @Param('id', ParseUUIDPipe) candidateId: string,
+    @Body() dto: any,
+  ) {
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('super_admin debe operar dentro de un tenant especifico.');
+    }
+    return this.service.scheduleInterview(tenantId, candidateId, dto, req.user.userId);
+  }
+
+  /**
+   * S7.2 — Cancelar slot agendado (envia .ics CANCEL).
+   * Body: { reason?: string }
+   */
+  @Patch('interview-slots/:id/cancel')
+  @Roles('super_admin', 'tenant_admin')
+  cancelInterviewSlot(
+    @Request() req: any,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: { reason?: string },
+  ) {
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('super_admin debe operar dentro de un tenant especifico.');
+    }
+    return this.service.cancelInterviewSlot(tenantId, id, dto.reason ?? null, req.user.userId);
+  }
+
+  /**
+   * S7.2 — Listar entrevistas proximas del candidato.
+   */
+  @Get('candidates/:id/upcoming-interviews')
+  getUpcomingInterviews(@Request() req: any, @Param('id', ParseUUIDPipe) id: string) {
+    return this.service.listUpcomingSlots(req.user.tenantId, id);
   }
 
   @Get('candidates/:id/interviews')

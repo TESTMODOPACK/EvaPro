@@ -510,6 +510,414 @@ function getCategoryLabel(key: string, t: (k: string) => string): string {
   return translated !== `postulantes.reqCategories.${cleaned.toLowerCase()}` ? translated : cleaned.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+/* ── S6.1-frontend — Pipeline kanban view ──────────────────────────
+   Columnas por CandidateStage (rejected/not_hired colapsadas en
+   "Descartados"). Drag & drop nativo HTML5 entre columnas → llama
+   PATCH /candidates/:id/stage.
+
+   Reglas defensivas:
+     - No permite drop a 'hired' (defense-in-depth, backend lo rechaza
+       igual con BadRequestException — pero queremos UX clara antes de
+       fetch).
+     - No permite drop desde 'hired' (forzar revertHire desde lista).
+     - Si proceso readonly (closed/completed), drag deshabilitado. */
+
+const KANBAN_COLUMNS: { key: string; label: string; stages: string[] }[] = [
+  { key: 'registered', label: 'Registrados', stages: ['registered'] },
+  { key: 'cv_review', label: 'Revisando CV', stages: ['cv_review'] },
+  { key: 'interviewing', label: 'Entrevistando', stages: ['interviewing'] },
+  { key: 'scored', label: 'Evaluados', stages: ['scored'] },
+  { key: 'approved', label: 'Aprobados', stages: ['approved'] },
+  { key: 'hired', label: 'Contratados', stages: ['hired'] },
+  { key: 'discarded', label: 'Descartados', stages: ['rejected', 'not_hired'] },
+];
+
+function KanbanView({
+  candidates, process, isAdmin, token, stageLabel, onChanged,
+}: {
+  candidates: any[];
+  process: any;
+  isAdmin: boolean;
+  token: string | null;
+  stageLabel: (stage: string) => string;
+  onChanged: () => void;
+}) {
+  const toast = useToastStore((s) => s.toast);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [hoverColumn, setHoverColumn] = useState<string | null>(null);
+  const isReadOnly = process.status === 'completed' || process.status === 'closed';
+  const dragEnabled = isAdmin && !isReadOnly;
+
+  // Group candidates por columna.
+  const byColumn = new Map<string, any[]>();
+  for (const col of KANBAN_COLUMNS) byColumn.set(col.key, []);
+  for (const c of candidates) {
+    const col = KANBAN_COLUMNS.find((c2) => c2.stages.includes(c.stage));
+    if (col) byColumn.get(col.key)!.push(c);
+    else byColumn.get('registered')!.push(c); // fallback
+  }
+
+  const handleDrop = async (toColKey: string, candidateId: string) => {
+    setDraggingId(null);
+    setHoverColumn(null);
+    const cand = candidates.find((c) => c.id === candidateId);
+    if (!cand) return;
+    const col = KANBAN_COLUMNS.find((c) => c.key === toColKey);
+    if (!col) return;
+    // Si la card ya esta en alguna stage de esta columna, no-op.
+    if (col.stages.includes(cand.stage)) return;
+
+    // Bloqueo defensivo: no permitir drop a hired ni desde hired.
+    const targetStage = col.stages[0]; // primer stage de la columna
+    if (targetStage === 'hired') {
+      toast(
+        'Para contratar use "Generar contratación" en Configuración. Eso ejecuta la cascada al empleado.',
+        'info',
+      );
+      return;
+    }
+    if (cand.stage === 'hired') {
+      toast(
+        'No se puede mover desde "Contratado" arrastrando. Use "Revertir contratación" en la lista.',
+        'info',
+      );
+      return;
+    }
+
+    if (!token) return;
+    try {
+      await api.recruitment.candidates.updateStage(token, candidateId, targetStage);
+      onChanged();
+    } catch (err: any) {
+      toast(err?.message || 'Error al cambiar stage', 'error');
+    }
+  };
+
+  return (
+    <div style={{
+      display: 'flex',
+      gap: '0.6rem',
+      overflowX: 'auto',
+      paddingBottom: '0.5rem',
+    }}>
+      {KANBAN_COLUMNS.map((col) => {
+        const cards = byColumn.get(col.key) ?? [];
+        const isHover = hoverColumn === col.key;
+        return (
+          <div
+            key={col.key}
+            onDragOver={(e) => {
+              if (!dragEnabled) return;
+              e.preventDefault();
+              setHoverColumn(col.key);
+            }}
+            onDragLeave={() => {
+              if (hoverColumn === col.key) setHoverColumn(null);
+            }}
+            onDrop={(e) => {
+              if (!dragEnabled || !draggingId) return;
+              e.preventDefault();
+              handleDrop(col.key, draggingId);
+            }}
+            style={{
+              flex: '0 0 220px',
+              minWidth: 220,
+              padding: '0.55rem',
+              background: isHover ? 'rgba(99,102,241,0.06)' : 'var(--bg-card)',
+              border: isHover ? '2px dashed var(--accent)' : '1px solid var(--border)',
+              borderRadius: 'var(--radius-sm)',
+              transition: 'all 0.15s',
+            }}
+          >
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: '0.5rem',
+              fontSize: '0.78rem',
+              fontWeight: 700,
+              color: 'var(--text-primary)',
+            }}>
+              <span>{col.label}</span>
+              <span style={{
+                fontSize: '0.7rem',
+                background: 'var(--bg-base)',
+                padding: '0.1rem 0.4rem',
+                borderRadius: 8,
+                color: 'var(--text-secondary)',
+              }}>
+                {cards.length}
+              </span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+              {cards.length === 0 && (
+                <div style={{
+                  padding: '0.6rem',
+                  fontSize: '0.7rem',
+                  color: 'var(--text-muted)',
+                  textAlign: 'center',
+                  fontStyle: 'italic',
+                }}>
+                  Sin candidatos
+                </div>
+              )}
+              {cards.map((c) => {
+                const name = c.candidateType === 'internal' && c.user
+                  ? `${c.user.firstName} ${c.user.lastName}`
+                  : `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim();
+                const score = c.finalScore != null ? Number(c.finalScore) : null;
+                const isThisDragging = draggingId === c.id;
+                return (
+                  <div
+                    key={c.id}
+                    draggable={dragEnabled && c.stage !== 'hired'}
+                    onDragStart={() => setDraggingId(c.id)}
+                    onDragEnd={() => setDraggingId(null)}
+                    style={{
+                      padding: '0.55rem 0.65rem',
+                      background: 'var(--bg-base)',
+                      border: '1px solid var(--border)',
+                      borderRadius: 'var(--radius-sm)',
+                      cursor: dragEnabled && c.stage !== 'hired' ? 'grab' : 'default',
+                      opacity: isThisDragging ? 0.5 : 1,
+                      transition: 'opacity 0.15s',
+                    }}
+                    onClick={() => {
+                      // Click → futuro: abrir detalle/scorecard. Por ahora no-op.
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.2rem' }}>
+                      <span style={{ fontSize: '0.78rem', fontWeight: 600, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {name || '(sin nombre)'}
+                      </span>
+                      {c.candidateType === 'internal' && (
+                        <span style={{ fontSize: '0.6rem', background: 'rgba(99,102,241,0.1)', color: '#6366f1', padding: '0.05rem 0.3rem', borderRadius: 6, fontWeight: 700 }}>
+                          INT
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+                      {c.cvUrl && <span title="Tiene CV">📄</span>}
+                      {score != null && score > 0 && (
+                        <span style={{ fontWeight: 700, color: 'var(--accent)' }}>
+                          {score.toFixed(1)}/10
+                        </span>
+                      )}
+                      {col.stages.length > 1 && (
+                        <span style={{ marginLeft: 'auto', fontSize: '0.62rem' }}>
+                          {stageLabel(c.stage)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ── S6.3 — Widget de KPIs del proceso ─────────────────────────────
+   Carga `getMetrics` bajo demanda y muestra cards con metricas clave:
+   tiempo activo, conversion rate, time-to-hire, score del ganador, etc.
+   No bloquea el render del detalle: si falla, simplemente no muestra. */
+function ProcessMetricsWidget({ processId, token }: { processId: string; token: string | null }) {
+  const [metrics, setMetrics] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!token) return;
+    let mounted = true;
+    api.recruitment.processes.getMetrics(token, processId)
+      .then((m) => { if (mounted) setMetrics(m); })
+      .catch((e: any) => { if (mounted) setError(e?.message || 'Error al cargar metricas'); })
+      .finally(() => { if (mounted) setLoading(false); });
+    return () => { mounted = false; };
+  }, [processId, token]);
+
+  if (loading) return null;
+  if (error || !metrics) return null;
+
+  const kpiBox = (label: string, value: string | number | null | undefined, hint?: string) => (
+    <div style={{
+      flex: '1 1 140px',
+      minWidth: 140,
+      padding: '0.7rem 0.85rem',
+      background: 'var(--bg-card)',
+      border: '1px solid var(--border)',
+      borderRadius: 'var(--radius-sm)',
+    }}>
+      <div style={{ fontSize: '0.66rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '0.25rem' }}>
+        {label}
+      </div>
+      <div style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+        {value ?? '—'}
+      </div>
+      {hint && (
+        <div style={{ fontSize: '0.66rem', color: 'var(--text-muted)', marginTop: '0.15rem' }}>{hint}</div>
+      )}
+    </div>
+  );
+
+  return (
+    <div className="card" style={{ padding: '1rem 1.1rem', marginBottom: '0.75rem' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.6rem' }}>
+        <span style={{ fontSize: '0.85rem', fontWeight: 700 }}>📊 Indicadores del proceso</span>
+        <span style={{ fontSize: '0.68rem', background: 'rgba(99,102,241,0.1)', color: '#6366f1', padding: '0.1rem 0.4rem', borderRadius: 8 }}>
+          KPIs
+        </span>
+      </div>
+      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+        {kpiBox('Días activo', metrics.daysActive, `${metrics.daysSinceCreation}d desde creación`)}
+        {kpiBox('Candidatos', metrics.candidateCount)}
+        {kpiBox(
+          'Entrevistas',
+          `${metrics.interviewsCompleted}/${metrics.interviewsExpected || '—'}`,
+          metrics.interviewsExpected > 0
+            ? `${Math.round((metrics.interviewsCompleted / metrics.interviewsExpected) * 100)}% completas`
+            : 'Sin esperadas',
+        )}
+        {metrics.winnerScore != null && kpiBox('Score ganador', metrics.winnerScore.toFixed(1) + '/10')}
+        {metrics.runnerUpScore != null && kpiBox('Runner-up', metrics.runnerUpScore.toFixed(1) + '/10')}
+        {metrics.timeToHireDays != null && kpiBox('Time to hire', `${metrics.timeToHireDays}d`)}
+      </div>
+      {/* Conversion funnel mini-resumen */}
+      {metrics.conversionRate.some((c: any) => c.percentage > 0) && (
+        <div style={{ marginTop: '0.7rem', display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center', fontSize: '0.74rem' }}>
+          <span style={{ color: 'var(--text-muted)' }}>Conversión:</span>
+          {metrics.conversionRate.map((c: any, i: number) => (
+            <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.2rem' }}>
+              <span style={{ color: 'var(--text-secondary)' }}>{c.fromStage}</span>
+              <span style={{ color: 'var(--accent)', fontWeight: 600 }}>→</span>
+              <span style={{ color: 'var(--text-secondary)' }}>{c.toStage}</span>
+              <span style={{ background: 'rgba(99,102,241,0.08)', color: '#6366f1', padding: '0.05rem 0.35rem', borderRadius: 6, fontWeight: 600 }}>
+                {c.percentage}%
+              </span>
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── S5.2 — Banner de CV archivado (compliance Chile 24m) ──────────
+   Mostrado solo a tenant_admin cuando el candidato tiene CV archivado
+   (proceso cerrado, cv_url null pero cv_archived_at != null). Permite
+   solicitar acceso justificando con un texto >=20 chars que se persiste
+   en audit_logs. El CV se renderiza inline en iframe sandboxed. */
+function ArchivedCvBanner({ candidate, token }: { candidate: any; token: string | null }) {
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [cvUrl, setCvUrl] = useState<string | null>(null);
+
+  const archivedAt = candidate.cvArchivedAt
+    ? new Date(candidate.cvArchivedAt).toLocaleDateString('es-CL', { year: 'numeric', month: 'long', day: 'numeric' })
+    : '';
+
+  const handleAccess = async () => {
+    if (!token) return;
+    if (reason.trim().length < 20) {
+      setError('La razon debe tener al menos 20 caracteres.');
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const r = await api.recruitment.getArchivedCv(token, candidate.id, reason.trim());
+      setCvUrl(r.cvUrl);
+    } catch (e: any) {
+      setError(e?.message || 'No se pudo cargar el CV archivado.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div style={{
+      padding: '1rem',
+      background: 'rgba(99,102,241,0.04)',
+      border: '1px solid rgba(99,102,241,0.2)',
+      borderRadius: 'var(--radius-sm)',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+        <span style={{ fontSize: '1rem' }}>🗄️</span>
+        <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>CV archivado</span>
+        <span style={{ fontSize: '0.7rem', background: 'rgba(99,102,241,0.1)', color: '#6366f1', padding: '0.1rem 0.4rem', borderRadius: 8 }}>
+          Compliance 24m
+        </span>
+      </div>
+      <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', margin: '0 0 0.6rem', lineHeight: 1.5 }}>
+        Archivado el {archivedAt}. Por compliance (Ley 19.628 Chile) el CV se conserva 24 meses
+        post-cierre del proceso y luego se purga automaticamente. Solo admin puede acceder, justificando
+        la razon de acceso (queda registrada en audit log).
+      </p>
+      {!open && !cvUrl && (
+        <button
+          className="btn-ghost"
+          onClick={() => setOpen(true)}
+          style={{ fontSize: '0.78rem' }}
+        >
+          Ver CV archivado
+        </button>
+      )}
+      {open && !cvUrl && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
+          <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+            Razon de acceso (min 20 caracteres) *
+          </label>
+          <textarea
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="Ej: requerimiento legal del candidato segun ley 19.628 art. 12..."
+            rows={3}
+            className="input"
+            style={{ resize: 'vertical', fontSize: '0.82rem' }}
+          />
+          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+            {reason.trim().length} / 20 caracteres minimos
+          </div>
+          {error && (
+            <div style={{ fontSize: '0.78rem', color: 'var(--danger)' }}>{error}</div>
+          )}
+          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+            <button className="btn-ghost" onClick={() => { setOpen(false); setReason(''); setError(null); }} style={{ fontSize: '0.78rem' }}>
+              Cancelar
+            </button>
+            <button
+              className="btn-primary"
+              onClick={handleAccess}
+              disabled={loading || reason.trim().length < 20}
+              style={{ fontSize: '0.78rem' }}
+            >
+              {loading ? 'Cargando…' : 'Solicitar acceso'}
+            </button>
+          </div>
+        </div>
+      )}
+      {cvUrl && (
+        <div style={{ marginTop: '0.5rem' }}>
+          <iframe
+            src={cvUrl}
+            sandbox=""
+            style={{ width: '100%', height: 600, border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)' }}
+            title="CV archivado"
+          />
+          <div style={{ marginTop: '0.5rem', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+            Este acceso quedo registrado en audit_logs (recruitment.archived_cv_accessed).
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 
 /* ── Admin read-only evaluation view ──────────────────────────────── */
 function AdminEvaluationView({ candidate, token, onViewScorecard, t }: { candidate: any; token: string | null; onViewScorecard: () => void; t: (key: string, opts?: any) => string }) {
@@ -685,6 +1093,24 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
   const [editingCandidate, setEditingCandidate] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ email: '', phone: '', linkedIn: '', availability: '', salaryExpectation: '', recruiterNotes: '' });
   const [savingEdit, setSavingEdit] = useState(false);
+
+  // S6.2 — bulk selection state. Solo activado cuando admin entra en
+  // modo seleccion (toggle). Los IDs seleccionados son ids de candidatos.
+  const [bulkMode, setBulkMode] = useState(false);
+  const [selectedCandidateIds, setSelectedCandidateIds] = useState<Set<string>>(new Set());
+  const [bulkProcessing, setBulkProcessing] = useState(false);
+
+  // S6.1-frontend — toggle vista tabla/kanban. Persiste en localStorage
+  // para que el usuario no tenga que toggle en cada visita.
+  const [viewMode, setViewMode] = useState<'list' | 'kanban'>(() => {
+    if (typeof window === 'undefined') return 'list';
+    return (localStorage.getItem('recruitment.viewMode') as 'list' | 'kanban') || 'list';
+  });
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('recruitment.viewMode', viewMode);
+    }
+  }, [viewMode]);
 
   const fetchProcess = async () => {
     if (!token) return;
@@ -1092,11 +1518,167 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
             </div>
           )}
 
-          {/* Candidates list */}
+          {/* S6.3 — KPI widget del proceso. Solo cargado bajo demanda
+              (ProcessMetricsWidget hace fetch interno) para no impactar
+              el render del detalle. Visible para admin/manager. */}
+          {(role === 'tenant_admin' || role === 'super_admin' || role === 'manager') && (
+            <ProcessMetricsWidget processId={process.id} token={token} />
+          )}
+
+          {/* Candidates list / kanban */}
           {candidates.length === 0 ? (
             <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>{t('postulantes.detail.noCandidates') || 'No hay candidatos en este proceso'}</div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              {/* S6.1-frontend — Toggle vista tabla / kanban. */}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.4rem' }}>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('list')}
+                  className={viewMode === 'list' ? 'btn-primary' : 'btn-ghost'}
+                  style={{ fontSize: '0.72rem', padding: '0.2rem 0.6rem' }}
+                  aria-pressed={viewMode === 'list'}
+                >
+                  ☰ Lista
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('kanban')}
+                  className={viewMode === 'kanban' ? 'btn-primary' : 'btn-ghost'}
+                  style={{ fontSize: '0.72rem', padding: '0.2rem 0.6rem' }}
+                  aria-pressed={viewMode === 'kanban'}
+                >
+                  ⊞ Kanban
+                </button>
+              </div>
+              {viewMode === 'kanban' && (
+                <KanbanView
+                  candidates={candidates}
+                  process={process}
+                  isAdmin={isAdmin}
+                  token={token}
+                  stageLabel={stageLabel}
+                  onChanged={fetchProcess}
+                />
+              )}
+              {viewMode === 'list' && <>
+              {/* S6.2 — Bulk actions toolbar (admin only, no en proceso readonly).
+                  Toggle "Seleccionar varios" muestra checkboxes en cada card.
+                  Cuando hay >=1 seleccionado, muestra acciones bulk. */}
+              {isAdmin && process.status !== 'completed' && process.status !== 'closed' && (
+                <div className="card" style={{
+                  padding: '0.6rem 0.9rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  flexWrap: 'wrap',
+                  gap: '0.5rem',
+                  background: bulkMode ? 'rgba(99,102,241,0.04)' : undefined,
+                  borderColor: bulkMode ? 'rgba(99,102,241,0.25)' : undefined,
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', fontSize: '0.82rem' }}>
+                    <button
+                      type="button"
+                      className={bulkMode ? 'btn-primary' : 'btn-ghost'}
+                      onClick={() => {
+                        setBulkMode(!bulkMode);
+                        setSelectedCandidateIds(new Set());
+                      }}
+                      style={{ fontSize: '0.78rem' }}
+                    >
+                      {bulkMode ? '✕ Cancelar selección' : '☑ Seleccionar varios'}
+                    </button>
+                    {bulkMode && (
+                      <span style={{ color: 'var(--text-secondary)' }}>
+                        {selectedCandidateIds.size} seleccionado{selectedCandidateIds.size === 1 ? '' : 's'}
+                        {selectedCandidateIds.size > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setSelectedCandidateIds(new Set())}
+                            style={{ marginLeft: '0.5rem', background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: '0.72rem', textDecoration: 'underline' }}
+                          >
+                            Limpiar
+                          </button>
+                        )}
+                      </span>
+                    )}
+                    {bulkMode && selectedCandidateIds.size === 0 && (
+                      <button
+                        type="button"
+                        className="btn-ghost"
+                        onClick={() => setSelectedCandidateIds(new Set(candidates.map((c: any) => c.id)))}
+                        style={{ fontSize: '0.72rem', padding: '0.18rem 0.45rem' }}
+                      >
+                        Seleccionar todos
+                      </button>
+                    )}
+                  </div>
+                  {bulkMode && selectedCandidateIds.size > 0 && (
+                    <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                      {['scored', 'approved', 'rejected'].map((stg) => (
+                        <button
+                          key={stg}
+                          type="button"
+                          className="btn-ghost"
+                          disabled={bulkProcessing}
+                          onClick={async () => {
+                            if (!token) return;
+                            const ids = Array.from(selectedCandidateIds);
+                            const ok = window.confirm(`Cambiar ${ids.length} candidato(s) a "${stageLabel(stg)}"?`);
+                            if (!ok) return;
+                            setBulkProcessing(true);
+                            try {
+                              const r = await api.recruitment.bulkUpdateStage(token, ids, stg);
+                              const parts: string[] = [];
+                              parts.push(`${r.affected} actualizados`);
+                              if (r.skipped.length) parts.push(`${r.skipped.length} no encontrados`);
+                              if (r.blocked.length) parts.push(`${r.blocked.length} bloqueados (hired)`);
+                              toast(parts.join(' · '), r.affected > 0 ? 'success' : 'info');
+                              setSelectedCandidateIds(new Set());
+                              fetchProcess();
+                            } catch (err: any) {
+                              toast(err?.message || 'Error en bulk update', 'error');
+                            } finally {
+                              setBulkProcessing(false);
+                            }
+                          }}
+                          style={{ fontSize: '0.72rem', padding: '0.18rem 0.45rem' }}
+                        >
+                          → {stageLabel(stg)}
+                        </button>
+                      ))}
+                      <button
+                        type="button"
+                        className="btn-ghost"
+                        disabled={bulkProcessing}
+                        onClick={async () => {
+                          if (!token) return;
+                          const ids = Array.from(selectedCandidateIds);
+                          const confirmText = window.prompt(
+                            `Borrar ${ids.length} candidato(s) PERMANENTEMENTE?\n\nEsta accion no se puede deshacer. Bloqueada si alguno esta hired.\n\nTipea ELIMINAR para confirmar:`,
+                          );
+                          if (confirmText !== 'ELIMINAR') return;
+                          setBulkProcessing(true);
+                          try {
+                            const r = await api.recruitment.bulkDeleteCandidates(token, ids);
+                            toast(`${r.deleted} candidato(s) borrado(s)`, 'success');
+                            setSelectedCandidateIds(new Set());
+                            setBulkMode(false);
+                            fetchProcess();
+                          } catch (err: any) {
+                            toast(err?.message || 'Error en bulk delete', 'error');
+                          } finally {
+                            setBulkProcessing(false);
+                          }
+                        }}
+                        style={{ fontSize: '0.72rem', padding: '0.18rem 0.45rem', borderColor: '#ef4444', color: '#ef4444' }}
+                      >
+                        🗑 Borrar
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
               {/* S3.x — cuando el proceso esta completed/closed, los
                   candidatos son SOLO LECTURA (banner ya lo dice). Aqui
                   derivamos el flag para deshabilitar / ocultar las
@@ -1123,11 +1705,30 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                 const showCv = c.candidateType === 'external' || process.requireCvForInternal;
 
                 return (
-                  <div key={c.id} className="card" style={{ padding: '1.25rem' }}>
+                  <div key={c.id} className="card" style={{
+                    padding: '1.25rem',
+                    borderColor: bulkMode && selectedCandidateIds.has(c.id) ? 'rgba(99,102,241,0.5)' : undefined,
+                    borderWidth: bulkMode && selectedCandidateIds.has(c.id) ? 2 : undefined,
+                  }}>
                     {/* Header: Name + badges + score */}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
                       <div style={{ flex: 1 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.3rem', flexWrap: 'wrap' }}>
+                          {/* S6.2 — Checkbox de seleccion bulk (solo en bulkMode). */}
+                          {bulkMode && (
+                            <input
+                              type="checkbox"
+                              checked={selectedCandidateIds.has(c.id)}
+                              onChange={(e) => {
+                                const next = new Set(selectedCandidateIds);
+                                if (e.target.checked) next.add(c.id);
+                                else next.delete(c.id);
+                                setSelectedCandidateIds(next);
+                              }}
+                              style={{ marginRight: '0.25rem', cursor: 'pointer', width: 16, height: 16 }}
+                              aria-label={`Seleccionar candidato ${name}`}
+                            />
+                          )}
                           <span style={{ fontWeight: 700, fontSize: '1rem' }}>{name}</span>
                           {c.candidateType === 'internal' && (
                             <span style={{ fontSize: '0.68rem', background: 'rgba(99,102,241,0.1)', color: '#6366f1', padding: '0.15rem 0.5rem', borderRadius: 10, fontWeight: 700 }}>{t('postulantes.detail.internal')}</span>
@@ -1277,6 +1878,36 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                             >
                               ↺ Revertir contratación
                             </button>
+                            {/* S5.1 — Reenviar email de bienvenida (solo externos hired). */}
+                            {c.candidateType === 'external' && c.email && (
+                              <button
+                                className="btn-ghost"
+                                style={{ fontSize: '0.72rem', padding: '0.2rem 0.5rem' }}
+                                onClick={() => {
+                                  if (!token) return;
+                                  const ok = window.confirm(
+                                    `Reenviar email de bienvenida a ${c.email}?\n\n` +
+                                    'Esto rota la contraseña del empleado: el password actual queda invalidado y se envía uno nuevo en el email.',
+                                  );
+                                  if (!ok) return;
+                                  api.recruitment.resendWelcomeEmail(token, c.id)
+                                    .then((r) => {
+                                      toast(
+                                        r.emailSent
+                                          ? `Email reenviado a ${c.email}`
+                                          : 'El email no se pudo enviar — revisar logs.',
+                                        r.emailSent ? 'success' : 'error',
+                                      );
+                                    })
+                                    .catch((err: any) => {
+                                      toast(err?.message || 'Error al reenviar email', 'error');
+                                    });
+                                }}
+                                title="Reenviar email de bienvenida (rota la contraseña). Útil si el ganador reporta no haberlo recibido."
+                              >
+                                ✉ Reenviar email
+                              </button>
+                            )}
                           </div>
                         ) : isReadOnly ? (
                           // Para los demas stages (no hired) en proceso
@@ -1334,8 +1965,11 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                           </div>
                         </div>
 
-                        {/* Step 1: Upload or use profile CV */}
-                        {!c.cvUrl && !cvFromProfile ? (
+                        {/* S5.2 — CV archivado (proceso cerrado, compliance Chile 24m).
+                            Solo admin puede solicitar acceso, requiere razon. */}
+                        {!c.cvUrl && !cvFromProfile && c.cvArchivedAt && isAdmin ? (
+                          <ArchivedCvBanner candidate={c} token={token} />
+                        ) : !c.cvUrl && !cvFromProfile ? (
                           <div style={{ textAlign: 'center', padding: '1.5rem', border: '2px dashed var(--border)', borderRadius: 'var(--radius-sm)' }}>
                             <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
                               {c.candidateType === 'internal'
@@ -1495,6 +2129,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                   </div>
                 );
               })}
+              </>}
             </div>
           )}
         </div>
