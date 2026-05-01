@@ -41,8 +41,9 @@ export default function ResultadosEncuestaPage() {
   const [heatmap, setHeatmap] = useState<{
     departments: string[];
     categories: string[];
-    cells: Array<{ department: string; category: string; average: number | null; count: number }>;
+    cells: Array<{ department: string; category: string; average: number | null; count: number; suppressed?: boolean }>;
     overallByDepartment: Record<string, number>;
+    kAnonymity?: { threshold: number; applied: boolean; suppressedDepartments: number; suppressedCells: number };
   } | null>(null);
   const [trends, setTrends] = useState<any[]>([]);
   const [aiAnalysis, setAiAnalysis] = useState<any>(null);
@@ -540,6 +541,12 @@ export default function ResultadosEncuestaPage() {
       {activeTab === 'department' && isAdmin && (
         <div className="card" style={{ padding: '1.25rem' }}>
           <h3 style={{ margin: '0 0 1rem', fontSize: '1rem', fontWeight: 600 }}>Resultados por Departamento</h3>
+          {/* T12 — disclaimer si la encuesta tiene supresion por k-anonymity */}
+          {heatmap?.kAnonymity?.applied && (heatmap.kAnonymity.suppressedDepartments > 0 || heatmap.kAnonymity.suppressedCells > 0) && (
+            <div style={{ marginBottom: '1rem', padding: '0.6rem 0.8rem', background: 'rgba(59,130,246,0.08)', borderLeft: '3px solid #3b82f6', borderRadius: 4, fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+              <strong>Privacidad activada:</strong> esta encuesta es anónima con umbral k = {heatmap.kAnonymity.threshold} respuestas. Se ocultan {heatmap.kAnonymity.suppressedDepartments} departamentos y {heatmap.kAnonymity.suppressedCells} celdas con muestras pequeñas para evitar re-identificación.
+            </div>
+          )}
           {deptResults.length === 0 ? (
             <p style={{ color: 'var(--text-muted)' }}>No hay datos por departamento disponibles.</p>
           ) : (
@@ -559,11 +566,24 @@ export default function ResultadosEncuestaPage() {
                       <tr key={d.department}>
                         <td style={{ fontWeight: 500 }}>{d.department}</td>
                         <td>{d.responseCount}</td>
-                        <td style={{ fontWeight: 600 }}>{d.average}/10</td>
+                        <td style={{ fontWeight: 600 }}>
+                          {/* T12 — celda suprimida por k-anonymity */}
+                          {d.suppressed ? (
+                            <span style={{ color: 'var(--text-muted)', fontStyle: 'italic', fontWeight: 400 }} title={d.suppressionReason}>
+                              — (oculto)
+                            </span>
+                          ) : (
+                            <>{d.average}/10</>
+                          )}
+                        </td>
                         <td>
-                          <div style={{ width: 80, height: 8, background: 'var(--border)', borderRadius: 4, overflow: 'hidden' }}>
-                            <div style={{ width: `${(d.average / 10) * 100}%`, height: '100%', background: d.average >= 8 ? '#16a34a' : d.average >= 6 ? '#eab308' : '#ef4444', borderRadius: 4 }} />
-                          </div>
+                          {d.suppressed ? (
+                            <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>n &lt; umbral</span>
+                          ) : (
+                            <div style={{ width: 80, height: 8, background: 'var(--border)', borderRadius: 4, overflow: 'hidden' }}>
+                              <div style={{ width: `${(d.average / 10) * 100}%`, height: '100%', background: d.average >= 8 ? '#16a34a' : d.average >= 6 ? '#eab308' : '#ef4444', borderRadius: 4 }} />
+                            </div>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -571,7 +591,8 @@ export default function ResultadosEncuestaPage() {
                 </table>
               </div>
               <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={deptResults}>
+                {/* T12 — excluir suprimidos del chart para no mostrar 0 falsos */}
+                <BarChart data={deptResults.filter((d: any) => !d.suppressed)}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="department" tick={{ fontSize: 11 }} />
                   <YAxis domain={[0, 10]} />
@@ -580,17 +601,18 @@ export default function ResultadosEncuestaPage() {
                 </BarChart>
               </ResponsiveContainer>
 
-              {/* Department analysis */}
-              {deptResults.length >= 2 && (() => {
-                const sorted = [...deptResults].sort((a, b) => a.average - b.average);
+              {/* Department analysis — T12: solo sobre depts NO suprimidos */}
+              {deptResults.filter((d: any) => !d.suppressed).length >= 2 && (() => {
+                const visibleDepts = deptResults.filter((d: any) => !d.suppressed);
+                const sorted = [...visibleDepts].sort((a, b) => a.average - b.average);
                 const best = sorted[sorted.length - 1];
                 const worst = sorted[0];
                 const gap = (best.average - worst.average).toFixed(1);
-                const globalAvg = (deptResults.reduce((s: number, d: any) => s + d.average, 0) / deptResults.length).toFixed(1);
+                const globalAvg = (visibleDepts.reduce((s: number, d: any) => s + d.average, 0) / visibleDepts.length).toFixed(1);
                 return (
                   <div style={{ marginTop: '1rem', padding: '0.75rem', background: 'rgba(99,102,241,0.04)', borderRadius: 'var(--radius-sm)', borderLeft: '3px solid var(--accent)', fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
                     <div style={{ fontWeight: 700, color: 'var(--accent)', marginBottom: '0.3rem' }}>Análisis por Departamento</div>
-                    <p style={{ margin: '0 0 0.25rem' }}><strong>Promedio organizacional:</strong> {globalAvg}/10 entre {deptResults.length} departamentos.</p>
+                    <p style={{ margin: '0 0 0.25rem' }}><strong>Promedio organizacional:</strong> {globalAvg}/10 entre {visibleDepts.length} departamentos visibles.</p>
                     <p style={{ margin: '0 0 0.25rem' }}><strong>Mejor clima:</strong> {best.department} ({best.average}/10, {best.responseCount} respuestas).</p>
                     <p style={{ margin: '0 0 0.25rem' }}><strong>Menor clima:</strong> {worst.department} ({worst.average}/10, {worst.responseCount} respuestas){worst.average < 6 ? ' — requiere intervención prioritaria.' : '.'}</p>
                     <p style={{ margin: 0 }}><strong>Brecha entre áreas:</strong> {gap} puntos. {Number(gap) > 2 ? 'Brecha significativa — investigar causas de disparidad.' : 'Brecha moderada.'}</p>
@@ -629,30 +651,43 @@ export default function ResultadosEncuestaPage() {
                         <Fragment key={`row-${dept}`}>
                           <div style={{ padding: '0.4rem 0.5rem', fontWeight: 500, background: 'var(--bg-card)' }}>{dept}</div>
                           {heatmap.categories.map((cat) => {
-                            const cell = heatmap.cells.find((c) => c.department === dept && c.category === cat);
+                            const cell = heatmap.cells.find((c) => c.department === dept && c.category === cat) as any;
                             const avg = cell?.average ?? null;
-                            const bg = avg === null
-                              ? 'rgba(148,163,184,0.15)'
-                              : avg >= 8
-                                ? 'rgba(22,163,74,0.18)'
-                                : avg >= 6
-                                  ? 'rgba(234,179,8,0.18)'
-                                  : 'rgba(239,68,68,0.18)';
-                            const fg = avg === null ? 'var(--text-muted)' : 'var(--text)';
+                            const isSuppressed = !!cell?.suppressed;
+                            // T12 — celdas suprimidas se pintan con patron
+                            // distintivo (gris azulado + texto cursiva) para
+                            // distinguirlas de "sin datos" (gris neutro).
+                            const bg = isSuppressed
+                              ? 'rgba(59,130,246,0.10)'
+                              : avg === null
+                                ? 'rgba(148,163,184,0.15)'
+                                : avg >= 8
+                                  ? 'rgba(22,163,74,0.18)'
+                                  : avg >= 6
+                                    ? 'rgba(234,179,8,0.18)'
+                                    : 'rgba(239,68,68,0.18)';
+                            const fg = isSuppressed || avg === null ? 'var(--text-muted)' : 'var(--text)';
                             return (
                               <div
                                 key={`c-${dept}-${cat}`}
-                                title={cell ? `${cat}: ${avg ?? 'sin datos'} (${cell.count} respuestas)` : 'sin datos'}
+                                title={
+                                  isSuppressed
+                                    ? `${cat}: muestra muy chica (${cell.count}) — oculto por k-anonymity`
+                                    : cell
+                                      ? `${cat}: ${avg ?? 'sin datos'} (${cell.count} respuestas)`
+                                      : 'sin datos'
+                                }
                                 style={{
                                   padding: '0.4rem 0.5rem',
                                   textAlign: 'center',
                                   background: bg,
                                   color: fg,
                                   fontWeight: 600,
+                                  fontStyle: isSuppressed ? 'italic' : 'normal',
                                   borderRadius: 4,
                                 }}
                               >
-                                {avg === null ? '—' : avg.toFixed(1)}
+                                {isSuppressed ? '🔒' : avg === null ? '—' : avg.toFixed(1)}
                               </div>
                             );
                           })}
