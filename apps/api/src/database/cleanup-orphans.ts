@@ -373,6 +373,13 @@ async function main() {
       { table: 'recruitment_candidates', column: 'cv_archived_at', sql: `ALTER TABLE "recruitment_candidates" ADD COLUMN IF NOT EXISTS "cv_archived_at" timestamptz NULL` },
       // S7.1 — slug publico para job board.
       { table: 'recruitment_processes', column: 'public_slug', sql: `ALTER TABLE "recruitment_processes" ADD COLUMN IF NOT EXISTS "public_slug" varchar(60) NULL` },
+      // T4 — Encuestas de clima: matching por departmentId en lugar de
+      // por nombre de departamento. El campo legacy `target_departments`
+      // (jsonb de strings) se mantiene para retrocompat — si una encuesta
+      // tiene targetDepartmentIds vacio, getTargetUsers cae al matching
+      // por nombre. Esto evita huerfanizar encuestas activas si el admin
+      // renombra un departamento.
+      { table: 'engagement_surveys', column: 'target_department_ids', sql: `ALTER TABLE "engagement_surveys" ADD COLUMN IF NOT EXISTS "target_department_ids" jsonb NOT NULL DEFAULT '[]'` },
     ];
 
     for (const fix of columnFixes) {

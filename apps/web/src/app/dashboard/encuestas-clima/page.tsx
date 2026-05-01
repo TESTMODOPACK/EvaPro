@@ -88,6 +88,11 @@ function EncuestasClimaPageContent() {
     isAnonymous: true,
     targetAudience: 'all' as 'all' | 'by_department',
     targetDepartments: [] as string[],
+    // T4 — IDs paralelos a los nombres. El backend los prioriza para
+    // matching robusto frente a renames. Si el departmentRecords del
+    // tenant viene del fallback legacy (custom-settings sin id), el id
+    // sera string vacio y filtramos esos antes de enviar al backend.
+    targetDepartmentIds: [] as string[],
     startDate: new Date().toISOString().split('T')[0],
     endDate: new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0],
     settings: {
@@ -98,7 +103,7 @@ function EncuestasClimaPageContent() {
     questions: [] as any[],
   });
 
-  const { departments } = useDepartments();
+  const { departments, departmentRecords } = useDepartments();
   const [competencies, setCompetencies] = useState<any[]>([]);
 
   useEffect(() => {
@@ -270,7 +275,7 @@ function EncuestasClimaPageContent() {
   const resetForm = () => {
     setForm({
       title: '', description: '', isAnonymous: true, targetAudience: 'all',
-      targetDepartments: [], startDate: new Date().toISOString().split('T')[0],
+      targetDepartments: [], targetDepartmentIds: [], startDate: new Date().toISOString().split('T')[0],
       endDate: new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0],
       settings: { showProgressBar: true, randomizeQuestions: false, allowPartialSave: false },
       questions: [],
@@ -514,21 +519,38 @@ function EncuestasClimaPageContent() {
               <div>
                 <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.35rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Departamentos</label>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-                  {departments.map((d) => (
-                    <label key={d} style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.85rem' }}>
-                      <input
-                        type="checkbox"
-                        checked={form.targetDepartments.includes(d)}
-                        onChange={(e) => {
-                          setForm((f) => ({
-                            ...f,
-                            targetDepartments: e.target.checked ? [...f.targetDepartments, d] : f.targetDepartments.filter((x) => x !== d),
-                          }));
-                        }}
-                      />
-                      {d}
-                    </label>
-                  ))}
+                  {/* T4 — iteramos sobre departmentRecords para tener el ID
+                      junto al nombre. Mantenemos targetDepartments (nombres)
+                      en paralelo para retrocompat y como fallback cuando el
+                      departamento viene de legacy custom-settings sin id. */}
+                  {departmentRecords.map((d) => {
+                    const checked = d.id
+                      ? form.targetDepartmentIds.includes(d.id)
+                      : form.targetDepartments.includes(d.name);
+                    return (
+                      <label key={d.id || d.name} style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.85rem' }}>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) => {
+                            setForm((f) => {
+                              const isOn = e.target.checked;
+                              const nextIds = d.id
+                                ? (isOn
+                                    ? [...f.targetDepartmentIds, d.id]
+                                    : f.targetDepartmentIds.filter((x) => x !== d.id))
+                                : f.targetDepartmentIds;
+                              const nextNames = isOn
+                                ? (f.targetDepartments.includes(d.name) ? f.targetDepartments : [...f.targetDepartments, d.name])
+                                : f.targetDepartments.filter((x) => x !== d.name);
+                              return { ...f, targetDepartmentIds: nextIds, targetDepartments: nextNames };
+                            });
+                          }}
+                        />
+                        {d.name}
+                      </label>
+                    );
+                  })}
                 </div>
               </div>
             )}
