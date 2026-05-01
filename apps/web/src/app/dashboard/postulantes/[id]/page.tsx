@@ -510,6 +510,91 @@ function getCategoryLabel(key: string, t: (k: string) => string): string {
   return translated !== `postulantes.reqCategories.${cleaned.toLowerCase()}` ? translated : cleaned.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+/* ── S6.3 — Widget de KPIs del proceso ─────────────────────────────
+   Carga `getMetrics` bajo demanda y muestra cards con metricas clave:
+   tiempo activo, conversion rate, time-to-hire, score del ganador, etc.
+   No bloquea el render del detalle: si falla, simplemente no muestra. */
+function ProcessMetricsWidget({ processId, token }: { processId: string; token: string | null }) {
+  const [metrics, setMetrics] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!token) return;
+    let mounted = true;
+    api.recruitment.processes.getMetrics(token, processId)
+      .then((m) => { if (mounted) setMetrics(m); })
+      .catch((e: any) => { if (mounted) setError(e?.message || 'Error al cargar metricas'); })
+      .finally(() => { if (mounted) setLoading(false); });
+    return () => { mounted = false; };
+  }, [processId, token]);
+
+  if (loading) return null;
+  if (error || !metrics) return null;
+
+  const kpiBox = (label: string, value: string | number | null | undefined, hint?: string) => (
+    <div style={{
+      flex: '1 1 140px',
+      minWidth: 140,
+      padding: '0.7rem 0.85rem',
+      background: 'var(--bg-card)',
+      border: '1px solid var(--border)',
+      borderRadius: 'var(--radius-sm)',
+    }}>
+      <div style={{ fontSize: '0.66rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '0.25rem' }}>
+        {label}
+      </div>
+      <div style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+        {value ?? '—'}
+      </div>
+      {hint && (
+        <div style={{ fontSize: '0.66rem', color: 'var(--text-muted)', marginTop: '0.15rem' }}>{hint}</div>
+      )}
+    </div>
+  );
+
+  return (
+    <div className="card" style={{ padding: '1rem 1.1rem', marginBottom: '0.75rem' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.6rem' }}>
+        <span style={{ fontSize: '0.85rem', fontWeight: 700 }}>📊 Indicadores del proceso</span>
+        <span style={{ fontSize: '0.68rem', background: 'rgba(99,102,241,0.1)', color: '#6366f1', padding: '0.1rem 0.4rem', borderRadius: 8 }}>
+          KPIs
+        </span>
+      </div>
+      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+        {kpiBox('Días activo', metrics.daysActive, `${metrics.daysSinceCreation}d desde creación`)}
+        {kpiBox('Candidatos', metrics.candidateCount)}
+        {kpiBox(
+          'Entrevistas',
+          `${metrics.interviewsCompleted}/${metrics.interviewsExpected || '—'}`,
+          metrics.interviewsExpected > 0
+            ? `${Math.round((metrics.interviewsCompleted / metrics.interviewsExpected) * 100)}% completas`
+            : 'Sin esperadas',
+        )}
+        {metrics.winnerScore != null && kpiBox('Score ganador', metrics.winnerScore.toFixed(1) + '/10')}
+        {metrics.runnerUpScore != null && kpiBox('Runner-up', metrics.runnerUpScore.toFixed(1) + '/10')}
+        {metrics.timeToHireDays != null && kpiBox('Time to hire', `${metrics.timeToHireDays}d`)}
+      </div>
+      {/* Conversion funnel mini-resumen */}
+      {metrics.conversionRate.some((c: any) => c.percentage > 0) && (
+        <div style={{ marginTop: '0.7rem', display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center', fontSize: '0.74rem' }}>
+          <span style={{ color: 'var(--text-muted)' }}>Conversión:</span>
+          {metrics.conversionRate.map((c: any, i: number) => (
+            <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.2rem' }}>
+              <span style={{ color: 'var(--text-secondary)' }}>{c.fromStage}</span>
+              <span style={{ color: 'var(--accent)', fontWeight: 600 }}>→</span>
+              <span style={{ color: 'var(--text-secondary)' }}>{c.toStage}</span>
+              <span style={{ background: 'rgba(99,102,241,0.08)', color: '#6366f1', padding: '0.05rem 0.35rem', borderRadius: 6, fontWeight: 600 }}>
+                {c.percentage}%
+              </span>
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── S5.2 — Banner de CV archivado (compliance Chile 24m) ──────────
    Mostrado solo a tenant_admin cuando el candidato tiene CV archivado
    (proceso cerrado, cv_url null pero cv_archived_at != null). Permite
@@ -1209,6 +1294,13 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                 </>
               )}
             </div>
+          )}
+
+          {/* S6.3 — KPI widget del proceso. Solo cargado bajo demanda
+              (ProcessMetricsWidget hace fetch interno) para no impactar
+              el render del detalle. Visible para admin/manager. */}
+          {(role === 'tenant_admin' || role === 'super_admin' || role === 'manager') && (
+            <ProcessMetricsWidget processId={process.id} token={token} />
           )}
 
           {/* Candidates list */}

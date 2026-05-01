@@ -2195,6 +2195,173 @@ export class RecruitmentService {
   }
 
   /**
+   * S6.3 — Metricas del proceso.
+   *
+   * Devuelve KPIs computados a partir de:
+   *   - process metadata (createdAt, startDate, endDate, status).
+   *   - candidates count por stage actual.
+   *   - stage_history (S6.1) para calcular avgDaysInStage y conversion.
+   *   - winner/runner-up scores.
+   *   - interviews count vs evaluators expected.
+   *
+   * Diseño:
+   *   - Single endpoint, single response — el frontend renderiza widget
+   *     con KPI cards.
+   *   - Calculos en memoria sobre datos ya cargados (no rondas multiples
+   *     de queries por cada KPI).
+   *   - Defensive: divisiones por cero protegidas; null si no hay datos
+   *     suficientes para un KPI (ej. winnerScore null si no hay hire).
+   */
+  async getProcessMetrics(tenantId: string, processId: string): Promise<{
+    daysActive: number;
+    daysSinceCreation: number;
+    candidateCount: number;
+    candidatesByStage: Record<string, number>;
+    avgDaysInStage: Record<string, number | null>;
+    conversionRate: { fromStage: string; toStage: string; percentage: number }[];
+    interviewsCompleted: number;
+    interviewsExpected: number;
+    winnerScore: number | null;
+    runnerUpScore: number | null;
+    timeToHireDays: number | null;
+  }> {
+    const process = await this.processRepo.findOne({
+      where: { id: processId, tenantId },
+    });
+    if (!process) throw new NotFoundException('Proceso no encontrado');
+
+    const now = new Date();
+    const start = process.startDate ? new Date(process.startDate) : process.createdAt;
+    const daysSinceCreation = Math.floor((now.getTime() - process.createdAt.getTime()) / (1000 * 60 * 60 * 24));
+    const daysActive = process.status === ProcessStatus.ACTIVE
+      ? Math.floor((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24))
+      : daysSinceCreation;
+
+    // Candidates por stage actual.
+    const candidates = await this.candidateRepo.find({
+      where: { tenantId, processId },
+    });
+    const candidateCount = candidates.length;
+    const candidatesByStage: Record<string, number> = {};
+    for (const c of candidates) {
+      candidatesByStage[c.stage] = (candidatesByStage[c.stage] || 0) + 1;
+    }
+
+    // Stage history para avgDaysInStage. Cargamos TODA la history de
+    // candidatos del proceso ordenada por (candidate, changed_at).
+    const candidateIds = candidates.map((c) => c.id);
+    const allHistory = candidateIds.length > 0
+      ? await this.stageHistoryRepo.find({
+        where: { candidateId: In(candidateIds) },
+        order: { candidateId: 'ASC', changedAt: 'ASC' },
+      })
+      : [];
+
+    // avgDaysInStage: por cada stage, sumar duracion en ese stage y
+    // promediar. La duracion es (next changedAt - this changedAt) si
+    // hay siguiente, sino (now - this changedAt) si es el stage actual.
+    const stageDurationsMs: Record<string, number[]> = {};
+    const historyByCandidate = new Map<string, RecruitmentCandidateStageHistory[]>();
+    for (const h of allHistory) {
+      const arr = historyByCandidate.get(h.candidateId) ?? [];
+      arr.push(h);
+      historyByCandidate.set(h.candidateId, arr);
+    }
+    for (const c of candidates) {
+      const hist = historyByCandidate.get(c.id) ?? [];
+      for (let i = 0; i < hist.length; i++) {
+        const h = hist[i];
+        const next = hist[i + 1];
+        const stage = h.toStage;
+        const startTs = new Date(h.changedAt).getTime();
+        const endTs = next
+          ? new Date(next.changedAt).getTime()
+          : (c.stage === stage ? now.getTime() : startTs); // si es el stage actual, mide hasta hoy
+        const durMs = Math.max(0, endTs - startTs);
+        if (!stageDurationsMs[stage]) stageDurationsMs[stage] = [];
+        // Solo contamos si hay duracion real (>0) para evitar inflar
+        // promedios con transiciones inmediatas (auto-advance same-tx).
+        if (durMs > 0) stageDurationsMs[stage].push(durMs);
+      }
+    }
+    const avgDaysInStage: Record<string, number | null> = {};
+    for (const [stage, durations] of Object.entries(stageDurationsMs)) {
+      if (durations.length === 0) {
+        avgDaysInStage[stage] = null;
+        continue;
+      }
+      const avgMs = durations.reduce((a, b) => a + b, 0) / durations.length;
+      avgDaysInStage[stage] = Math.round((avgMs / (1000 * 60 * 60 * 24)) * 100) / 100;
+    }
+
+    // Conversion rate: porcentaje de candidatos que pasaron por cada
+    // stage en su trayectoria.
+    const stagesReached: Record<string, Set<string>> = {};
+    for (const h of allHistory) {
+      if (!stagesReached[h.toStage]) stagesReached[h.toStage] = new Set();
+      stagesReached[h.toStage].add(h.candidateId);
+    }
+    const stagesOrder = ['cv_review', 'interviewing', 'scored', 'approved', 'hired'];
+    const conversionRate: { fromStage: string; toStage: string; percentage: number }[] = [];
+    for (let i = 0; i < stagesOrder.length - 1; i++) {
+      const from = stagesOrder[i], to = stagesOrder[i + 1];
+      const fromCount = stagesReached[from]?.size ?? 0;
+      const toCount = stagesReached[to]?.size ?? 0;
+      const percentage = fromCount > 0 ? Math.round((toCount / fromCount) * 10000) / 100 : 0;
+      conversionRate.push({ fromStage: from, toStage: to, percentage });
+    }
+
+    // Interviews: count actual vs expected (evaluators × candidatos en
+    // interviewing+). Si no hay candidatos, skip la query (TypeORM In([])
+    // genera "WHERE candidate_id IN ()" que falla en Postgres).
+    const interviewsCompleted = candidateIds.length > 0
+      ? await this.interviewRepo.count({ where: { candidateId: In(candidateIds) } })
+      : 0;
+    const evaluatorsCount = await this.evaluatorRepo.count({ where: { processId } });
+    const inInterviewingOrLater = candidates.filter((c) =>
+      [CandidateStage.INTERVIEWING, CandidateStage.SCORED, CandidateStage.APPROVED, CandidateStage.HIRED, CandidateStage.NOT_HIRED].includes(c.stage),
+    ).length;
+    const interviewsExpected = evaluatorsCount * inInterviewingOrLater;
+
+    // Winner score + runner-up.
+    let winnerScore: number | null = null;
+    let runnerUpScore: number | null = null;
+    if (process.winningCandidateId) {
+      const winner = candidates.find((c) => c.id === process.winningCandidateId);
+      winnerScore = winner?.finalScore != null ? Number(winner.finalScore) : null;
+      const others = candidates
+        .filter((c) => c.id !== process.winningCandidateId && c.finalScore != null)
+        .map((c) => Number(c.finalScore))
+        .sort((a, b) => b - a);
+      runnerUpScore = others.length > 0 ? others[0] : null;
+    }
+
+    // Time to hire: createdAt → hire_executed audit log para el winner.
+    let timeToHireDays: number | null = null;
+    if (process.winningCandidateId && process.hireData) {
+      const hireDate = (process.hireData as any)?.effectiveDate;
+      if (hireDate) {
+        const ms = new Date(hireDate).getTime() - new Date(process.createdAt).getTime();
+        timeToHireDays = Math.max(0, Math.floor(ms / (1000 * 60 * 60 * 24)));
+      }
+    }
+
+    return {
+      daysActive,
+      daysSinceCreation,
+      candidateCount,
+      candidatesByStage,
+      avgDaysInStage,
+      conversionRate,
+      interviewsCompleted,
+      interviewsExpected,
+      winnerScore,
+      runnerUpScore,
+      timeToHireDays,
+    };
+  }
+
+  /**
    * S6.2 — Cambio de stage en bulk de N candidatos.
    *
    * Reglas:

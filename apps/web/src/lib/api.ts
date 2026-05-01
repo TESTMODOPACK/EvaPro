@@ -634,6 +634,21 @@ export const api = {
         request<any>("/recruitment/processes", { method: "POST", body: JSON.stringify(data) }, token),
       get: (token: string, id: string) =>
         request<any>(`/recruitment/processes/${id}`, {}, token),
+      /** S6.3 — KPIs del proceso (widget). */
+      getMetrics: (token: string, id: string) =>
+        request<{
+          daysActive: number;
+          daysSinceCreation: number;
+          candidateCount: number;
+          candidatesByStage: Record<string, number>;
+          avgDaysInStage: Record<string, number | null>;
+          conversionRate: { fromStage: string; toStage: string; percentage: number }[];
+          interviewsCompleted: number;
+          interviewsExpected: number;
+          winnerScore: number | null;
+          runnerUpScore: number | null;
+          timeToHireDays: number | null;
+        }>(`/recruitment/processes/${id}/metrics`, {}, token),
       update: (token: string, id: string, data: any) =>
         request<any>(`/recruitment/processes/${id}`, { method: "PATCH", body: JSON.stringify(data) }, token),
       comparative: (token: string, id: string) =>

@@ -464,6 +464,74 @@ describe('RecruitmentService', () => {
     });
   });
 
+  // ─── getProcessMetrics (S6.3) ─────────────────────────────────────
+
+  describe('getProcessMetrics', () => {
+    const processId = fakeUuid(200);
+
+    it('lanza si proceso no existe', async () => {
+      processRepo.findOne.mockResolvedValue(null);
+      await expect(service.getProcessMetrics(TENANT_ID, processId)).rejects.toThrow(NotFoundException);
+    });
+
+    it('retorna metricas con 0 candidatos sin reventar', async () => {
+      processRepo.findOne.mockResolvedValue({
+        id: processId,
+        tenantId: TENANT_ID,
+        status: ProcessStatus.ACTIVE,
+        createdAt: new Date('2026-04-01T00:00:00Z'),
+        startDate: new Date('2026-04-15T00:00:00Z'),
+        winningCandidateId: null,
+        hireData: null,
+      });
+      candidateRepo.find.mockResolvedValue([]);
+      stageHistoryRepo.find.mockResolvedValue([]);
+      evaluatorRepo.count.mockResolvedValue(0);
+
+      const m = await service.getProcessMetrics(TENANT_ID, processId);
+
+      expect(m.candidateCount).toBe(0);
+      expect(m.candidatesByStage).toEqual({});
+      expect(m.interviewsCompleted).toBe(0);
+      expect(m.interviewsExpected).toBe(0);
+      expect(m.winnerScore).toBeNull();
+      expect(m.runnerUpScore).toBeNull();
+      expect(m.timeToHireDays).toBeNull();
+    });
+
+    it('cuenta candidatos por stage y calcula winner/runnerUp scores', async () => {
+      const winnerId = fakeUuid(300);
+      processRepo.findOne.mockResolvedValue({
+        id: processId,
+        tenantId: TENANT_ID,
+        status: ProcessStatus.COMPLETED,
+        createdAt: new Date('2026-03-01T00:00:00Z'),
+        startDate: new Date('2026-03-01T00:00:00Z'),
+        winningCandidateId: winnerId,
+        hireData: { effectiveDate: '2026-04-01' },
+      });
+      candidateRepo.find.mockResolvedValue([
+        { id: winnerId, stage: CandidateStage.HIRED, finalScore: 9.2 },
+        { id: fakeUuid(301), stage: CandidateStage.NOT_HIRED, finalScore: 7.5 },
+        { id: fakeUuid(302), stage: CandidateStage.NOT_HIRED, finalScore: 6.0 },
+        { id: fakeUuid(303), stage: CandidateStage.REJECTED, finalScore: 4.0 },
+      ]);
+      stageHistoryRepo.find.mockResolvedValue([]);
+      evaluatorRepo.count.mockResolvedValue(2);
+      interviewRepo.count.mockResolvedValue(8);
+
+      const m = await service.getProcessMetrics(TENANT_ID, processId);
+
+      expect(m.candidateCount).toBe(4);
+      expect(m.candidatesByStage[CandidateStage.HIRED]).toBe(1);
+      expect(m.candidatesByStage[CandidateStage.NOT_HIRED]).toBe(2);
+      expect(m.candidatesByStage[CandidateStage.REJECTED]).toBe(1);
+      expect(m.winnerScore).toBe(9.2);
+      expect(m.runnerUpScore).toBe(7.5);
+      expect(m.timeToHireDays).toBe(31); // 2026-03-01 → 2026-04-01
+    });
+  });
+
   // ─── Bulk operations (S6.2) ───────────────────────────────────────
 
   describe('bulkUpdateStage', () => {

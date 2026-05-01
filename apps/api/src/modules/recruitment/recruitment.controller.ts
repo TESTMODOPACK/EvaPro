@@ -38,6 +38,15 @@ export class RecruitmentController {
     return this.service.getProcess(req.user.tenantId, id);
   }
 
+  /**
+   * S6.3 — Metricas del proceso (KPIs para widget en detalle).
+   * Visible para roles que ya pueden ver el proceso (super_admin/tenant_admin/manager).
+   */
+  @Get('processes/:id/metrics')
+  getProcessMetrics(@Request() req: any, @Param('id', ParseUUIDPipe) id: string) {
+    return this.service.getProcessMetrics(req.user.tenantId, id);
+  }
+
   /** P5.5 — Secondary cross-tenant: super_admin → undefined. */
   @Patch('processes/:id')
   @Roles('super_admin', 'tenant_admin')
