@@ -1841,13 +1841,15 @@ export const api = {
     getResults: (token: string, id: string) => request<any>(`/surveys/${id}/results`, {}, token),
     getResultsByDept: (token: string, id: string) =>
       request<any[]>(`/surveys/${id}/results/department`, {}, token),
-    /** T5 — Heatmap dept × categoria. Disponible para admin y manager. */
+    /** T5 — Heatmap dept × categoria. Disponible para admin y manager.
+     *  T12 — incluye kAnonymity con threshold y conteos de supresion. */
     getResultsHeatmap: (token: string, id: string) =>
       request<{
         departments: string[];
         categories: string[];
-        cells: Array<{ department: string; category: string; average: number | null; count: number }>;
+        cells: Array<{ department: string; category: string; average: number | null; count: number; suppressed?: boolean }>;
         overallByDepartment: Record<string, number>;
+        kAnonymity?: { threshold: number; applied: boolean; suppressedDepartments: number; suppressedCells: number };
       }>(`/surveys/${id}/results/heatmap`, {}, token),
     getENPS: (token: string, id: string) => request<any>(`/surveys/${id}/results/enps`, {}, token),
     getTrends: (token: string) => request<any[]>("/surveys/trends", {}, token),

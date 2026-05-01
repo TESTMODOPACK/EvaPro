@@ -99,6 +99,9 @@ function EncuestasClimaPageContent() {
       showProgressBar: true,
       randomizeQuestions: false,
       allowPartialSave: false,
+      // T12 — k-anonymity threshold (solo aplica a encuestas anonimas).
+      // Default 5 = estandar de privacidad agregada para grupos chicos.
+      kAnonymityThreshold: 5,
     },
     questions: [] as any[],
   });
@@ -277,7 +280,7 @@ function EncuestasClimaPageContent() {
       title: '', description: '', isAnonymous: true, targetAudience: 'all',
       targetDepartments: [], targetDepartmentIds: [], startDate: new Date().toISOString().split('T')[0],
       endDate: new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0],
-      settings: { showProgressBar: true, randomizeQuestions: false, allowPartialSave: false },
+      settings: { showProgressBar: true, randomizeQuestions: false, allowPartialSave: false, kAnonymityThreshold: 5 },
       questions: [],
     });
   };
@@ -514,6 +517,30 @@ function EncuestasClimaPageContent() {
                   Permitir guardar progreso
                 </label>
               </div>
+              {/* T12 — threshold de k-anonymity solo para encuestas anonimas */}
+              {form.isAnonymous && (
+                <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem' }}>
+                  <label htmlFor="kAnon" title="Departamentos con menos de N respuestas no veran sus agregados (proteccion contra re-identificacion en grupos chicos). N=5 es el estandar; subir a 10+ para alta sensibilidad.">
+                    Privacidad — supresión bajo
+                  </label>
+                  <input
+                    id="kAnon"
+                    type="number"
+                    min={2}
+                    max={100}
+                    step={1}
+                    className="input"
+                    style={{ width: 70 }}
+                    value={form.settings.kAnonymityThreshold ?? 5}
+                    onChange={(e) => {
+                      const n = parseInt(e.target.value, 10);
+                      const safe = isNaN(n) ? 5 : Math.min(100, Math.max(2, n));
+                      setForm((f) => ({ ...f, settings: { ...f.settings, kAnonymityThreshold: safe } }));
+                    }}
+                  />
+                  <span style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>respuestas</span>
+                </div>
+              )}
             </div>
             {form.targetAudience === 'by_department' && (
               <div>
