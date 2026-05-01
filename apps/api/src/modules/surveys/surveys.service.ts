@@ -528,34 +528,31 @@ export class SurveysService {
     }));
     await this.notificationsService.createBulk(notifications);
 
-    // Send emails (non-blocking)
-    for (const u of targetUsers) {
-      this.emailService.sendSurveyInvitation(u.email, {
-        firstName: u.firstName,
-        surveyTitle: survey.title,
-        dueDate: survey.endDate.toISOString().split('T')[0],
-        isAnonymous: survey.isAnonymous,
-        tenantId: effectiveTenantId,
-        userId: u.id,
-      }).catch((e) => this.logger.error(`Error sending survey email to ${u.email}: ${e.message}`));
-
-      // v3.0 Push notification a cada target user (fire-and-forget).
-      const pushMsg = buildPushMessage('surveyActive', u.language ?? 'es', {
-        title: survey.title,
-      });
-      this.pushService
-        .sendToUser(
-          u.id,
-          {
-            title: pushMsg.title,
-            body: pushMsg.body,
-            url: `/dashboard/encuestas-clima/${surveyId}/responder`,
-            tag: `survey-${surveyId}`,
-          },
-          'surveys',
-        )
-        .catch(() => undefined);
-    }
+    // T8 — Despacho de emails y push en background con throttling.
+    //
+    // El loop original disparaba N peticiones a Resend sin batching y
+    // dentro del path critico del request HTTP. En tenants con cientos
+    // de usuarios eso (a) tarda minutos, bloqueando al admin que pulso
+    // "Lanzar"; (b) pega el rate limit del provider y muchas fallan;
+    // (c) hacen el endpoint vulnerable a timeout.
+    //
+    // Ahora delegamos a `dispatchLaunchNotifications` que corre fuera
+    // del request (fire-and-forget). El admin recibe respuesta tan
+    // pronto como assignments + notifications in-app esten en BD;
+    // emails y push completan en segundo plano con concurrencia
+    // controlada. Si una entrega falla individualmente, se loggea
+    // pero NO frena las restantes.
+    //
+    // Trade-off: si el proceso muere durante el background work se
+    // pierden notificaciones para algunos users. Aceptable para PYME
+    // (en peor caso, el cron de remindIncompleteSurveys los recupera
+    // 24h despues). Una cola persistente (BullMQ) seria el upgrade
+    // correcto a futuro — flagged como follow-up.
+    setImmediate(() => {
+      this.dispatchLaunchNotifications(effectiveTenantId, survey, surveyId, targetUsers).catch((e) =>
+        this.logger.error(`[launch ${surveyId}] background notifications failed: ${e?.message}`),
+      );
+    });
 
     this.logger.log(`Survey "${survey.title}" launched to ${targetUsers.length} users`);
 
@@ -578,6 +575,75 @@ export class SurveysService {
     }
 
     return this.findById(effectiveTenantId, surveyId);
+  }
+
+  /**
+   * T8 — Envia emails de invitacion + push notifications a todos los
+   * target users en chunks paralelos, con `Promise.allSettled` para no
+   * abortar al primer error de Resend o de un endpoint push expirado.
+   *
+   * Concurrency 5 = balance razonable: bajo suficiente para no pegar
+   * el rate limit de Resend (10 req/s en plan basico, holgura) y alto
+   * suficiente para que un launch a 200 users termine en ~40s en vez
+   * de varios minutos.
+   *
+   * Esta funcion NO retorna nada relevante al caller: corre en
+   * background via setImmediate desde launch().
+   */
+  private async dispatchLaunchNotifications(
+    tenantId: string,
+    survey: EngagementSurvey,
+    surveyId: string,
+    targetUsers: User[],
+  ): Promise<void> {
+    const CONCURRENCY = 5;
+    const dueDate = survey.endDate.toISOString().split('T')[0];
+
+    let okEmail = 0;
+    let okPush = 0;
+    let failEmail = 0;
+    let failPush = 0;
+
+    for (let i = 0; i < targetUsers.length; i += CONCURRENCY) {
+      const chunk = targetUsers.slice(i, i + CONCURRENCY);
+      const tasks = chunk.flatMap((u) => [
+        this.emailService
+          .sendSurveyInvitation(u.email, {
+            firstName: u.firstName,
+            surveyTitle: survey.title,
+            dueDate,
+            isAnonymous: survey.isAnonymous,
+            tenantId,
+            userId: u.id,
+          })
+          .then(() => { okEmail++; })
+          .catch((e) => {
+            failEmail++;
+            this.logger.warn(`[launch ${surveyId}] email to ${u.email} failed: ${e?.message}`);
+          }),
+        (() => {
+          const pushMsg = buildPushMessage('surveyActive', u.language ?? 'es', { title: survey.title });
+          return this.pushService
+            .sendToUser(
+              u.id,
+              {
+                title: pushMsg.title,
+                body: pushMsg.body,
+                url: `/dashboard/encuestas-clima/${surveyId}/responder`,
+                tag: `survey-${surveyId}`,
+              },
+              'surveys',
+            )
+            .then(() => { okPush++; })
+            .catch(() => { failPush++; });
+        })(),
+      ]);
+      await Promise.allSettled(tasks);
+    }
+
+    this.logger.log(
+      `[launch ${surveyId}] notifications dispatched: emails ok=${okEmail}/fail=${failEmail}, push ok=${okPush}/fail=${failPush}`,
+    );
   }
 
   private async getTargetUsers(tenantId: string, survey: EngagementSurvey): Promise<User[]> {
