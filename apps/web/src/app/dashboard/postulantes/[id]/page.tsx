@@ -510,6 +510,216 @@ function getCategoryLabel(key: string, t: (k: string) => string): string {
   return translated !== `postulantes.reqCategories.${cleaned.toLowerCase()}` ? translated : cleaned.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+/* ── S6.1-frontend — Pipeline kanban view ──────────────────────────
+   Columnas por CandidateStage (rejected/not_hired colapsadas en
+   "Descartados"). Drag & drop nativo HTML5 entre columnas → llama
+   PATCH /candidates/:id/stage.
+
+   Reglas defensivas:
+     - No permite drop a 'hired' (defense-in-depth, backend lo rechaza
+       igual con BadRequestException — pero queremos UX clara antes de
+       fetch).
+     - No permite drop desde 'hired' (forzar revertHire desde lista).
+     - Si proceso readonly (closed/completed), drag deshabilitado. */
+
+const KANBAN_COLUMNS: { key: string; label: string; stages: string[] }[] = [
+  { key: 'registered', label: 'Registrados', stages: ['registered'] },
+  { key: 'cv_review', label: 'Revisando CV', stages: ['cv_review'] },
+  { key: 'interviewing', label: 'Entrevistando', stages: ['interviewing'] },
+  { key: 'scored', label: 'Evaluados', stages: ['scored'] },
+  { key: 'approved', label: 'Aprobados', stages: ['approved'] },
+  { key: 'hired', label: 'Contratados', stages: ['hired'] },
+  { key: 'discarded', label: 'Descartados', stages: ['rejected', 'not_hired'] },
+];
+
+function KanbanView({
+  candidates, process, isAdmin, token, stageLabel, onChanged,
+}: {
+  candidates: any[];
+  process: any;
+  isAdmin: boolean;
+  token: string | null;
+  stageLabel: (stage: string) => string;
+  onChanged: () => void;
+}) {
+  const toast = useToastStore((s) => s.toast);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [hoverColumn, setHoverColumn] = useState<string | null>(null);
+  const isReadOnly = process.status === 'completed' || process.status === 'closed';
+  const dragEnabled = isAdmin && !isReadOnly;
+
+  // Group candidates por columna.
+  const byColumn = new Map<string, any[]>();
+  for (const col of KANBAN_COLUMNS) byColumn.set(col.key, []);
+  for (const c of candidates) {
+    const col = KANBAN_COLUMNS.find((c2) => c2.stages.includes(c.stage));
+    if (col) byColumn.get(col.key)!.push(c);
+    else byColumn.get('registered')!.push(c); // fallback
+  }
+
+  const handleDrop = async (toColKey: string, candidateId: string) => {
+    setDraggingId(null);
+    setHoverColumn(null);
+    const cand = candidates.find((c) => c.id === candidateId);
+    if (!cand) return;
+    const col = KANBAN_COLUMNS.find((c) => c.key === toColKey);
+    if (!col) return;
+    // Si la card ya esta en alguna stage de esta columna, no-op.
+    if (col.stages.includes(cand.stage)) return;
+
+    // Bloqueo defensivo: no permitir drop a hired ni desde hired.
+    const targetStage = col.stages[0]; // primer stage de la columna
+    if (targetStage === 'hired') {
+      toast(
+        'Para contratar use "Generar contratación" en Configuración. Eso ejecuta la cascada al empleado.',
+        'info',
+      );
+      return;
+    }
+    if (cand.stage === 'hired') {
+      toast(
+        'No se puede mover desde "Contratado" arrastrando. Use "Revertir contratación" en la lista.',
+        'info',
+      );
+      return;
+    }
+
+    if (!token) return;
+    try {
+      await api.recruitment.candidates.updateStage(token, candidateId, targetStage);
+      onChanged();
+    } catch (err: any) {
+      toast(err?.message || 'Error al cambiar stage', 'error');
+    }
+  };
+
+  return (
+    <div style={{
+      display: 'flex',
+      gap: '0.6rem',
+      overflowX: 'auto',
+      paddingBottom: '0.5rem',
+    }}>
+      {KANBAN_COLUMNS.map((col) => {
+        const cards = byColumn.get(col.key) ?? [];
+        const isHover = hoverColumn === col.key;
+        return (
+          <div
+            key={col.key}
+            onDragOver={(e) => {
+              if (!dragEnabled) return;
+              e.preventDefault();
+              setHoverColumn(col.key);
+            }}
+            onDragLeave={() => {
+              if (hoverColumn === col.key) setHoverColumn(null);
+            }}
+            onDrop={(e) => {
+              if (!dragEnabled || !draggingId) return;
+              e.preventDefault();
+              handleDrop(col.key, draggingId);
+            }}
+            style={{
+              flex: '0 0 220px',
+              minWidth: 220,
+              padding: '0.55rem',
+              background: isHover ? 'rgba(99,102,241,0.06)' : 'var(--bg-card)',
+              border: isHover ? '2px dashed var(--accent)' : '1px solid var(--border)',
+              borderRadius: 'var(--radius-sm)',
+              transition: 'all 0.15s',
+            }}
+          >
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: '0.5rem',
+              fontSize: '0.78rem',
+              fontWeight: 700,
+              color: 'var(--text-primary)',
+            }}>
+              <span>{col.label}</span>
+              <span style={{
+                fontSize: '0.7rem',
+                background: 'var(--bg-base)',
+                padding: '0.1rem 0.4rem',
+                borderRadius: 8,
+                color: 'var(--text-secondary)',
+              }}>
+                {cards.length}
+              </span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+              {cards.length === 0 && (
+                <div style={{
+                  padding: '0.6rem',
+                  fontSize: '0.7rem',
+                  color: 'var(--text-muted)',
+                  textAlign: 'center',
+                  fontStyle: 'italic',
+                }}>
+                  Sin candidatos
+                </div>
+              )}
+              {cards.map((c) => {
+                const name = c.candidateType === 'internal' && c.user
+                  ? `${c.user.firstName} ${c.user.lastName}`
+                  : `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim();
+                const score = c.finalScore != null ? Number(c.finalScore) : null;
+                const isThisDragging = draggingId === c.id;
+                return (
+                  <div
+                    key={c.id}
+                    draggable={dragEnabled && c.stage !== 'hired'}
+                    onDragStart={() => setDraggingId(c.id)}
+                    onDragEnd={() => setDraggingId(null)}
+                    style={{
+                      padding: '0.55rem 0.65rem',
+                      background: 'var(--bg-base)',
+                      border: '1px solid var(--border)',
+                      borderRadius: 'var(--radius-sm)',
+                      cursor: dragEnabled && c.stage !== 'hired' ? 'grab' : 'default',
+                      opacity: isThisDragging ? 0.5 : 1,
+                      transition: 'opacity 0.15s',
+                    }}
+                    onClick={() => {
+                      // Click → futuro: abrir detalle/scorecard. Por ahora no-op.
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.2rem' }}>
+                      <span style={{ fontSize: '0.78rem', fontWeight: 600, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {name || '(sin nombre)'}
+                      </span>
+                      {c.candidateType === 'internal' && (
+                        <span style={{ fontSize: '0.6rem', background: 'rgba(99,102,241,0.1)', color: '#6366f1', padding: '0.05rem 0.3rem', borderRadius: 6, fontWeight: 700 }}>
+                          INT
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+                      {c.cvUrl && <span title="Tiene CV">📄</span>}
+                      {score != null && score > 0 && (
+                        <span style={{ fontWeight: 700, color: 'var(--accent)' }}>
+                          {score.toFixed(1)}/10
+                        </span>
+                      )}
+                      {col.stages.length > 1 && (
+                        <span style={{ marginLeft: 'auto', fontSize: '0.62rem' }}>
+                          {stageLabel(c.stage)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 /* ── S6.3 — Widget de KPIs del proceso ─────────────────────────────
    Carga `getMetrics` bajo demanda y muestra cards con metricas clave:
    tiempo activo, conversion rate, time-to-hire, score del ganador, etc.
@@ -889,6 +1099,18 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
   const [bulkMode, setBulkMode] = useState(false);
   const [selectedCandidateIds, setSelectedCandidateIds] = useState<Set<string>>(new Set());
   const [bulkProcessing, setBulkProcessing] = useState(false);
+
+  // S6.1-frontend — toggle vista tabla/kanban. Persiste en localStorage
+  // para que el usuario no tenga que toggle en cada visita.
+  const [viewMode, setViewMode] = useState<'list' | 'kanban'>(() => {
+    if (typeof window === 'undefined') return 'list';
+    return (localStorage.getItem('recruitment.viewMode') as 'list' | 'kanban') || 'list';
+  });
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('recruitment.viewMode', viewMode);
+    }
+  }, [viewMode]);
 
   const fetchProcess = async () => {
     if (!token) return;
@@ -1303,11 +1525,43 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
             <ProcessMetricsWidget processId={process.id} token={token} />
           )}
 
-          {/* Candidates list */}
+          {/* Candidates list / kanban */}
           {candidates.length === 0 ? (
             <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>{t('postulantes.detail.noCandidates') || 'No hay candidatos en este proceso'}</div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              {/* S6.1-frontend — Toggle vista tabla / kanban. */}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.4rem' }}>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('list')}
+                  className={viewMode === 'list' ? 'btn-primary' : 'btn-ghost'}
+                  style={{ fontSize: '0.72rem', padding: '0.2rem 0.6rem' }}
+                  aria-pressed={viewMode === 'list'}
+                >
+                  ☰ Lista
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('kanban')}
+                  className={viewMode === 'kanban' ? 'btn-primary' : 'btn-ghost'}
+                  style={{ fontSize: '0.72rem', padding: '0.2rem 0.6rem' }}
+                  aria-pressed={viewMode === 'kanban'}
+                >
+                  ⊞ Kanban
+                </button>
+              </div>
+              {viewMode === 'kanban' && (
+                <KanbanView
+                  candidates={candidates}
+                  process={process}
+                  isAdmin={isAdmin}
+                  token={token}
+                  stageLabel={stageLabel}
+                  onChanged={fetchProcess}
+                />
+              )}
+              {viewMode === 'list' && <>
               {/* S6.2 — Bulk actions toolbar (admin only, no en proceso readonly).
                   Toggle "Seleccionar varios" muestra checkboxes en cada card.
                   Cuando hay >=1 seleccionado, muestra acciones bulk. */}
@@ -1875,6 +2129,7 @@ export default function ProcesoDetailPage({ params }: { params: { id: string } }
                   </div>
                 );
               })}
+              </>}
             </div>
           )}
         </div>
