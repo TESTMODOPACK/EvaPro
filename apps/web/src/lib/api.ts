@@ -1809,6 +1809,10 @@ export const api = {
   surveys: {
     list: (token: string) => request<any[]>("/surveys", {}, token),
     findById: (token: string, id: string) => request<any>(`/surveys/${id}`, {}, token),
+    /** T3 — Vista de respuesta con shuffle determinista por usuario si
+     *  la encuesta tiene `settings.randomizeQuestions`. */
+    getRespondView: (token: string, id: string) =>
+      request<any>(`/surveys/${id}/respond-view`, {}, token),
     /** Encuestas activas próximas a cerrar con < 50% participación */
     lowParticipation: (token: string) =>
       request<Array<{ id: string; title: string; endDate: string | null; daysLeft: number | null; participationPct: number; respondents: number; assigned: number }>>(
@@ -1826,6 +1830,13 @@ export const api = {
       request<any>(`/surveys/${id}/close`, { method: "POST" }, token),
     respond: (token: string, id: string, answers: any[]) =>
       request<any>(`/surveys/${id}/respond`, { method: "POST", body: JSON.stringify({ answers }) }, token),
+    /** T3 — Guarda progreso parcial server-side (solo no anonimas con
+     *  allowPartialSave). Falla con 400 si no aplica. */
+    saveProgress: (token: string, id: string, answers: any[]) =>
+      request<any>(`/surveys/${id}/save-progress`, { method: "POST", body: JSON.stringify({ answers }) }, token),
+    /** T3 — Recupera progreso parcial; retorna null si no aplica/no existe. */
+    getMyProgress: (token: string, id: string) =>
+      request<{ answers: any[]; updatedAt: string } | null>(`/surveys/${id}/my-progress`, {}, token),
     getMyPending: (token: string) => request<any[]>("/surveys/pending", {}, token),
     getResults: (token: string, id: string) => request<any>(`/surveys/${id}/results`, {}, token),
     getResultsByDept: (token: string, id: string) =>
