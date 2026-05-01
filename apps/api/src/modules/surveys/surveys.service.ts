@@ -8,7 +8,7 @@ import {
 import { Cron } from '@nestjs/schedule';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { Repository, In, IsNull, DataSource } from 'typeorm';
-import { EngagementSurvey } from './entities/engagement-survey.entity';
+import { EngagementSurvey, SurveySettings } from './entities/engagement-survey.entity';
 import { SurveyQuestion } from './entities/survey-question.entity';
 import { SurveyResponse } from './entities/survey-response.entity';
 import { SurveyAssignment } from './entities/survey-assignment.entity';
@@ -51,6 +51,40 @@ export class SurveysService {
     // F4 A3 — para setear app.current_tenant_id en crons.
     private readonly tenantCronRunner: TenantCronRunner,
   ) {}
+
+  // ─── Settings ──────────────────────────────────────────────────────────
+
+  /**
+   * T3 — Sanitiza el jsonb `settings` que llega del cliente.
+   *
+   * Solo conserva las llaves conocidas y las normaliza a boolean. Esto:
+   *   - evita que un admin malicioso o un cliente buggy nos guarde basura
+   *     en el jsonb (por ejemplo strings, objetos anidados o llaves
+   *     desconocidas que despues confundirian al responder).
+   *   - garantiza que el frontend reciba siempre la misma forma del
+   *     objeto, asi puede usar `survey.settings.showProgressBar ?? true`
+   *     sin defensas extra.
+   *   - centraliza los defaults aqui (mismo lugar para create/update).
+   */
+  private sanitizeSettings(input: unknown, isAnonymous?: boolean): SurveySettings {
+    if (!input || typeof input !== 'object') input = {};
+    const src = input as Record<string, unknown>;
+    const out: SurveySettings = {};
+    if (typeof src.showProgressBar === 'boolean') out.showProgressBar = src.showProgressBar;
+    if (typeof src.randomizeQuestions === 'boolean') out.randomizeQuestions = src.randomizeQuestions;
+    if (typeof src.allowPartialSave === 'boolean') out.allowPartialSave = src.allowPartialSave;
+
+    // Defense-in-depth: partial save server-side requiere asociar la
+    // respuesta parcial a un userId. Si la encuesta es anonima, NO podemos
+    // hacerlo sin romper anonimato, asi que forzamos allowPartialSave=false
+    // aunque el cliente lo haya enviado en true. Esto evita que una mala
+    // configuracion en el form quede persistida y luego confunda al
+    // respondente con un boton "Guardar progreso" que el endpoint rechaza.
+    if (isAnonymous && out.allowPartialSave) {
+      out.allowPartialSave = false;
+    }
+    return out;
+  }
 
   // ─── Feature gate ──────────────────────────────────────────────────────
 
@@ -103,17 +137,18 @@ export class SurveysService {
       throw new BadRequestException('La fecha de fin debe ser posterior a la fecha de inicio.');
     }
 
+    const isAnonymous = dto.isAnonymous ?? true;
     const survey = this.surveyRepo.create({
       tenantId,
       title: dto.title,
       description: dto.description ?? null,
-      isAnonymous: dto.isAnonymous ?? true,
+      isAnonymous,
       targetAudience: dto.targetAudience ?? 'all',
       targetDepartments: dto.targetDepartments ?? [],
       startDate,
       endDate,
       createdBy: userId,
-      settings: dto.settings ?? {},
+      settings: this.sanitizeSettings(dto.settings, isAnonymous),
       status: 'draft',
     });
     const saved = await this.surveyRepo.save(survey);
@@ -168,6 +203,83 @@ export class SurveysService {
     return survey;
   }
 
+  /**
+   * T3 — Vista de la encuesta para el respondente.
+   *
+   * Identica a findById, pero si `settings.randomizeQuestions` esta
+   * activo, hace shuffle DENTRO de cada categoria (preserva el
+   * agrupamiento visual que ya tiene el responder) usando un PRNG
+   * con seed estable derivada de (surveyId + userId). Esto garantiza
+   * que un mismo respondente vea siempre el mismo orden si recarga
+   * la pagina, pero respondentes distintos ven ordenes distintos.
+   *
+   * No se usa para admin/manager: solo se invoca desde el endpoint
+   * `respond-view`. El findById regular sigue retornando preguntas
+   * por sortOrder ASC.
+   */
+  async findByIdForRespondent(
+    tenantId: string,
+    surveyId: string,
+    userId: string,
+  ): Promise<EngagementSurvey> {
+    const survey = await this.findById(tenantId, surveyId);
+
+    if (!survey.settings?.randomizeQuestions || !survey.questions?.length) {
+      return survey;
+    }
+
+    // Agrupa por categoria preservando el orden de aparicion de las
+    // categorias (no las shuffleamos — solo shuffle interno).
+    const byCategory = new Map<string, SurveyQuestion[]>();
+    for (const q of survey.questions) {
+      const list = byCategory.get(q.category) ?? [];
+      list.push(q);
+      byCategory.set(q.category, list);
+    }
+
+    // PRNG determinista: mulberry32 con seed = hash(surveyId + userId).
+    // Es suficientemente uniforme para shuffle visual y reproducible
+    // sin depender de Math.random ni de crypto.
+    const seed = this.hashSeed(`${surveyId}:${userId}`);
+    const rng = this.mulberry32(seed);
+
+    const shuffled: SurveyQuestion[] = [];
+    for (const [, list] of byCategory) {
+      // Fisher-Yates con el PRNG seedeado.
+      const arr = list.slice();
+      for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(rng() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+      shuffled.push(...arr);
+    }
+
+    survey.questions = shuffled;
+    return survey;
+  }
+
+  /** Hash 32-bit estable para seedear el PRNG (FNV-1a). */
+  private hashSeed(input: string): number {
+    let hash = 2166136261; // FNV offset
+    for (let i = 0; i < input.length; i++) {
+      hash ^= input.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+    return hash >>> 0;
+  }
+
+  /** PRNG mulberry32 — pequeño, rápido, determinista. */
+  private mulberry32(seed: number): () => number {
+    let a = seed;
+    return function () {
+      a = (a + 0x6D2B79F5) >>> 0;
+      let t = a;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
   async update(
     tenantId: string | undefined,
     surveyId: string,
@@ -203,7 +315,18 @@ export class SurveysService {
     if (dto.targetDepartments !== undefined) survey.targetDepartments = dto.targetDepartments;
     if (dto.startDate !== undefined) survey.startDate = new Date(dto.startDate);
     if (dto.endDate !== undefined) survey.endDate = new Date(dto.endDate);
-    if (dto.settings !== undefined) survey.settings = dto.settings;
+    // Sanitize tomando isAnonymous DESPUES de aplicar el dto: si el admin
+    // cambia isAnonymous y settings en la misma request, la coherencia se
+    // valida sobre el estado final. Si solo viene settings, usamos el
+    // isAnonymous actual de la entidad.
+    if (dto.settings !== undefined) {
+      survey.settings = this.sanitizeSettings(dto.settings, survey.isAnonymous);
+    } else if (dto.isAnonymous !== undefined && survey.settings) {
+      // Si solo cambia isAnonymous (no settings), re-sanitizamos los
+      // settings actuales para forzar allowPartialSave=false si quedo
+      // incompatible con el nuevo isAnonymous.
+      survey.settings = this.sanitizeSettings(survey.settings, survey.isAnonymous);
+    }
 
     // Wrap the survey save and question replace in a single transaction so
     // a crash between DELETE and INSERT of the new questions cannot leave the
@@ -411,6 +534,13 @@ export class SurveysService {
       department: user?.department ?? null,
     });
 
+    // T3 — el contador de respuestas debe incrementarse cuando el response
+    // pasa por primera vez a `isComplete=true`. Antes se incrementaba solo
+    // cuando `isNewResponse`, lo cual era correcto pre-T3 porque no habia
+    // saves parciales: ahora con allowPartialSave un response puede existir
+    // (parcial) ANTES del submit, por eso miramos la transicion.
+    const wasCompleteBefore = existing?.isComplete === true;
+
     response.answers = answers;
     response.isComplete = true;
     response.submittedAt = new Date();
@@ -424,8 +554,9 @@ export class SurveysService {
       await this.assignmentRepo.save(assignment);
     }
 
-    // Update response count only for new responses
-    if (isNewResponse) {
+    // Update response count: incrementar cuando es nuevo, o cuando un partial
+    // existente se convierte en completo (transicion isComplete false→true).
+    if (isNewResponse || !wasCompleteBefore) {
       await this.surveyRepo.increment({ id: surveyId, tenantId }, 'responseCount', 1);
     }
 
@@ -436,6 +567,95 @@ export class SurveysService {
     }).catch(() => {});
 
     return saved;
+  }
+
+  // ─── Partial save (T3) ────────────────────────────────────────────────
+
+  /**
+   * T3 — Guarda respuestas parciales server-side.
+   *
+   * Restricciones (defensivas en privacidad):
+   *   - encuesta debe estar `active`.
+   *   - encuesta NO debe ser anonima (sino respondentId tendria que
+   *     resolverse de alguna forma — out of scope T3, queda para T10
+   *     via localStorage).
+   *   - `settings.allowPartialSave` debe estar activo.
+   *   - el respondente debe tener una asignacion para esta encuesta
+   *     (cierra el bypass por POST directo).
+   *   - el respondente no debe haber completado ya la encuesta.
+   *
+   * No incrementa responseCount; eso ocurre solo al submit final.
+   * No completa la asignacion; sigue en `pending` hasta el submit.
+   */
+  async saveProgress(
+    tenantId: string,
+    surveyId: string,
+    userId: string,
+    answers: Array<{ questionId: string; value: number | string | string[] }>,
+  ): Promise<SurveyResponse> {
+    const survey = await this.surveyRepo.findOne({ where: { id: surveyId, tenantId } });
+    if (!survey) throw new NotFoundException('Encuesta no encontrada');
+    if (survey.status !== 'active') throw new BadRequestException('La encuesta no esta activa.');
+    if (survey.isAnonymous) {
+      throw new BadRequestException(
+        'No se puede guardar progreso server-side en encuestas anonimas. Tu progreso queda en el navegador.',
+      );
+    }
+    if (!survey.settings?.allowPartialSave) {
+      throw new BadRequestException('Esta encuesta no permite guardar progreso parcial.');
+    }
+
+    const assignment = await this.assignmentRepo.findOne({ where: { surveyId, userId, tenantId } });
+    if (!assignment) {
+      throw new ForbiddenException('No tienes una asignacion activa para esta encuesta.');
+    }
+    if (assignment.status === 'completed') {
+      throw new BadRequestException('Ya has completado esta encuesta.');
+    }
+
+    const user = await this.userRepo.findOne({ where: { id: userId, tenantId }, select: ['id', 'department'] });
+
+    let response = await this.responseRepo.findOne({
+      where: { surveyId, tenantId, respondentId: userId },
+    });
+    if (response?.isComplete) {
+      throw new BadRequestException('Ya has completado esta encuesta.');
+    }
+
+    if (!response) {
+      response = this.responseRepo.create({
+        surveyId,
+        tenantId,
+        respondentId: userId,
+        department: user?.department ?? null,
+      });
+    }
+    response.answers = answers;
+    response.isComplete = false;
+    response.submittedAt = null;
+    return this.responseRepo.save(response);
+  }
+
+  /**
+   * T3 — Devuelve la respuesta parcial del usuario para una encuesta si
+   * existe (y aun no esta completa). Solo aplica a encuestas no anonimas
+   * con allowPartialSave activo. Si no se cumple alguna condicion, retorna
+   * null sin lanzar — el frontend simplemente arranca con state vacio.
+   */
+  async getMyProgress(
+    tenantId: string,
+    surveyId: string,
+    userId: string,
+  ): Promise<{ answers: SurveyResponse['answers']; updatedAt: Date } | null> {
+    const survey = await this.surveyRepo.findOne({ where: { id: surveyId, tenantId } });
+    if (!survey) return null;
+    if (survey.isAnonymous || !survey.settings?.allowPartialSave) return null;
+
+    const response = await this.responseRepo.findOne({
+      where: { surveyId, tenantId, respondentId: userId, isComplete: false },
+    });
+    if (!response) return null;
+    return { answers: response.answers, updatedAt: response.updatedAt };
   }
 
   async getMyPendingSurveys(tenantId: string, userId: string): Promise<any[]> {

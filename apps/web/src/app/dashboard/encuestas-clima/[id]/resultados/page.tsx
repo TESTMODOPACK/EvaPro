@@ -319,7 +319,20 @@ export default function ResultadosEncuestaPage() {
                 <RadarChart data={radarData}>
                   <PolarGrid />
                   <PolarAngleAxis dataKey="category" tick={{ fontSize: 12 }} />
-                  <PolarRadiusAxis angle={30} domain={[0, 10]} tick={{ fontSize: 10 }} />
+                  {/* T3 — ticks visibles 0/2/4/6/8/10 con fill explicito.
+                      Sin tickCount + fill el axis se renderiza casi
+                      invisible y el lector no puede mapear el area a la
+                      escala (el copy menciona "<6" y "borde 10" pero los
+                      numeros nunca aparecen). */}
+                  <PolarRadiusAxis
+                    angle={30}
+                    domain={[0, 10]}
+                    tickCount={6}
+                    tick={{ fontSize: 10, fill: 'var(--text-muted)' }}
+                    axisLine={false}
+                    stroke="var(--text-muted)"
+                  />
+                  <Tooltip formatter={(v: any) => [`${v} / 10`, 'Promedio']} />
                   <Radar name="Promedio" dataKey="promedio" stroke="#C9933A" fill="#C9933A" fillOpacity={0.3} />
                 </RadarChart>
               </ResponsiveContainer>

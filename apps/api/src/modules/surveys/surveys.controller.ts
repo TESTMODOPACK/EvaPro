@@ -67,6 +67,16 @@ export class SurveysController {
     return this.surveysService.findById(req.user.tenantId, id);
   }
 
+  /** T3 — Vista de respuesta: aplica shuffle determinista de preguntas
+   *  dentro de cada categoria si la encuesta tiene `randomizeQuestions`.
+   *  No mutua datos; solo cambia el orden visual por respondente.
+   */
+  @Get(':id/respond-view')
+  @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
+  getRespondView(@Param('id', ParseUUIDPipe) id: string, @Request() req: any) {
+    return this.surveysService.findByIdForRespondent(req.user.tenantId, id, req.user.userId);
+  }
+
   /** Create a new survey.
    *
    * P2.4 — Cross-tenant defense: super_admin debe pasar dto.tenantId
@@ -128,6 +138,25 @@ export class SurveysController {
     @Body() dto: { answers: Array<{ questionId: string; value: number | string | string[] }> },
   ) {
     return this.surveysService.submitResponse(req.user.tenantId, id, req.user.userId, dto.answers);
+  }
+
+  /** T3 — Guardar progreso parcial (solo encuestas no anonimas con
+   *  settings.allowPartialSave activo). El servicio valida exhaustivamente. */
+  @Post(':id/save-progress')
+  @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
+  saveProgress(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+    @Body() dto: { answers: Array<{ questionId: string; value: number | string | string[] }> },
+  ) {
+    return this.surveysService.saveProgress(req.user.tenantId, id, req.user.userId, dto.answers);
+  }
+
+  /** T3 — Recuperar progreso parcial del usuario (si aplica). */
+  @Get(':id/my-progress')
+  @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
+  getMyProgress(@Param('id', ParseUUIDPipe) id: string, @Request() req: any) {
+    return this.surveysService.getMyProgress(req.user.tenantId, id, req.user.userId);
   }
 
   /** Export survey results in CSV, XLSX, or PDF format */

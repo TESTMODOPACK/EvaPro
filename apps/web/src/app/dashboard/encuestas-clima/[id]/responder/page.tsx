@@ -25,15 +25,35 @@ export default function ResponderEncuestaPage() {
   const [answers, setAnswers] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  // T3 — partial save server-side (solo encuestas no anonimas con
+  // settings.allowPartialSave). `partialSavedAt` muestra el timestamp
+  // del ultimo guardado para reforzar confianza visual.
+  const [savingPartial, setSavingPartial] = useState(false);
+  const [partialSavedAt, setPartialSavedAt] = useState<Date | null>(null);
 
   useEffect(() => {
     if (!token || !surveyId) return;
-    api.surveys.findById(token, surveyId)
-      .then((data) => {
+    // T3 — usar respond-view para que el backend aplique shuffle
+    // determinista de preguntas si settings.randomizeQuestions=true.
+    // El orden es estable por usuario (recargar no remezcla).
+    Promise.all([
+      api.surveys.getRespondView(token, surveyId),
+      // Hidratar respuestas previas si la encuesta tiene partial save
+      // habilitado. Devuelve null si no aplica/no existe; lo silenciamos.
+      api.surveys.getMyProgress(token, surveyId).catch(() => null),
+    ])
+      .then(([data, progress]) => {
         setSurvey(data);
-        // Initialize answers
         const init: Record<string, any> = {};
         (data.questions || []).forEach((q: any) => { init[q.id] = null; });
+        if (progress?.answers && Array.isArray(progress.answers)) {
+          for (const a of progress.answers) {
+            if (a && typeof a === 'object' && 'questionId' in a) {
+              init[a.questionId] = a.value;
+            }
+          }
+          if (progress.updatedAt) setPartialSavedAt(new Date(progress.updatedAt));
+        }
         setAnswers(init);
       })
       .catch((e) => toast(e.message || 'Error al cargar encuesta', 'error'))
@@ -42,6 +62,25 @@ export default function ResponderEncuestaPage() {
 
   const handleAnswer = (questionId: string, value: any) => {
     setAnswers((prev) => ({ ...prev, [questionId]: value }));
+  };
+
+  const canPartialSave = !!survey && !survey.isAnonymous && !!survey.settings?.allowPartialSave;
+
+  const handleSaveProgress = async () => {
+    if (!token || !surveyId || !canPartialSave) return;
+    setSavingPartial(true);
+    try {
+      const formattedAnswers = Object.entries(answers)
+        .filter(([, v]) => v !== null && v !== '' && v !== undefined)
+        .map(([questionId, value]) => ({ questionId, value }));
+      await api.surveys.saveProgress(token, surveyId, formattedAnswers);
+      setPartialSavedAt(new Date());
+      toast('Progreso guardado. Puedes continuar mas tarde desde donde quedaste.', 'success');
+    } catch (e: any) {
+      toast(e.message || 'Error al guardar progreso', 'error');
+    } finally {
+      setSavingPartial(false);
+    }
   };
 
   const totalQuestions = survey?.questions?.length || 0;
@@ -101,16 +140,18 @@ export default function ResponderEncuestaPage() {
         )}
       </div>
 
-      {/* Progress bar */}
-      <div style={{ background: 'var(--bg-card)', borderRadius: 8, padding: '0.75rem 1rem', border: '1px solid var(--border)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem', fontSize: '0.85rem' }}>
-          <span>Progreso</span>
-          <span style={{ fontWeight: 600 }}>{answeredCount}/{totalQuestions} ({progress}%)</span>
+      {/* Progress bar — T3: respetar settings.showProgressBar (default true) */}
+      {(survey.settings?.showProgressBar ?? true) && (
+        <div style={{ background: 'var(--bg-card)', borderRadius: 8, padding: '0.75rem 1rem', border: '1px solid var(--border)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem', fontSize: '0.85rem' }}>
+            <span>Progreso</span>
+            <span style={{ fontWeight: 600 }}>{answeredCount}/{totalQuestions} ({progress}%)</span>
+          </div>
+          <div style={{ height: 8, background: 'var(--border)', borderRadius: 4, overflow: 'hidden' }}>
+            <div style={{ height: '100%', width: `${progress}%`, background: 'var(--accent)', borderRadius: 4, transition: 'width 0.3s ease' }} />
+          </div>
         </div>
-        <div style={{ height: 8, background: 'var(--border)', borderRadius: 4, overflow: 'hidden' }}>
-          <div style={{ height: '100%', width: `${progress}%`, background: 'var(--accent)', borderRadius: 4, transition: 'width 0.3s ease' }} />
-        </div>
-      </div>
+      )}
 
       {/* Questions by category */}
       {Object.entries(categories).map(([cat, questions]) => (
@@ -233,14 +274,33 @@ export default function ResponderEncuestaPage() {
         </div>
       ))}
 
-      {/* Submit */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 0' }}>
+      {/* Submit + partial save (T3) */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 0', flexWrap: 'wrap', gap: '0.75rem' }}>
         <button className="btn-ghost" onClick={() => router.push('/dashboard/encuestas-clima')}>
           Cancelar
         </button>
-        <button className="btn-primary" onClick={handleSubmit} disabled={submitting}>
-          {submitting ? 'Enviando...' : 'Enviar Respuestas'}
-        </button>
+        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          {canPartialSave && (
+            <>
+              {partialSavedAt && (
+                <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                  Guardado a las {partialSavedAt.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              )}
+              <button
+                className="btn-ghost"
+                onClick={handleSaveProgress}
+                disabled={savingPartial || submitting || answeredCount === 0}
+                title="Guarda tu progreso para continuar mas tarde sin perder respuestas"
+              >
+                {savingPartial ? 'Guardando...' : 'Guardar progreso'}
+              </button>
+            </>
+          )}
+          <button className="btn-primary" onClick={handleSubmit} disabled={submitting || savingPartial}>
+            {submitting ? 'Enviando...' : 'Enviar Respuestas'}
+          </button>
+        </div>
       </div>
     </div>
   );

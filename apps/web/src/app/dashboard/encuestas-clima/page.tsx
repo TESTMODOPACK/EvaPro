@@ -79,6 +79,9 @@ function EncuestasClimaPageContent() {
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
   // Create form state
+  // T3 — `settings` controla flags del responder (barra progreso, shuffle,
+  // partial save server-side). Defaults conservadores: solo showProgressBar
+  // queda en true para no romper la UX existente.
   const [form, setForm] = useState({
     title: '',
     description: '',
@@ -87,6 +90,11 @@ function EncuestasClimaPageContent() {
     targetDepartments: [] as string[],
     startDate: new Date().toISOString().split('T')[0],
     endDate: new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0],
+    settings: {
+      showProgressBar: true,
+      randomizeQuestions: false,
+      allowPartialSave: false,
+    },
     questions: [] as any[],
   });
 
@@ -98,6 +106,65 @@ function EncuestasClimaPageContent() {
     api.development.competencies.list(token).then((data) => setCompetencies(Array.isArray(data) ? data : [])).catch(() => {});
   }, [token]);
 
+  /**
+   * T3 — Infiere la categoria de la encuesta de clima a partir del
+   * nombre de la competencia (y como fallback su categoria nativa).
+   *
+   * Bug previo: la plantilla hacia `category: comp.category || comp.name`,
+   * lo cual mete todas las preguntas en la categoria nativa de la
+   * competencia (Tecnica/Blanda/Gestion/Liderazgo). Como en muchos
+   * tenants el seed pone la mayoria en "Liderazgo", el 90% de las
+   * preguntas terminaba taggeadas como Liderazgo y el reporte por
+   * categoria perdia toda granularidad.
+   *
+   * Estrategia:
+   *   1. Intentar match por keywords del nombre de la competencia
+   *      contra el catalogo de categorias de la encuesta de clima.
+   *      Esto asume nombres en es-CL (acentos ignorados).
+   *   2. Si no hay match, traducir la categoria nativa (Tecnica→
+   *      Desarrollo, Blanda→Cultura, Gestion→Gestion, Liderazgo→
+   *      Liderazgo).
+   *   3. Si todo falla, usar el NOMBRE de la competencia como su
+   *      propia categoria. Asi nunca todo queda en un solo balde.
+   *
+   * El admin igual puede editar la categoria por pregunta en el form,
+   * esto solo mejora el default sugerido.
+   */
+  const inferSurveyClimateCategory = (comp: { name?: string; category?: string }): string => {
+    // U+0300..U+036F = Combining Diacritical Marks block; quitarlos tras
+    // NFD nos da string sin acentos para hacer matching robusto.
+    const stripAccents = (s: string) =>
+      (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+    const name = stripAccents(comp.name || '');
+    const cat = stripAccents(comp.category || '');
+
+    // Orden de keywords pensado para que las mas especificas ganen primero.
+    const KEYWORDS: Array<[string, RegExp]> = [
+      ['Comunicación', /\bcomunic|escucha|oratoria|feedback|asertiv|presenta/],
+      ['Bienestar', /bienestar|equilibrio|balance|estres|salud|autocuid|emocional/],
+      ['Compensación', /compensac|salario|remunerac|beneficio|reconocim/],
+      ['Equipo', /equipo|colaborac|cooperac|sinergi|trabajo en equipo/],
+      ['Liderazgo', /liderazgo|lider|coach|mentor|inspir|motivac/],
+      ['Gestión', /gestion|planific|organiz|delegac|resultados|estrateg|decision|prioriza/],
+      ['Desarrollo', /desarrollo|aprend|adapt|innovac|creativ|crecimiento|mejora|capacit/],
+      ['Cultura', /cultur|valor|etic|integr|diversidad|inclusion|respeto|confianza/],
+    ];
+    for (const [climateCat, rx] of KEYWORDS) {
+      if (rx.test(name)) return climateCat;
+    }
+
+    // Fallback 2: traducir la categoria nativa de la competencia.
+    if (cat.includes('liderazgo')) return 'Liderazgo';
+    if (cat.includes('gestion')) return 'Gestión';
+    if (cat.includes('tecnica')) return 'Desarrollo';
+    if (cat.includes('blanda')) return 'Cultura';
+
+    // Fallback 3: nombre de la competencia como su propia categoria.
+    // Garantiza diversidad y permite que el reporte por categoria sea
+    // util incluso con seeds raros.
+    return comp.name?.trim() || 'General';
+  };
+
   const generateTemplateQuestions = (level: 1 | 2 | 3) => {
     const questions: any[] = [];
     const qBanks = [
@@ -106,8 +173,9 @@ function EncuestasClimaPageContent() {
       (name: string) => `¿La organización fomenta activamente el desarrollo de ${name}?`,
     ];
     for (const comp of competencies) {
+      const climateCategory = inferSurveyClimateCategory(comp);
       for (let i = 0; i < level; i++) {
-        questions.push({ category: comp.category || comp.name, questionText: qBanks[i](comp.name), questionType: 'likert_5', isRequired: true });
+        questions.push({ category: climateCategory, questionText: qBanks[i](comp.name), questionType: 'likert_5', isRequired: true });
       }
     }
     // NPS
@@ -204,6 +272,7 @@ function EncuestasClimaPageContent() {
       title: '', description: '', isAnonymous: true, targetAudience: 'all',
       targetDepartments: [], startDate: new Date().toISOString().split('T')[0],
       endDate: new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0],
+      settings: { showProgressBar: true, randomizeQuestions: false, allowPartialSave: false },
       questions: [],
     });
   };
@@ -377,7 +446,22 @@ function EncuestasClimaPageContent() {
             </div>
             <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem' }}>
-                <input type="checkbox" checked={form.isAnonymous} onChange={(e) => setForm((f) => ({ ...f, isAnonymous: e.target.checked }))} />
+                <input
+                  type="checkbox"
+                  checked={form.isAnonymous}
+                  onChange={(e) => setForm((f) => {
+                    const next = e.target.checked;
+                    // T3 — al activar anonima, allowPartialSave debe quedar
+                    // en false (no se puede asociar progreso parcial a un
+                    // userId sin romper anonimato). Backend tambien lo
+                    // fuerza, esto es solo para UX consistente.
+                    return {
+                      ...f,
+                      isAnonymous: next,
+                      settings: next ? { ...f.settings, allowPartialSave: false } : f.settings,
+                    };
+                  })}
+                />
                 {t('surveys.anonymousResponses')}
               </label>
               <div>
@@ -386,6 +470,44 @@ function EncuestasClimaPageContent() {
                   <option value="all">{t('surveys.audienceAll')}</option>
                   <option value="by_department">{t('surveys.audienceByDept')}</option>
                 </select>
+              </div>
+            </div>
+            {/* T3 — Configuracion del responder */}
+            <div style={{ padding: '0.75rem 1rem', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--bg-card)' }}>
+              <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Configuracion del responder
+              </div>
+              <div style={{ display: 'flex', gap: '1.25rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem' }} title="Muestra una barra de progreso al respondente. Util en encuestas largas; puedes ocultarla en encuestas muy cortas para no presionar.">
+                  <input
+                    type="checkbox"
+                    checked={form.settings.showProgressBar}
+                    onChange={(e) => setForm((f) => ({ ...f, settings: { ...f.settings, showProgressBar: e.target.checked } }))}
+                  />
+                  Mostrar barra de progreso
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem' }} title="Aleatoriza las preguntas dentro de cada categoria por respondente (orden estable por usuario). Reduce sesgo de orden.">
+                  <input
+                    type="checkbox"
+                    checked={form.settings.randomizeQuestions}
+                    onChange={(e) => setForm((f) => ({ ...f, settings: { ...f.settings, randomizeQuestions: e.target.checked } }))}
+                  />
+                  Aleatorizar preguntas
+                </label>
+                <label
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', opacity: form.isAnonymous ? 0.5 : 1 }}
+                  title={form.isAnonymous
+                    ? 'Solo disponible en encuestas no anonimas (en anonimas el progreso vive en el navegador del respondente).'
+                    : 'Permite al respondente guardar y continuar mas tarde sin perder respuestas.'}
+                >
+                  <input
+                    type="checkbox"
+                    checked={form.settings.allowPartialSave}
+                    disabled={form.isAnonymous}
+                    onChange={(e) => setForm((f) => ({ ...f, settings: { ...f.settings, allowPartialSave: e.target.checked } }))}
+                  />
+                  Permitir guardar progreso
+                </label>
               </div>
             </div>
             {form.targetAudience === 'by_department' && (
