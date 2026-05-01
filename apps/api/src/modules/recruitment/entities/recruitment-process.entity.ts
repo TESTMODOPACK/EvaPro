@@ -129,6 +129,25 @@ export class RecruitmentProcess {
    * tener un audit trail formal — `hire_data` es la copia "lo que
    * dijo el admin", `user_movements` es la verdad operativa.
    */
+  /**
+   * S7.1 — Job board publico. Si esta seteado, el proceso es accesible
+   * via URL publica `/jobs/<tenant_slug>/<public_slug>` SIN autenticacion.
+   *
+   * Restricciones:
+   *   - Solo aplica a `processType=external` y `status=active` (la query
+   *     publica filtra por ambos).
+   *   - Unico por tenant_id (idx_rp_tenant_pubslug parcial). Dos procesos
+   *     del mismo tenant no pueden compartir slug. Distintos tenants si
+   *     pueden — la URL los desambigua via tenant_slug.
+   *   - El admin opta-in seteando este campo desde el detalle del proceso
+   *     ("Hacer publico"). null = no publico (default).
+   *   - Pattern: lowercase letras/numeros/guiones, 3-60 chars (validado
+   *     en el service al setear).
+   */
+  @Column({ type: 'varchar', length: 60, name: 'public_slug', nullable: true })
+  @Index('idx_rp_tenant_pubslug', ['tenantId', 'publicSlug'], { unique: true, where: 'public_slug IS NOT NULL' })
+  publicSlug: string | null;
+
   @Column({ type: 'jsonb', name: 'hire_data', nullable: true })
   hireData: {
     effectiveDate: string; // ISO date YYYY-MM-DD

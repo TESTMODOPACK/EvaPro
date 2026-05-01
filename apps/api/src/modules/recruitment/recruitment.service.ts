@@ -11,6 +11,9 @@ import { RecruitmentProcess, ProcessStatus } from './entities/recruitment-proces
 import { RecruitmentCandidate, CandidateStage } from './entities/recruitment-candidate.entity';
 import { RecruitmentEvaluator } from './entities/recruitment-evaluator.entity';
 import { RecruitmentInterview } from './entities/recruitment-interview.entity';
+import { RecruitmentCandidateStageHistory } from './entities/recruitment-candidate-stage-history.entity';
+import { RecruitmentInterviewSlot, InterviewSlotStatus } from './entities/recruitment-interview-slot.entity';
+import { buildIcs } from './utils/ics-generator';
 import { User } from '../users/entities/user.entity';
 import { UserMovement, MovementType } from '../users/entities/user-movement.entity';
 import { EvaluationAssignment } from '../evaluations/entities/evaluation-assignment.entity';
@@ -26,6 +29,8 @@ import { TenantCronRunner } from '../../common/rls/tenant-cron-runner';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationType } from '../notifications/entities/notification.entity';
 import { AuditLog } from '../audit/entities/audit-log.entity';
+import { EmailService } from '../notifications/email.service';
+import { Tenant } from '../tenants/entities/tenant.entity';
 
 @Injectable()
 export class RecruitmentService {
@@ -36,6 +41,12 @@ export class RecruitmentService {
     @InjectRepository(RecruitmentCandidate) private readonly candidateRepo: Repository<RecruitmentCandidate>,
     @InjectRepository(RecruitmentEvaluator) private readonly evaluatorRepo: Repository<RecruitmentEvaluator>,
     @InjectRepository(RecruitmentInterview) private readonly interviewRepo: Repository<RecruitmentInterview>,
+    // S6.1 — historial de transiciones de stage para metricas.
+    @InjectRepository(RecruitmentCandidateStageHistory)
+    private readonly stageHistoryRepo: Repository<RecruitmentCandidateStageHistory>,
+    // S7.2 — slots de entrevistas agendadas.
+    @InjectRepository(RecruitmentInterviewSlot)
+    private readonly interviewSlotRepo: Repository<RecruitmentInterviewSlot>,
     @InjectRepository(User) private readonly userRepo: Repository<User>,
     @InjectRepository(EvaluationAssignment) private readonly evalAssignmentRepo: Repository<EvaluationAssignment>,
     @InjectRepository(EvaluationResponse) private readonly evalResponseRepo: Repository<EvaluationResponse>,
@@ -60,6 +71,10 @@ export class RecruitmentService {
     // S4.3 — para notificar tenant_admins de procesos legacy con
     // posibles cascadas pendientes (pre-S1).
     private readonly notificationsService: NotificationsService,
+    // S5.1 — para enviar email de bienvenida al ganador externo
+    // tras el hire (con tempPassword + URL de login).
+    private readonly emailService: EmailService,
+    @InjectRepository(Tenant) private readonly tenantRepo: Repository<Tenant>,
   ) {}
 
   // ─── Date & status validators (v3.1 — date flow rules) ──────────────────
@@ -891,6 +906,120 @@ export class RecruitmentService {
     );
   }
 
+  /**
+   * S6.1 — Backfill de stage_history desde audit_logs para candidatos
+   * legacy (creados antes de S6.1).
+   *
+   * Estrategia:
+   *   1. Encuentra candidatos cuyo set de filas en
+   *      recruitment_candidate_stage_history este vacio.
+   *   2. Para cada uno, lee audit_logs.recruitment.candidate_stage_changed
+   *      ordenado por created_at (cronologico) y reconstruye el historial.
+   *   3. Tambien inserta la transicion inicial null → registered usando
+   *      el `created_at` del candidato (mejor aproximacion al momento
+   *      del create).
+   *
+   * Idempotente: si un candidato ya tiene >=1 fila, se skipea. Esto
+   * evita doble-backfill si el cron corre 2x.
+   *
+   * Corre diario a las 04:00 UTC. Despues de la primera corrida que
+   * limpia el backlog, las corridas siguientes son no-op excepto si se
+   * agregan candidatos directo en BD (caso raro pero posible en
+   * imports masivos).
+   *
+   * Limitado a 100 candidatos por corrida para no consumir recursos en
+   * tenants con miles de candidatos legacy. Eventualmente todos se
+   * cubren en N dias.
+   */
+  @Cron('0 04 * * *')
+  async backfillStageHistoryFromAudit(): Promise<void> {
+    await runWithCronLock(
+      'recruitment.backfillStageHistoryFromAudit',
+      this.dataSource,
+      this.logger,
+      async () => {
+        await this.tenantCronRunner.runForEachTenant(
+          'recruitment.backfillStageHistoryFromAudit',
+          async (tenantId) => {
+            // Identificar candidatos sin history.
+            const candidatesWithoutHistory = await this.dataSource.query(
+              `SELECT c.id, c.stage, c.created_at, c.tenant_id
+               FROM recruitment_candidates c
+               WHERE c.tenant_id = $1
+                 AND NOT EXISTS (
+                   SELECT 1 FROM recruitment_candidate_stage_history h
+                   WHERE h.candidate_id = c.id
+                 )
+               ORDER BY c.created_at ASC
+               LIMIT 100`,
+              [tenantId],
+            );
+
+            if (candidatesWithoutHistory.length === 0) return;
+
+            const auditRepo = this.dataSource.getRepository(AuditLog);
+            for (const cand of candidatesWithoutHistory) {
+              try {
+                // 1. Stage inicial (null → registered) usando candidate.created_at.
+                // Asumimos que el primer stage al crear era 'registered' (default
+                // del enum en el momento de la insercion). Si el candidato ya
+                // estaba en otro stage al ser creado (caso raro), igual la
+                // primer fila representa el momento del create — el stage
+                // verdadero queda capturado en las filas siguientes derivadas
+                // del audit log.
+                await this.stageHistoryRepo.save(
+                  this.stageHistoryRepo.create({
+                    candidateId: cand.id,
+                    tenantId: cand.tenant_id,
+                    fromStage: null,
+                    toStage: 'registered',
+                    changedAt: cand.created_at,
+                    changedBy: null,
+                    source: 'backfill',
+                  }),
+                );
+
+                // 2. Para cada audit log de candidate_stage_changed, insertar
+                //    una fila reconstruida.
+                const audits = await auditRepo.find({
+                  where: {
+                    tenantId,
+                    action: 'recruitment.candidate_stage_changed',
+                    entityType: 'recruitment_candidate',
+                    entityId: cand.id,
+                  },
+                  order: { createdAt: 'ASC' },
+                });
+                if (audits.length > 0) {
+                  const rows = audits.map((a) =>
+                    this.stageHistoryRepo.create({
+                      candidateId: cand.id,
+                      tenantId: cand.tenant_id,
+                      fromStage: (a.metadata as any)?.from ?? null,
+                      toStage: (a.metadata as any)?.to ?? cand.stage,
+                      changedAt: a.createdAt,
+                      changedBy: a.userId ?? null,
+                      source: 'backfill',
+                    }),
+                  );
+                  await this.stageHistoryRepo.save(rows);
+                }
+              } catch (e: any) {
+                this.logger.warn(
+                  `[backfillStageHistoryFromAudit] candidato ${cand.id} fallo: ${e?.message ?? e}`,
+                );
+              }
+            }
+
+            this.logger.log(
+              `[backfillStageHistoryFromAudit] tenant=${tenantId.slice(0, 8)} backfill: ${candidatesWithoutHistory.length} candidatos`,
+            );
+          },
+        );
+      },
+    );
+  }
+
   // ─── Candidates ───────────────────────────────────────────────────────
 
   async addExternalCandidate(
@@ -930,6 +1059,15 @@ export class RecruitmentService {
         firstName: saved.firstName, lastName: saved.lastName, email: saved.email,
       })
       .catch(() => {});
+    // S6.1 — registro de stage inicial.
+    await this.recordStageTransition({
+      candidateId: saved.id,
+      tenantId: effectiveTenantId,
+      fromStage: null,
+      toStage: saved.stage,
+      changedBy: callerUserId ?? null,
+      source: 'candidate_created',
+    });
     return saved;
   }
 
@@ -967,6 +1105,15 @@ export class RecruitmentService {
         userId, firstName: user.firstName, lastName: user.lastName,
       })
       .catch(() => {});
+    // S6.1 — registro de stage inicial.
+    await this.recordStageTransition({
+      candidateId: saved.id,
+      tenantId: effectiveTenantId,
+      fromStage: null,
+      toStage: saved.stage,
+      changedBy: callerUserId ?? null,
+      source: 'candidate_created',
+    });
     return saved;
   }
 
@@ -1045,6 +1192,15 @@ export class RecruitmentService {
           processId: candidate.processId,
         })
         .catch(() => {});
+      // S6.1 — historial de transicion.
+      await this.recordStageTransition({
+        candidateId: saved.id,
+        tenantId: candidate.tenantId,
+        fromStage: previousStage,
+        toStage: saved.stage,
+        changedBy: callerUserId ?? null,
+        source: 'manual',
+      });
     }
     return saved;
   }
@@ -1123,13 +1279,29 @@ export class RecruitmentService {
       // 2. Restaurar otros candidatos a su estado previo (de
       //    previousCandidateStages). Si no hay snapshot, fallback al
       //    comportamiento anterior: NOT_HIRED → APPROVED.
+      const stageHistoryRepoTx = manager.getRepository(RecruitmentCandidateStageHistory);
+      // Acumulamos rows de historial para insertarlas en bulk al final.
+      const revertHistoryRows: RecruitmentCandidateStageHistory[] = [];
+      // Winner: HIRED → winnerPrevStage (siempre cambia, salvo edge case
+      // donde winnerPrevStage === HIRED — no posible porque previo al hire
+      // era hireable).
+      revertHistoryRows.push(
+        stageHistoryRepoTx.create({
+          candidateId,
+          tenantId,
+          fromStage: CandidateStage.HIRED,
+          toStage: winnerPrevStage,
+          changedBy: callerUserId,
+          source: 'revert_hire',
+        }),
+      );
       if (previousCandidateStages && Object.keys(previousCandidateStages).length > 0) {
         // Para cada otro candidato con snapshot, restaurarlo a su stage
         // previo SOLO si esta actualmente en NOT_HIRED (no pisar cambios
         // posteriores al hire que pudieran existir).
         for (const [cid, prevStage] of Object.entries(previousCandidateStages)) {
           if (cid === candidateId) continue; // ya manejado arriba
-          await candRepo
+          const r = await candRepo
             .createQueryBuilder()
             .update(RecruitmentCandidate)
             .set({ stage: prevStage as CandidateStage })
@@ -1137,10 +1309,23 @@ export class RecruitmentService {
             .andWhere('tenant_id = :tid', { tid: tenantId })
             .andWhere('stage = :nh', { nh: CandidateStage.NOT_HIRED })
             .execute();
+          // Solo registramos history si efectivamente se actualizo (affected>0).
+          if ((r.affected ?? 0) > 0) {
+            revertHistoryRows.push(
+              stageHistoryRepoTx.create({
+                candidateId: cid,
+                tenantId,
+                fromStage: CandidateStage.NOT_HIRED,
+                toStage: prevStage,
+                changedBy: callerUserId,
+                source: 'revert_hire',
+              }),
+            );
+          }
         }
       } else {
         // Backward compat: hires viejos sin snapshot → fallback a APPROVED
-        await candRepo
+        const fallbackResult = await candRepo
           .createQueryBuilder()
           .update(RecruitmentCandidate)
           .set({ stage: CandidateStage.APPROVED })
@@ -1148,6 +1333,18 @@ export class RecruitmentService {
           .andWhere('tenant_id = :tid', { tid: tenantId })
           .andWhere('stage = :nh', { nh: CandidateStage.NOT_HIRED })
           .execute();
+        if ((fallbackResult.affected ?? 0) > 0) {
+          // No tenemos los IDs en bulk update — para audit basta saber
+          // que pasaron N candidatos a APPROVED via revert. Detallamos
+          // a nivel candidato solo cuando hay snapshot. Esto es legacy
+          // path por diseño.
+          this.logger.log(
+            `[revertHire] backfill legacy: ${fallbackResult.affected} candidatos NOT_HIRED → APPROVED (sin history individual por falta de snapshot)`,
+          );
+        }
+      }
+      if (revertHistoryRows.length > 0) {
+        await stageHistoryRepoTx.save(revertHistoryRows);
       }
 
       // 3. ROLLBACK CASCADA AL USER (solo internos con previousUserState).
@@ -1261,6 +1458,46 @@ export class RecruitmentService {
       result += chars.charAt(Math.floor(Math.random() * chars.length));
     }
     return result;
+  }
+
+  /**
+   * S6.1 — Helper para registrar una transicion de stage en el historial.
+   *
+   * Acepta opcionalmente un EntityManager (para correr dentro de una
+   * transaccion existente, como en hireCandidate). Si no se pasa, usa
+   * el repo inyectado (autocommit).
+   *
+   * No lanza nunca: el historial es side-effect informativo, un fallo no
+   * debe romper la transicion principal del candidato.
+   */
+  private async recordStageTransition(opts: {
+    candidateId: string;
+    tenantId: string;
+    fromStage: string | null;
+    toStage: string;
+    changedBy?: string | null;
+    source?: string;
+    manager?: import('typeorm').EntityManager;
+  }): Promise<void> {
+    try {
+      const repo = opts.manager
+        ? opts.manager.getRepository(RecruitmentCandidateStageHistory)
+        : this.stageHistoryRepo;
+      await repo.save(
+        repo.create({
+          candidateId: opts.candidateId,
+          tenantId: opts.tenantId,
+          fromStage: opts.fromStage,
+          toStage: opts.toStage,
+          changedBy: opts.changedBy ?? null,
+          source: opts.source ?? 'manual',
+        }),
+      );
+    } catch (e: any) {
+      this.logger.warn(
+        `[recordStageTransition] no se pudo registrar transicion ${opts.fromStage} → ${opts.toStage} para candidato ${opts.candidateId}: ${e?.message ?? e}`,
+      );
+    }
   }
 
   /**
@@ -1382,6 +1619,7 @@ export class RecruitmentService {
     candidate: RecruitmentCandidate;
     userId: string;
     tempPassword: string | null;
+    emailSent: boolean;
   }> {
     const hireData = this.validateHireDto(rawDto);
 
@@ -1629,6 +1867,41 @@ export class RecruitmentService {
         })
         .execute();
 
+      // S6.1 — historial de transiciones del hire (winner + losers).
+      // Usamos los snapshots de previousCandidateStages para los losers.
+      const stageHistoryRepoTx = manager.getRepository(RecruitmentCandidateStageHistory);
+      const winnerPrevStage = previousCandidateStages[candidateId] ?? candidate.stage;
+      await stageHistoryRepoTx.save(
+        stageHistoryRepoTx.create({
+          candidateId,
+          tenantId,
+          fromStage: winnerPrevStage,
+          toStage: CandidateStage.HIRED,
+          changedBy: callerUserId,
+          source: 'hire',
+        }),
+      );
+      const losersHistoryRows = Object.entries(previousCandidateStages)
+        .filter(([cid, prev]) =>
+          cid !== candidateId &&
+          prev !== CandidateStage.REJECTED &&
+          prev !== CandidateStage.HIRED &&
+          prev !== CandidateStage.NOT_HIRED,
+        )
+        .map(([cid, prev]) =>
+          stageHistoryRepoTx.create({
+            candidateId: cid,
+            tenantId,
+            fromStage: prev,
+            toStage: CandidateStage.NOT_HIRED,
+            changedBy: callerUserId,
+            source: 'hire',
+          }),
+        );
+      if (losersHistoryRows.length > 0) {
+        await stageHistoryRepoTx.save(losersHistoryRows);
+      }
+
       // S4.2 — Archivar CVs del proceso (compliance Chile 24m). Mismo
       // flow que el cierre via updateProcess: cv_url → cv_url_archived,
       // cv_archived_at = NOW(), cv_url = NULL. Hire transiciona a
@@ -1755,6 +2028,54 @@ export class RecruitmentService {
       this.usersService.emitTransferredEvent(pendingTransferEvent);
     }
 
+    // S5.1 — Email de bienvenida al ganador externo (post-commit).
+    // Solo para externos — internos ya tienen cuenta y conocen la
+    // plataforma; ademas, el listener de `user.transferred` ya dispara
+    // notificaciones internas para ellos.
+    //
+    // Diseño:
+    //   - Sincrono (await) para que la respuesta incluya emailSent
+    //     true/false. El admin sabe inmediatamente si necesita copiar
+    //     y enviar el password manualmente.
+    //   - try/catch agresivo: cualquier fallo de email NO debe romper
+    //     el hire (que ya commiteo). El password queda en la response
+    //     como fallback.
+    //   - Audit log captura outcome (recruitment.hire_email_sent o
+    //     recruitment.hire_email_failed) con metadata para soporte.
+    let emailSent = false;
+    if (!isInternal && tempPassword && candidate.email) {
+      try {
+        const tenantRow = await this.tenantRepo.findOne({
+          where: { id: tenantId },
+          select: ['id', 'name'],
+        });
+        await this.emailService.sendInvitation(candidate.email, {
+          firstName: candidate.firstName ?? candidate.email.split('@')[0],
+          orgName: tenantRow?.name ?? 'Eva360',
+          tempPassword,
+          tenantId,
+        });
+        emailSent = true;
+        await this.auditService
+          .log(tenantId, callerUserId, 'recruitment.hire_email_sent', 'recruitment_candidate', candidateId, {
+            email: candidate.email,
+            processId,
+          })
+          .catch(() => undefined);
+      } catch (e: any) {
+        this.logger.warn(
+          `[hireCandidate] email a ${candidate.email} fallo: ${e?.message ?? e}`,
+        );
+        await this.auditService
+          .log(tenantId, callerUserId, 'recruitment.hire_email_failed', 'recruitment_candidate', candidateId, {
+            email: candidate.email,
+            processId,
+            error: String(e?.message ?? e).slice(0, 200),
+          })
+          .catch(() => undefined);
+      }
+    }
+
     // 8. Reload entidades actualizadas.
     const updatedProcess = await this.processRepo.findOne({ where: { id: processId, tenantId } });
     const updatedCandidate = await this.candidateRepo.findOne({ where: { id: candidateId, tenantId } });
@@ -1764,6 +2085,1053 @@ export class RecruitmentService {
       candidate: updatedCandidate!,
       userId: resultUserId,
       tempPassword, // null para internos, password unico para externos
+      emailSent, // S5.1: true si email se envio; false si fallo o no aplica (interno)
+    };
+  }
+
+  /**
+   * S5.1 — Reenviar email de bienvenida a candidato externo contratado.
+   *
+   * Casos de uso:
+   *   - El email original fallo (mostrado en modal post-hire).
+   *   - El candidato no recibio el email (spam, typo en email del User
+   *     creado, etc.) y el admin actualizo el email manualmente.
+   *
+   * Genera SIEMPRE un nuevo `tempPassword` y rota el password del User:
+   * el password viejo deja de ser valido. Esto evita compromiso si el
+   * password original quedo expuesto en historial de WhatsApp/SMS, y
+   * ademas garantiza idempotencia (cada resend == nueva credencial).
+   *
+   * Solo aplica a candidatos:
+   *   - candidateType === 'external'
+   *   - stage === 'hired'
+   *   - linkedUserId existe (la cuenta fue creada en el hire)
+   *
+   * Audit log `recruitment.welcome_email_resent` o `_resend_failed`.
+   *
+   * No retorna el tempPassword en la respuesta — solo emailSent. El
+   * password viaja unicamente por email; el admin no debe verlo en el
+   * resend para reducir superficie de exposicion.
+   */
+  async resendWelcomeEmail(
+    tenantId: string,
+    candidateId: string,
+    callerUserId: string,
+  ): Promise<{ emailSent: boolean }> {
+    const candidate = await this.candidateRepo.findOne({ where: { id: candidateId, tenantId } });
+    if (!candidate) throw new NotFoundException('Candidato no encontrado');
+    if (candidate.candidateType !== 'external') {
+      throw new BadRequestException(
+        'Reenvio de email de bienvenida solo aplica a candidatos externos. Internos ya tienen cuenta activa.',
+      );
+    }
+    if (candidate.stage !== CandidateStage.HIRED) {
+      throw new BadRequestException(
+        `El candidato debe estar contratado (hired) para reenviar el email. Estado actual: ${candidate.stage}.`,
+      );
+    }
+    if (!candidate.email) {
+      throw new BadRequestException('El candidato no tiene email registrado.');
+    }
+
+    // Buscar el User creado al hire (match por email + tenant).
+    const user = await this.userRepo.findOne({
+      where: { tenantId, email: candidate.email },
+      select: ['id', 'firstName', 'email'],
+    });
+    if (!user) {
+      throw new NotFoundException(
+        'No se encontro la cuenta del candidato. Si el hire fue pre-S1, debe gestionarse manualmente.',
+      );
+    }
+
+    const newPassword = this.generateTempPassword();
+    const newHash = await bcrypt.hash(newPassword, 12);
+
+    // Rotacion atomica: actualizar password + forzar cambio en primer
+    // login. Si el email falla despues, el password viejo ya no vale —
+    // pero el admin puede reintentar el resend (rota de nuevo).
+    await this.userRepo.update(
+      { id: user.id, tenantId },
+      {
+        passwordHash: newHash,
+        mustChangePassword: true,
+      } as any,
+    );
+
+    let emailSent = false;
+    try {
+      const tenantRow = await this.tenantRepo.findOne({
+        where: { id: tenantId },
+        select: ['id', 'name'],
+      });
+      await this.emailService.sendInvitation(candidate.email, {
+        firstName: user.firstName ?? candidate.firstName ?? candidate.email.split('@')[0],
+        orgName: tenantRow?.name ?? 'Eva360',
+        tempPassword: newPassword,
+        tenantId,
+      });
+      emailSent = true;
+      await this.auditService
+        .log(tenantId, callerUserId, 'recruitment.welcome_email_resent', 'recruitment_candidate', candidateId, {
+          email: candidate.email,
+          processId: candidate.processId,
+        })
+        .catch(() => undefined);
+    } catch (e: any) {
+      this.logger.warn(
+        `[resendWelcomeEmail] email a ${candidate.email} fallo: ${e?.message ?? e}`,
+      );
+      await this.auditService
+        .log(tenantId, callerUserId, 'recruitment.welcome_email_resend_failed', 'recruitment_candidate', candidateId, {
+          email: candidate.email,
+          processId: candidate.processId,
+          error: String(e?.message ?? e).slice(0, 200),
+        })
+        .catch(() => undefined);
+      // El password ya rolo. Lanzamos para que el frontend muestre error
+      // — pero la cuenta queda con password nuevo, asi que un retry del
+      // admin no falla por inconsistencia.
+      throw new BadRequestException(
+        'No se pudo enviar el email. La cuenta queda con un password temporal nuevo. Intente nuevamente o contacte soporte.',
+      );
+    }
+    return { emailSent };
+  }
+
+  /**
+   * S7.2 — Agendar entrevista entre candidato y evaluador.
+   *
+   * Crea un RecruitmentInterviewSlot y dispara emails con .ics adjunto
+   * a candidato (si tiene email) y evaluador. Diseño:
+   *
+   *   - Sincrono respecto al BD: la respuesta se devuelve solo cuando
+   *     el slot esta persistido. El email se intenta tambien sincrono
+   *     pero fallos quedan logueados sin abortar la creacion del slot.
+   *   - UID del .ics es slot.id para que reagendar (cambiar scheduledAt)
+   *     emita REQUEST con mismo UID y los clientes actualicen el evento.
+   *   - Cancelar emite METHOD:CANCEL con mismo UID — los clientes borran
+   *     el evento.
+   *
+   * Reglas:
+   *   - Solo admin (tenant_admin) — validado en controller.
+   *   - Candidato debe pertenecer al tenant.
+   *   - Evaluator debe ser User activo del tenant.
+   *   - scheduledAt debe ser futuro.
+   *   - durationMinutes 15 - 240 (rango razonable).
+   */
+  async scheduleInterview(
+    tenantId: string,
+    candidateId: string,
+    dto: {
+      evaluatorId: string;
+      scheduledAt: string; // ISO datetime
+      durationMinutes?: number;
+      meetingUrl?: string;
+      adminNotes?: string;
+    },
+    callerUserId: string,
+  ): Promise<RecruitmentInterviewSlot> {
+    if (!dto.evaluatorId || !dto.scheduledAt) {
+      throw new BadRequestException('evaluatorId y scheduledAt son obligatorios.');
+    }
+    const scheduledAt = new Date(dto.scheduledAt);
+    if (isNaN(scheduledAt.getTime())) {
+      throw new BadRequestException('scheduledAt invalido (formato ISO requerido).');
+    }
+    if (scheduledAt.getTime() <= Date.now()) {
+      throw new BadRequestException('La fecha de la entrevista debe ser futura.');
+    }
+    const durationMinutes = dto.durationMinutes ?? 60;
+    if (durationMinutes < 15 || durationMinutes > 240) {
+      throw new BadRequestException('Duracion debe estar entre 15 y 240 minutos.');
+    }
+
+    const candidate = await this.candidateRepo.findOne({ where: { id: candidateId, tenantId } });
+    if (!candidate) throw new NotFoundException('Candidato no encontrado.');
+
+    const evaluator = await this.userRepo.findOne({
+      where: { id: dto.evaluatorId, tenantId, isActive: true },
+      select: ['id', 'firstName', 'lastName', 'email'],
+    });
+    if (!evaluator) throw new NotFoundException('Evaluador no encontrado o inactivo.');
+
+    const slot = this.interviewSlotRepo.create({
+      tenantId,
+      candidateId,
+      evaluatorId: dto.evaluatorId,
+      scheduledAt,
+      durationMinutes,
+      meetingUrl: dto.meetingUrl?.trim() || null,
+      adminNotes: dto.adminNotes?.trim() || null,
+      createdBy: callerUserId,
+      status: InterviewSlotStatus.SCHEDULED,
+    });
+    const saved = await this.interviewSlotRepo.save(slot);
+
+    // Audit
+    this.auditService
+      .log(tenantId, callerUserId, 'recruitment.interview_scheduled', 'recruitment_interview_slot', saved.id, {
+        candidateId,
+        evaluatorId: dto.evaluatorId,
+        scheduledAt: scheduledAt.toISOString(),
+        durationMinutes,
+      })
+      .catch(() => undefined);
+
+    // Enviar emails con .ics. NO bloqueamos la respuesta si falla.
+    this.sendInterviewIcs(saved, candidate, evaluator, 'CONFIRMED').catch((e: any) => {
+      this.logger.warn(`[scheduleInterview] envio .ics fallo para slot ${saved.id}: ${e?.message ?? e}`);
+    });
+
+    return saved;
+  }
+
+  /**
+   * S7.2 — Cancelar slot. Emite .ics METHOD:CANCEL para que los clientes
+   * de calendario borren el evento.
+   */
+  async cancelInterviewSlot(
+    tenantId: string,
+    slotId: string,
+    cancelReason: string | null,
+    callerUserId: string,
+  ): Promise<RecruitmentInterviewSlot> {
+    const slot = await this.interviewSlotRepo.findOne({ where: { id: slotId, tenantId } });
+    if (!slot) throw new NotFoundException('Slot no encontrado.');
+    if (slot.status === InterviewSlotStatus.CANCELLED) {
+      throw new BadRequestException('Slot ya esta cancelado.');
+    }
+    if (slot.status === InterviewSlotStatus.COMPLETED) {
+      throw new BadRequestException('No se puede cancelar un slot ya completado.');
+    }
+    slot.status = InterviewSlotStatus.CANCELLED;
+    slot.cancelReason = cancelReason?.trim() || null;
+    const saved = await this.interviewSlotRepo.save(slot);
+
+    this.auditService
+      .log(tenantId, callerUserId, 'recruitment.interview_cancelled', 'recruitment_interview_slot', slotId, {
+        candidateId: slot.candidateId,
+        evaluatorId: slot.evaluatorId,
+        scheduledAt: slot.scheduledAt.toISOString(),
+        reason: cancelReason ?? null,
+      })
+      .catch(() => undefined);
+
+    // Cancellation email + .ics CANCEL.
+    const candidate = await this.candidateRepo.findOne({ where: { id: slot.candidateId, tenantId } });
+    const evaluator = await this.userRepo.findOne({
+      where: { id: slot.evaluatorId, tenantId },
+      select: ['id', 'firstName', 'lastName', 'email'],
+    });
+    if (candidate && evaluator) {
+      this.sendInterviewIcs(saved, candidate, evaluator, 'CANCELLED').catch((e: any) => {
+        this.logger.warn(`[cancelInterviewSlot] envio cancel .ics fallo: ${e?.message ?? e}`);
+      });
+    }
+
+    return saved;
+  }
+
+  /**
+   * S7.2 — Listar slots proximos del candidato (admin/manager view).
+   */
+  async listUpcomingSlots(
+    tenantId: string,
+    candidateId: string,
+  ): Promise<RecruitmentInterviewSlot[]> {
+    return this.interviewSlotRepo
+      .createQueryBuilder('s')
+      .where('s.tenantId = :tid', { tid: tenantId })
+      .andWhere('s.candidateId = :cid', { cid: candidateId })
+      .andWhere('s.status != :cancelled', { cancelled: InterviewSlotStatus.CANCELLED })
+      .andWhere('s.scheduledAt >= :now', { now: new Date() })
+      .orderBy('s.scheduledAt', 'ASC')
+      .getMany();
+  }
+
+  /**
+   * S7.2 — Helper privado: envia el .ics a candidato + evaluator.
+   * action='CONFIRMED' al agendar, 'CANCELLED' al cancelar.
+   */
+  private async sendInterviewIcs(
+    slot: RecruitmentInterviewSlot,
+    candidate: RecruitmentCandidate,
+    evaluator: { firstName: string; lastName: string; email: string },
+    action: 'CONFIRMED' | 'CANCELLED',
+  ): Promise<void> {
+    const tenantRow = await this.tenantRepo.findOne({ where: { id: slot.tenantId }, select: ['name'] });
+    const orgName = tenantRow?.name ?? 'Eva360';
+    const candidateName = `${candidate.firstName ?? ''} ${candidate.lastName ?? ''}`.trim();
+    const title = action === 'CANCELLED'
+      ? `[CANCELADA] Entrevista — ${orgName}`
+      : `Entrevista — ${orgName}`;
+    const dateStr = slot.scheduledAt.toLocaleString('es-CL', {
+      year: 'numeric', month: 'long', day: 'numeric',
+      hour: '2-digit', minute: '2-digit', timeZoneName: 'short',
+    });
+    const description = action === 'CANCELLED'
+      ? `La entrevista programada para ${dateStr} fue cancelada.${slot.cancelReason ? ` Motivo: ${slot.cancelReason}` : ''}`
+      : `Entrevista entre ${candidateName} y ${evaluator.firstName} ${evaluator.lastName}.${slot.meetingUrl ? `\n\nLink: ${slot.meetingUrl}` : ''}${slot.adminNotes ? `\n\nNotas: ${slot.adminNotes}` : ''}`;
+
+    const ics = buildIcs({
+      uid: `${slot.id}@eva360`,
+      scheduledAt: slot.scheduledAt,
+      durationMinutes: slot.durationMinutes,
+      title,
+      description,
+      location: slot.meetingUrl ?? '',
+      organizerName: orgName,
+      organizerEmail: 'no-reply@eva360.app',
+      attendeeName: candidateName || 'Candidato',
+      attendeeEmail: candidate.email ?? '',
+      status: action,
+    });
+
+    const recipients: string[] = [];
+    if (candidate.email) recipients.push(candidate.email);
+    if (evaluator.email) recipients.push(evaluator.email);
+    if (recipients.length === 0) return;
+
+    const html = action === 'CANCELLED'
+      ? `<p>La entrevista programada para <strong>${dateStr}</strong> fue cancelada.</p>${slot.cancelReason ? `<p><strong>Motivo:</strong> ${slot.cancelReason}</p>` : ''}`
+      : `<p>Te confirmamos una entrevista para <strong>${dateStr}</strong>.</p>${slot.meetingUrl ? `<p><strong>Link:</strong> <a href="${slot.meetingUrl}">${slot.meetingUrl}</a></p>` : ''}<p>Adjuntamos invitacion .ics — ábrela para agregarla a tu calendario.</p>`;
+
+    await this.emailService.sendWithAttachments(
+      recipients,
+      title,
+      html,
+      [{ filename: 'invite.ics', content: ics, contentType: 'text/calendar; charset=utf-8' }],
+      slot.tenantId,
+    );
+  }
+
+  /**
+   * S7.2 — Cron diario que envia recordatorios de entrevistas:
+   *   - 24h antes: si scheduledAt esta en (now+23h, now+25h] y reminderSent24h=false
+   *   - 1h antes:  si scheduledAt esta en (now+45min, now+75min] y reminderSent1h=false
+   *
+   * El job corre cada 15 minutos para cubrir las ventanas de 1h con
+   * suficiente granularidad. Idempotente via los flags.
+   */
+  @Cron('*/15 * * * *')
+  async sendInterviewReminders(): Promise<void> {
+    await runWithCronLock(
+      'recruitment.sendInterviewReminders',
+      this.dataSource,
+      this.logger,
+      async () => {
+        const now = Date.now();
+        const in1h = new Date(now + 60 * 60 * 1000);
+        const in75min = new Date(now + 75 * 60 * 1000);
+        const in23h = new Date(now + 23 * 60 * 60 * 1000);
+        const in25h = new Date(now + 25 * 60 * 60 * 1000);
+
+        // Recordatorios 24h.
+        const slots24h = await this.interviewSlotRepo
+          .createQueryBuilder('s')
+          .where('s.status = :status', { status: InterviewSlotStatus.SCHEDULED })
+          .andWhere('s.scheduledAt > :start', { start: in23h })
+          .andWhere('s.scheduledAt <= :end', { end: in25h })
+          .andWhere('s.reminderSent24h = false')
+          .getMany();
+
+        for (const s of slots24h) {
+          await this.sendReminderEmail(s, '24h').catch((e: any) => {
+            this.logger.warn(`[sendInterviewReminders] 24h reminder fallo slot ${s.id}: ${e?.message ?? e}`);
+          });
+          await this.interviewSlotRepo.update({ id: s.id }, { reminderSent24h: true });
+        }
+
+        // Recordatorios 1h.
+        const slots1h = await this.interviewSlotRepo
+          .createQueryBuilder('s')
+          .where('s.status = :status', { status: InterviewSlotStatus.SCHEDULED })
+          .andWhere('s.scheduledAt > :start', { start: in1h })
+          .andWhere('s.scheduledAt <= :end', { end: in75min })
+          .andWhere('s.reminderSent1h = false')
+          .getMany();
+
+        for (const s of slots1h) {
+          await this.sendReminderEmail(s, '1h').catch((e: any) => {
+            this.logger.warn(`[sendInterviewReminders] 1h reminder fallo slot ${s.id}: ${e?.message ?? e}`);
+          });
+          await this.interviewSlotRepo.update({ id: s.id }, { reminderSent1h: true });
+        }
+
+        if (slots24h.length + slots1h.length > 0) {
+          this.logger.log(
+            `[sendInterviewReminders] enviados: ${slots24h.length} (24h) + ${slots1h.length} (1h)`,
+          );
+        }
+      },
+    );
+  }
+
+  private async sendReminderEmail(slot: RecruitmentInterviewSlot, kind: '24h' | '1h'): Promise<void> {
+    const candidate = await this.candidateRepo.findOne({ where: { id: slot.candidateId, tenantId: slot.tenantId } });
+    const evaluator = await this.userRepo.findOne({
+      where: { id: slot.evaluatorId, tenantId: slot.tenantId },
+      select: ['firstName', 'lastName', 'email'],
+    });
+    if (!candidate || !evaluator) return;
+
+    const recipients: string[] = [];
+    if (candidate.email) recipients.push(candidate.email);
+    if (evaluator.email) recipients.push(evaluator.email);
+    if (recipients.length === 0) return;
+
+    const dateStr = slot.scheduledAt.toLocaleString('es-CL', {
+      year: 'numeric', month: 'long', day: 'numeric',
+      hour: '2-digit', minute: '2-digit', timeZoneName: 'short',
+    });
+    const subject = kind === '24h'
+      ? `Recordatorio: entrevista en 24h (${dateStr})`
+      : `Recordatorio: entrevista en 1h (${dateStr})`;
+    const html = `<p>Te recordamos tu entrevista programada para <strong>${dateStr}</strong>.</p>${slot.meetingUrl ? `<p><strong>Link:</strong> <a href="${slot.meetingUrl}">${slot.meetingUrl}</a></p>` : ''}`;
+
+    await this.emailService.send(recipients, subject, html);
+  }
+
+  /**
+   * S7.1 — Setear/limpiar slug publico para job board. Solo aplica a
+   * procesos external + active. El slug debe ser url-safe (lowercase
+   * letras/numeros/guiones, 3-60 chars). Unico por tenant.
+   *
+   * Si publicSlug=null, "despublica" el proceso (default cuando se crea
+   * el proceso).
+   */
+  async setPublicSlug(
+    tenantId: string,
+    processId: string,
+    slug: string | null,
+    callerUserId: string,
+  ): Promise<{ publicSlug: string | null; publicUrl: string | null }> {
+    const process = await this.processRepo.findOne({ where: { id: processId, tenantId } });
+    if (!process) throw new NotFoundException('Proceso no encontrado');
+    if (process.processType !== 'external') {
+      throw new BadRequestException('Solo procesos external pueden tener slug publico.');
+    }
+    if (slug !== null) {
+      // Validar formato.
+      const cleanedSlug = slug.trim().toLowerCase();
+      if (!/^[a-z0-9](?:[a-z0-9-]{1,58}[a-z0-9])?$/.test(cleanedSlug)) {
+        throw new BadRequestException(
+          'Slug invalido. Debe tener 3-60 caracteres, solo lowercase letras/numeros/guiones, no empezar/terminar con guion.',
+        );
+      }
+      // Verificar unicidad por tenant (el indice unique parcial protege a
+      // nivel BD, pero damos error claro en service antes del 23505).
+      const existing = await this.processRepo.findOne({
+        where: { tenantId, publicSlug: cleanedSlug },
+      });
+      if (existing && existing.id !== processId) {
+        throw new BadRequestException(
+          `El slug "${cleanedSlug}" ya esta en uso por otro proceso de este tenant. Elija otro.`,
+        );
+      }
+      process.publicSlug = cleanedSlug;
+    } else {
+      process.publicSlug = null;
+    }
+    await this.processRepo.save(process);
+
+    // Audit
+    await this.auditService
+      .log(
+        tenantId, callerUserId,
+        slug ? 'recruitment.process_published' : 'recruitment.process_unpublished',
+        'recruitment_process', processId,
+        { slug: process.publicSlug },
+      )
+      .catch(() => undefined);
+
+    // Resolver tenant slug para devolver URL publica completa.
+    const tenant = await this.tenantRepo.findOne({ where: { id: tenantId }, select: ['slug'] });
+    const publicUrl = process.publicSlug && tenant?.slug
+      ? `/jobs/${tenant.slug}/${process.publicSlug}`
+      : null;
+    return { publicSlug: process.publicSlug, publicUrl };
+  }
+
+  /**
+   * S7.1 — Lookup publico de proceso (sin auth). Usado por el job board.
+   * Retorna SOLO datos seguros: titulo, cargo, descripcion, requirements,
+   * deadline. NO devuelve candidatos, scoringWeights, evaluators, etc.
+   */
+  async getPublicProcess(tenantSlug: string, processSlug: string): Promise<any> {
+    const tenant = await this.tenantRepo.findOne({
+      where: { slug: tenantSlug, isActive: true } as any,
+      select: ['id', 'name', 'slug'],
+    });
+    if (!tenant) throw new NotFoundException('Empresa no encontrada o inactiva.');
+
+    const process = await this.processRepo.findOne({
+      where: {
+        tenantId: tenant.id,
+        publicSlug: processSlug,
+        status: ProcessStatus.ACTIVE,
+        processType: 'external',
+      },
+    });
+    if (!process) {
+      throw new NotFoundException('Esta postulacion no esta abierta o ya fue cerrada.');
+    }
+
+    return {
+      tenantName: tenant.name,
+      tenantSlug: tenant.slug,
+      processSlug: process.publicSlug,
+      title: process.title,
+      position: process.position,
+      department: process.department,
+      description: process.description,
+      requirements: process.requirements,
+      endDate: process.endDate,
+    };
+  }
+
+  /**
+   * S7.1 — Auto-aplicar a un proceso publico desde el job board.
+   *
+   * Reglas defensivas:
+   *   - Solo external + active + tenant active.
+   *   - Dedup por email en el proceso (409 si ya aplicaste).
+   *   - Rate limit por IP (5 aplicaciones / hora). Se trackea en memoria
+   *     simple (in-process) — para multi-replica usar Redis. Por ahora
+   *     monolithic API se cubre con esto.
+   *   - Validacion server-side de campos obligatorios (firstName, lastName,
+   *     email, phone). El CV es opcional en este flow inicial.
+   *   - Audit log con metadata.source='public_jobboard'.
+   *
+   * El candidato se crea con stage='registered'. El admin lo ve en su
+   * pipeline igual que candidatos agregados manualmente (la metadata
+   * source los distingue para reportes).
+   */
+  async applyToPublicProcess(
+    tenantSlug: string,
+    processSlug: string,
+    dto: { firstName: string; lastName: string; email: string; phone?: string; linkedIn?: string; coverLetter?: string; cvUrl?: string },
+    requesterIp?: string,
+  ): Promise<{ ok: boolean; message: string }> {
+    // Validacion basica.
+    if (!dto.firstName?.trim() || !dto.lastName?.trim() || !dto.email?.trim()) {
+      throw new BadRequestException('Nombres, apellidos y email son obligatorios.');
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(dto.email)) {
+      throw new BadRequestException('Email invalido.');
+    }
+
+    // Rate limit por IP (in-memory simple).
+    if (requesterIp && !this.checkApplicationRateLimit(requesterIp)) {
+      throw new BadRequestException(
+        'Demasiadas aplicaciones desde tu IP recientemente. Intenta en una hora.',
+      );
+    }
+
+    // Resolver tenant + proceso.
+    const tenant = await this.tenantRepo.findOne({
+      where: { slug: tenantSlug, isActive: true } as any,
+      select: ['id', 'name', 'slug'],
+    });
+    if (!tenant) throw new NotFoundException('Empresa no encontrada o inactiva.');
+
+    const process = await this.processRepo.findOne({
+      where: {
+        tenantId: tenant.id,
+        publicSlug: processSlug,
+        status: ProcessStatus.ACTIVE,
+        processType: 'external',
+      },
+    });
+    if (!process) {
+      throw new NotFoundException('Esta postulacion no esta abierta o ya fue cerrada.');
+    }
+
+    // Dedup por email en el proceso.
+    const existing = await this.candidateRepo.findOne({
+      where: { processId: process.id, email: dto.email },
+    });
+    if (existing) {
+      throw new ConflictException('Ya hay una postulacion con este email para este proceso.');
+    }
+
+    // Crear candidato.
+    const candidate = this.candidateRepo.create({
+      processId: process.id,
+      tenantId: tenant.id,
+      candidateType: 'external',
+      firstName: dto.firstName.trim(),
+      lastName: dto.lastName.trim(),
+      email: dto.email.trim(),
+      phone: dto.phone?.trim() || null,
+      linkedIn: dto.linkedIn?.trim() || null,
+      cvUrl: dto.cvUrl || null,
+      recruiterNotes: dto.coverLetter
+        ? `Cover letter (auto-postulacion):\n\n${dto.coverLetter.trim().slice(0, 4000)}`
+        : null,
+    });
+    const saved = await this.candidateRepo.save(candidate);
+
+    // Audit + history. ChangedBy=null (auto-postulacion, no hay admin).
+    this.auditService
+      .log(tenant.id, null, 'recruitment.candidate_self_applied', 'recruitment_candidate', saved.id, {
+        processId: process.id,
+        processTitle: process.title,
+        email: saved.email,
+        source: 'public_jobboard',
+        ip: requesterIp ?? null,
+      })
+      .catch(() => undefined);
+    await this.recordStageTransition({
+      candidateId: saved.id,
+      tenantId: tenant.id,
+      fromStage: null,
+      toStage: saved.stage,
+      changedBy: null,
+      source: 'self_applied',
+    });
+
+    return {
+      ok: true,
+      message: 'Postulacion recibida. Revisaremos tu CV y te contactaremos pronto.',
+    };
+  }
+
+  /**
+   * S7.1 — Rate limit in-memory simple por IP. Mantiene un map de
+   * IP → timestamps de aplicaciones en la ultima hora. Devuelve true
+   * si la IP puede aplicar (< 5 en la ultima hora), false si supero.
+   *
+   * Limitacion: en multi-replica no comparte estado. Para HA usar Redis
+   * + INCR/EXPIRE. Por ahora API es monolithic, suficiente.
+   */
+  private applicationRateLimits = new Map<string, number[]>();
+  private checkApplicationRateLimit(ip: string, maxPerHour = 5): boolean {
+    const now = Date.now();
+    const oneHourAgo = now - 60 * 60 * 1000;
+    const arr = (this.applicationRateLimits.get(ip) ?? []).filter((ts) => ts > oneHourAgo);
+    if (arr.length >= maxPerHour) {
+      this.applicationRateLimits.set(ip, arr);
+      return false;
+    }
+    arr.push(now);
+    this.applicationRateLimits.set(ip, arr);
+    // Cleanup periodico para no acumular IPs huerfanas indefinidamente.
+    if (this.applicationRateLimits.size > 10000) {
+      for (const [k, v] of this.applicationRateLimits.entries()) {
+        const filtered = v.filter((ts) => ts > oneHourAgo);
+        if (filtered.length === 0) this.applicationRateLimits.delete(k);
+        else this.applicationRateLimits.set(k, filtered);
+      }
+    }
+    return true;
+  }
+
+  /**
+   * S6.3 — Metricas del proceso.
+   *
+   * Devuelve KPIs computados a partir de:
+   *   - process metadata (createdAt, startDate, endDate, status).
+   *   - candidates count por stage actual.
+   *   - stage_history (S6.1) para calcular avgDaysInStage y conversion.
+   *   - winner/runner-up scores.
+   *   - interviews count vs evaluators expected.
+   *
+   * Diseño:
+   *   - Single endpoint, single response — el frontend renderiza widget
+   *     con KPI cards.
+   *   - Calculos en memoria sobre datos ya cargados (no rondas multiples
+   *     de queries por cada KPI).
+   *   - Defensive: divisiones por cero protegidas; null si no hay datos
+   *     suficientes para un KPI (ej. winnerScore null si no hay hire).
+   */
+  async getProcessMetrics(tenantId: string, processId: string): Promise<{
+    daysActive: number;
+    daysSinceCreation: number;
+    candidateCount: number;
+    candidatesByStage: Record<string, number>;
+    avgDaysInStage: Record<string, number | null>;
+    conversionRate: { fromStage: string; toStage: string; percentage: number }[];
+    interviewsCompleted: number;
+    interviewsExpected: number;
+    winnerScore: number | null;
+    runnerUpScore: number | null;
+    timeToHireDays: number | null;
+  }> {
+    const process = await this.processRepo.findOne({
+      where: { id: processId, tenantId },
+    });
+    if (!process) throw new NotFoundException('Proceso no encontrado');
+
+    const now = new Date();
+    const start = process.startDate ? new Date(process.startDate) : process.createdAt;
+    const daysSinceCreation = Math.floor((now.getTime() - process.createdAt.getTime()) / (1000 * 60 * 60 * 24));
+    const daysActive = process.status === ProcessStatus.ACTIVE
+      ? Math.floor((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24))
+      : daysSinceCreation;
+
+    // Candidates por stage actual.
+    const candidates = await this.candidateRepo.find({
+      where: { tenantId, processId },
+    });
+    const candidateCount = candidates.length;
+    const candidatesByStage: Record<string, number> = {};
+    for (const c of candidates) {
+      candidatesByStage[c.stage] = (candidatesByStage[c.stage] || 0) + 1;
+    }
+
+    // Stage history para avgDaysInStage. Cargamos TODA la history de
+    // candidatos del proceso ordenada por (candidate, changed_at).
+    const candidateIds = candidates.map((c) => c.id);
+    const allHistory = candidateIds.length > 0
+      ? await this.stageHistoryRepo.find({
+        where: { candidateId: In(candidateIds) },
+        order: { candidateId: 'ASC', changedAt: 'ASC' },
+      })
+      : [];
+
+    // avgDaysInStage: por cada stage, sumar duracion en ese stage y
+    // promediar. La duracion es (next changedAt - this changedAt) si
+    // hay siguiente, sino (now - this changedAt) si es el stage actual.
+    const stageDurationsMs: Record<string, number[]> = {};
+    const historyByCandidate = new Map<string, RecruitmentCandidateStageHistory[]>();
+    for (const h of allHistory) {
+      const arr = historyByCandidate.get(h.candidateId) ?? [];
+      arr.push(h);
+      historyByCandidate.set(h.candidateId, arr);
+    }
+    for (const c of candidates) {
+      const hist = historyByCandidate.get(c.id) ?? [];
+      for (let i = 0; i < hist.length; i++) {
+        const h = hist[i];
+        const next = hist[i + 1];
+        const stage = h.toStage;
+        const startTs = new Date(h.changedAt).getTime();
+        const endTs = next
+          ? new Date(next.changedAt).getTime()
+          : (c.stage === stage ? now.getTime() : startTs); // si es el stage actual, mide hasta hoy
+        const durMs = Math.max(0, endTs - startTs);
+        if (!stageDurationsMs[stage]) stageDurationsMs[stage] = [];
+        // Solo contamos si hay duracion real (>0) para evitar inflar
+        // promedios con transiciones inmediatas (auto-advance same-tx).
+        if (durMs > 0) stageDurationsMs[stage].push(durMs);
+      }
+    }
+    const avgDaysInStage: Record<string, number | null> = {};
+    for (const [stage, durations] of Object.entries(stageDurationsMs)) {
+      if (durations.length === 0) {
+        avgDaysInStage[stage] = null;
+        continue;
+      }
+      const avgMs = durations.reduce((a, b) => a + b, 0) / durations.length;
+      avgDaysInStage[stage] = Math.round((avgMs / (1000 * 60 * 60 * 24)) * 100) / 100;
+    }
+
+    // Conversion rate: porcentaje de candidatos que pasaron por cada
+    // stage en su trayectoria.
+    const stagesReached: Record<string, Set<string>> = {};
+    for (const h of allHistory) {
+      if (!stagesReached[h.toStage]) stagesReached[h.toStage] = new Set();
+      stagesReached[h.toStage].add(h.candidateId);
+    }
+    const stagesOrder = ['cv_review', 'interviewing', 'scored', 'approved', 'hired'];
+    const conversionRate: { fromStage: string; toStage: string; percentage: number }[] = [];
+    for (let i = 0; i < stagesOrder.length - 1; i++) {
+      const from = stagesOrder[i], to = stagesOrder[i + 1];
+      const fromCount = stagesReached[from]?.size ?? 0;
+      const toCount = stagesReached[to]?.size ?? 0;
+      const percentage = fromCount > 0 ? Math.round((toCount / fromCount) * 10000) / 100 : 0;
+      conversionRate.push({ fromStage: from, toStage: to, percentage });
+    }
+
+    // Interviews: count actual vs expected (evaluators × candidatos en
+    // interviewing+). Si no hay candidatos, skip la query (TypeORM In([])
+    // genera "WHERE candidate_id IN ()" que falla en Postgres).
+    const interviewsCompleted = candidateIds.length > 0
+      ? await this.interviewRepo.count({ where: { candidateId: In(candidateIds) } })
+      : 0;
+    const evaluatorsCount = await this.evaluatorRepo.count({ where: { processId } });
+    const inInterviewingOrLater = candidates.filter((c) =>
+      [CandidateStage.INTERVIEWING, CandidateStage.SCORED, CandidateStage.APPROVED, CandidateStage.HIRED, CandidateStage.NOT_HIRED].includes(c.stage),
+    ).length;
+    const interviewsExpected = evaluatorsCount * inInterviewingOrLater;
+
+    // Winner score + runner-up.
+    let winnerScore: number | null = null;
+    let runnerUpScore: number | null = null;
+    if (process.winningCandidateId) {
+      const winner = candidates.find((c) => c.id === process.winningCandidateId);
+      winnerScore = winner?.finalScore != null ? Number(winner.finalScore) : null;
+      const others = candidates
+        .filter((c) => c.id !== process.winningCandidateId && c.finalScore != null)
+        .map((c) => Number(c.finalScore))
+        .sort((a, b) => b - a);
+      runnerUpScore = others.length > 0 ? others[0] : null;
+    }
+
+    // Time to hire: createdAt → hire_executed audit log para el winner.
+    let timeToHireDays: number | null = null;
+    if (process.winningCandidateId && process.hireData) {
+      const hireDate = (process.hireData as any)?.effectiveDate;
+      if (hireDate) {
+        const ms = new Date(hireDate).getTime() - new Date(process.createdAt).getTime();
+        timeToHireDays = Math.max(0, Math.floor(ms / (1000 * 60 * 60 * 24)));
+      }
+    }
+
+    return {
+      daysActive,
+      daysSinceCreation,
+      candidateCount,
+      candidatesByStage,
+      avgDaysInStage,
+      conversionRate,
+      interviewsCompleted,
+      interviewsExpected,
+      winnerScore,
+      runnerUpScore,
+      timeToHireDays,
+    };
+  }
+
+  /**
+   * S6.2 — Cambio de stage en bulk de N candidatos.
+   *
+   * Reglas:
+   *   - Bloquea explicitamente transitions a `hired` (forzar uso de hireCandidate).
+   *   - Bloquea explicitamente transitions DESDE `hired` (forzar revertHire).
+   *   - Solo afecta candidatos del mismo tenant — query con tenant_id en
+   *     where filtra accidental cross-tenant si admin pasa IDs ajenos.
+   *   - Atomic: UPDATE WHERE id IN (...) — single query.
+   *   - Audit log por candidato (no bulk audit, para rastreabilidad fina).
+   *   - Stage history por candidato afectado.
+   *
+   * Retorna { affected, skipped, blocked } con detalle:
+   *   - affected: cantidad realmente actualizada.
+   *   - skipped: IDs que no pertenecen al tenant o no existen.
+   *   - blocked: IDs ya en stage 'hired' que no se tocaron.
+   */
+  async bulkUpdateStage(
+    tenantId: string,
+    candidateIds: string[],
+    newStage: string,
+    callerUserId: string,
+  ): Promise<{ affected: number; skipped: string[]; blocked: string[] }> {
+    if (!Array.isArray(candidateIds) || candidateIds.length === 0) {
+      throw new BadRequestException('Debe proporcionar al menos un candidato.');
+    }
+    if (candidateIds.length > 200) {
+      throw new BadRequestException('Maximo 200 candidatos por operacion bulk.');
+    }
+    if (newStage === CandidateStage.HIRED || newStage === 'hired') {
+      throw new BadRequestException(
+        'No se puede contratar en bulk. Use el flow individual hireCandidate para cada caso.',
+      );
+    }
+    // Validar que el stage destino sea uno valido del enum.
+    if (!Object.values(CandidateStage).includes(newStage as CandidateStage)) {
+      throw new BadRequestException(`Stage invalido: ${newStage}.`);
+    }
+
+    // Cargar candidatos para evaluar quienes se afectan/skippean/bloquean.
+    const candidates = await this.candidateRepo.find({
+      where: { tenantId, id: In(candidateIds) },
+    });
+    const foundIds = new Set(candidates.map((c) => c.id));
+    const skipped = candidateIds.filter((id) => !foundIds.has(id));
+    const blocked = candidates.filter((c) => c.stage === CandidateStage.HIRED).map((c) => c.id);
+    const eligible = candidates.filter((c) => c.stage !== CandidateStage.HIRED);
+
+    if (eligible.length === 0) {
+      return { affected: 0, skipped, blocked };
+    }
+
+    // Atomic UPDATE con guard de stage != HIRED y tenant_id correcto.
+    const eligibleIds = eligible.map((c) => c.id);
+    const updateResult = await this.candidateRepo
+      .createQueryBuilder()
+      .update(RecruitmentCandidate)
+      .set({ stage: newStage as CandidateStage })
+      .whereInIds(eligibleIds)
+      .andWhere('tenant_id = :tid', { tid: tenantId })
+      .andWhere('stage != :hired', { hired: CandidateStage.HIRED })
+      .execute();
+    const affected = updateResult.affected ?? 0;
+
+    // Audit + history por cada candidato afectado.
+    const historyRows: RecruitmentCandidateStageHistory[] = [];
+    for (const c of eligible) {
+      // Skip si stage previo es igual al nuevo (no es realmente un cambio).
+      if (c.stage === newStage) continue;
+      this.auditService
+        .log(tenantId, callerUserId, 'recruitment.candidate_stage_changed', 'recruitment_candidate', c.id, {
+          from: c.stage,
+          to: newStage,
+          processId: c.processId,
+          source: 'bulk',
+        })
+        .catch(() => undefined);
+      historyRows.push(
+        this.stageHistoryRepo.create({
+          candidateId: c.id,
+          tenantId,
+          fromStage: c.stage,
+          toStage: newStage,
+          changedBy: callerUserId,
+          source: 'bulk',
+        }),
+      );
+    }
+    if (historyRows.length > 0) {
+      await this.stageHistoryRepo.save(historyRows).catch((e: any) => {
+        this.logger.warn(`[bulkUpdateStage] history save fallo: ${e?.message ?? e}`);
+      });
+    }
+
+    return { affected, skipped, blocked };
+  }
+
+  /**
+   * S6.2 — Borrado en bulk de candidatos.
+   *
+   * Reglas:
+   *   - tenant_admin only (validado en controller).
+   *   - Bloquea si CUALQUIERA de los IDs esta en stage 'hired' (la
+   *     operacion debe ser revertHire primero).
+   *   - Atomic: la query DELETE corre con WHERE id IN AND tenant_id =
+   *     AND stage != hired. Si alguno pasa esos filtros pero algun otro
+   *     no, la query borra los que pasan — pero antes hacemos un check
+   *     explicito y throw si hay hired.
+   *   - Cascada: las interviews del candidato tienen ON DELETE CASCADE en
+   *     la FK, asi que se limpian automaticamente. CV archivado se purga
+   *     al borrar la fila (no quedan huerfanos).
+   *   - Audit log por candidato (rastreabilidad fina).
+   */
+  async bulkDeleteCandidates(
+    tenantId: string,
+    candidateIds: string[],
+    callerUserId: string,
+  ): Promise<{ deleted: number; skipped: string[] }> {
+    if (!Array.isArray(candidateIds) || candidateIds.length === 0) {
+      throw new BadRequestException('Debe proporcionar al menos un candidato.');
+    }
+    if (candidateIds.length > 100) {
+      throw new BadRequestException('Maximo 100 candidatos por operacion bulk delete.');
+    }
+
+    const candidates = await this.candidateRepo.find({
+      where: { tenantId, id: In(candidateIds) },
+    });
+    const foundIds = new Set(candidates.map((c) => c.id));
+    const skipped = candidateIds.filter((id) => !foundIds.has(id));
+    const hired = candidates.filter((c) => c.stage === CandidateStage.HIRED);
+    if (hired.length > 0) {
+      throw new BadRequestException(
+        `No se puede borrar candidatos en estado contratado (hired). ${hired.length} candidato(s) afectado(s) — debe ejecutar Revertir contratacion primero.`,
+      );
+    }
+
+    if (candidates.length === 0) {
+      return { deleted: 0, skipped };
+    }
+
+    // Audit ANTES del delete (despues no hay registro accesible).
+    for (const c of candidates) {
+      this.auditService
+        .log(tenantId, callerUserId, 'recruitment.candidate_deleted', 'recruitment_candidate', c.id, {
+          processId: c.processId,
+          stage: c.stage,
+          candidateType: c.candidateType,
+          firstName: c.firstName,
+          lastName: c.lastName,
+          email: c.email,
+          source: 'bulk',
+        })
+        .catch(() => undefined);
+    }
+
+    const deleteResult = await this.candidateRepo
+      .createQueryBuilder()
+      .delete()
+      .from(RecruitmentCandidate)
+      .whereInIds(candidates.map((c) => c.id))
+      .andWhere('tenant_id = :tid', { tid: tenantId })
+      .andWhere('stage != :hired', { hired: CandidateStage.HIRED })
+      .execute();
+
+    return {
+      deleted: deleteResult.affected ?? 0,
+      skipped,
+    };
+  }
+
+  /**
+   * S5.2 — Acceso admin al CV archivado de un candidato (compliance Chile).
+   *
+   * Despues del cierre del proceso, `cv_url` se nulifica y el data URL se
+   * mueve a `cv_url_archived` (S4.2). Esta funcion expone el archivado al
+   * admin que necesite recuperarlo (ej. requerimiento legal de un
+   * candidato no contratado pidiendo acceso a sus datos).
+   *
+   * Reglas:
+   *   - Solo se puede invocar desde el controller con guard tenant_admin
+   *     (no super_admin — alineado con F-001).
+   *   - El admin DEBE proveer una razon de >=20 caracteres. Se persiste
+   *     en audit_logs.metadata.reason para trazabilidad de quien accedio
+   *     a que CV y por que.
+   *   - 404 si el candidato no tiene CV archivado (ya purgado por cron
+   *     o nunca tuvo CV).
+   *
+   * Retorna { cvUrl, archivedAt } — el cvUrl es el data URL base64 que
+   * el frontend renderiza inline en un iframe sandboxed (no descarga
+   * a disco automaticamente).
+   */
+  async getArchivedCv(
+    tenantId: string,
+    candidateId: string,
+    reason: string,
+    callerUserId: string,
+  ): Promise<{ cvUrl: string; archivedAt: Date }> {
+    if (!reason || reason.trim().length < 20) {
+      throw new BadRequestException(
+        'Debe proporcionar una razon de acceso de al menos 20 caracteres (compliance audit trail).',
+      );
+    }
+
+    // Cargar el candidato con cv_url_archived explicito (select:false en
+    // entity, pero addSelect lo trae bajo demanda).
+    const row = await this.candidateRepo
+      .createQueryBuilder('c')
+      .select(['c.id', 'c.tenantId', 'c.cvArchivedAt'])
+      .addSelect('c.cvUrlArchived', 'c_cv_url_archived')
+      .where('c.id = :candidateId', { candidateId })
+      .andWhere('c.tenantId = :tenantId', { tenantId })
+      .getRawAndEntities();
+
+    const candidate = row.entities[0];
+    const cvUrlArchived = (row.raw[0] as any)?.c_cv_url_archived as string | null | undefined;
+
+    if (!candidate) {
+      throw new NotFoundException('Candidato no encontrado');
+    }
+    if (!cvUrlArchived || !candidate.cvArchivedAt) {
+      throw new NotFoundException(
+        'No hay CV archivado para este candidato (nunca se subio o ya fue purgado por retencion 24m).',
+      );
+    }
+
+    // Audit obligatorio.
+    await this.auditService
+      .log(tenantId, callerUserId, 'recruitment.archived_cv_accessed', 'recruitment_candidate', candidateId, {
+        reason: reason.trim().slice(0, 500),
+        archivedAt: candidate.cvArchivedAt.toISOString?.() ?? String(candidate.cvArchivedAt),
+      })
+      .catch(() => undefined);
+
+    return {
+      cvUrl: cvUrlArchived,
+      archivedAt: candidate.cvArchivedAt,
     };
   }
 
@@ -1879,6 +3247,17 @@ export class RecruitmentService {
         stageAdvanced: previousStage !== saved.stage ? { from: previousStage, to: saved.stage } : null,
       })
       .catch(() => {});
+    // S6.1 — historial de transicion si auto-advance disparado.
+    if (previousStage !== saved.stage) {
+      await this.recordStageTransition({
+        candidateId: saved.id,
+        tenantId: candidate.tenantId,
+        fromStage: previousStage,
+        toStage: saved.stage,
+        changedBy: callerUserId ?? null,
+        source: 'auto_advance_cv',
+      });
+    }
     return saved;
   }
 
@@ -2005,9 +3384,22 @@ export class RecruitmentService {
     const saved = await this.interviewRepo.save(interview);
 
     // Auto-advance stage
+    let interviewAutoAdvanceFrom: CandidateStage | null = null;
     if (candidate.stage === CandidateStage.REGISTERED || candidate.stage === CandidateStage.CV_REVIEW) {
+      interviewAutoAdvanceFrom = candidate.stage;
       candidate.stage = CandidateStage.INTERVIEWING;
       await this.candidateRepo.save(candidate);
+    }
+    // S6.1 — historial de transicion auto_advance_interview.
+    if (interviewAutoAdvanceFrom) {
+      await this.recordStageTransition({
+        candidateId: candidate.id,
+        tenantId: candidate.tenantId,
+        fromStage: interviewAutoAdvanceFrom,
+        toStage: CandidateStage.INTERVIEWING,
+        changedBy: evaluatorId,
+        source: 'auto_advance_interview',
+      });
     }
 
     // Recalculate candidate final score + auto-advance to scored
@@ -2250,11 +3642,25 @@ export class RecruitmentService {
     candidate.finalScore = Number(Math.max(0, Math.min(10, finalScore)).toFixed(2));
 
     // Auto-advance to 'scored' if there's a score and still in interviewing
+    let scoreAutoAdvanceFrom: CandidateStage | null = null;
     if (candidate.finalScore > 0 && candidate.stage === CandidateStage.INTERVIEWING) {
+      scoreAutoAdvanceFrom = candidate.stage;
       candidate.stage = CandidateStage.SCORED;
     }
 
     await this.candidateRepo.save(candidate);
+
+    // S6.1 — historial de transicion auto_advance_score.
+    if (scoreAutoAdvanceFrom) {
+      await this.recordStageTransition({
+        candidateId: candidate.id,
+        tenantId: candidate.tenantId,
+        fromStage: scoreAutoAdvanceFrom,
+        toStage: CandidateStage.SCORED,
+        changedBy: null,
+        source: 'auto_advance_score',
+      });
+    }
   }
 
   /** Recalculate finalScore for ALL candidates with stale scores.

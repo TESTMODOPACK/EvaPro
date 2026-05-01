@@ -634,6 +634,28 @@ export const api = {
         request<any>("/recruitment/processes", { method: "POST", body: JSON.stringify(data) }, token),
       get: (token: string, id: string) =>
         request<any>(`/recruitment/processes/${id}`, {}, token),
+      /** S7.1 — Setear/limpiar slug publico para job board. */
+      setPublicSlug: (token: string, id: string, slug: string | null) =>
+        request<{ publicSlug: string | null; publicUrl: string | null }>(
+          `/recruitment/processes/${id}/public-slug`,
+          { method: 'PATCH', body: JSON.stringify({ slug }) },
+          token,
+        ),
+      /** S6.3 — KPIs del proceso (widget). */
+      getMetrics: (token: string, id: string) =>
+        request<{
+          daysActive: number;
+          daysSinceCreation: number;
+          candidateCount: number;
+          candidatesByStage: Record<string, number>;
+          avgDaysInStage: Record<string, number | null>;
+          conversionRate: { fromStage: string; toStage: string; percentage: number }[];
+          interviewsCompleted: number;
+          interviewsExpected: number;
+          winnerScore: number | null;
+          runnerUpScore: number | null;
+          timeToHireDays: number | null;
+        }>(`/recruitment/processes/${id}/metrics`, {}, token),
       update: (token: string, id: string, data: any) =>
         request<any>(`/recruitment/processes/${id}`, { method: "PATCH", body: JSON.stringify(data) }, token),
       comparative: (token: string, id: string) =>
@@ -687,7 +709,7 @@ export const api = {
      *   }
      */
     hireCandidate: (token: string, processId: string, candidateId: string, data: any) =>
-      request<{ process: any; candidate: any; userId: string; tempPassword: string | null }>(
+      request<{ process: any; candidate: any; userId: string; tempPassword: string | null; emailSent: boolean }>(
         `/recruitment/processes/${processId}/hire/${candidateId}`,
         { method: "POST", body: JSON.stringify(data) },
         token,
@@ -700,6 +722,75 @@ export const api = {
       request<{ process: any; candidate: any }>(
         `/recruitment/candidates/${candidateId}/revert-hire`,
         { method: "POST" },
+        token,
+      ),
+    /**
+     * S5.1 — Reenviar email de bienvenida al ganador externo. Rota
+     * tempPassword (el viejo deja de servir).
+     */
+    resendWelcomeEmail: (token: string, candidateId: string) =>
+      request<{ emailSent: boolean }>(
+        `/recruitment/candidates/${candidateId}/resend-welcome-email`,
+        { method: "POST" },
+        token,
+      ),
+    /**
+     * S5.2 — Vista admin del CV archivado (compliance Chile 24m).
+     * Requiere reason >=20 chars (audit trail). Solo tenant_admin.
+     */
+    getArchivedCv: (token: string, candidateId: string, reason: string) =>
+      request<{ cvUrl: string; archivedAt: string }>(
+        `/recruitment/candidates/${candidateId}/archived-cv?reason=${encodeURIComponent(reason)}`,
+        {},
+        token,
+      ),
+    /**
+     * S7.2 — Agendar slot de entrevista (envia .ics + recordatorios).
+     */
+    scheduleInterview: (
+      token: string,
+      candidateId: string,
+      data: { evaluatorId: string; scheduledAt: string; durationMinutes?: number; meetingUrl?: string; adminNotes?: string },
+    ) =>
+      request<any>(
+        `/recruitment/candidates/${candidateId}/schedule-interview`,
+        { method: 'POST', body: JSON.stringify(data) },
+        token,
+      ),
+    /**
+     * S7.2 — Cancelar slot agendado (envia .ics CANCEL).
+     */
+    cancelInterviewSlot: (token: string, slotId: string, reason?: string) =>
+      request<any>(
+        `/recruitment/interview-slots/${slotId}/cancel`,
+        { method: 'PATCH', body: JSON.stringify({ reason }) },
+        token,
+      ),
+    /**
+     * S7.2 — Listar entrevistas proximas del candidato.
+     */
+    getUpcomingInterviews: (token: string, candidateId: string) =>
+      request<any[]>(
+        `/recruitment/candidates/${candidateId}/upcoming-interviews`,
+        {},
+        token,
+      ),
+    /**
+     * S6.2 — Bulk: cambia stage a N candidatos. Bloquea hired source/dest.
+     */
+    bulkUpdateStage: (token: string, candidateIds: string[], stage: string) =>
+      request<{ affected: number; skipped: string[]; blocked: string[] }>(
+        `/recruitment/candidates/bulk-stage`,
+        { method: "PATCH", body: JSON.stringify({ candidateIds, stage }) },
+        token,
+      ),
+    /**
+     * S6.2 — Bulk: borra candidatos. Lanza si alguno esta hired.
+     */
+    bulkDeleteCandidates: (token: string, candidateIds: string[]) =>
+      request<{ deleted: number; skipped: string[] }>(
+        `/recruitment/candidates/bulk-delete`,
+        { method: "POST", body: JSON.stringify({ candidateIds }) },
         token,
       ),
   },
