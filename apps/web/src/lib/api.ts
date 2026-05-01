@@ -634,6 +634,13 @@ export const api = {
         request<any>("/recruitment/processes", { method: "POST", body: JSON.stringify(data) }, token),
       get: (token: string, id: string) =>
         request<any>(`/recruitment/processes/${id}`, {}, token),
+      /** S7.1 — Setear/limpiar slug publico para job board. */
+      setPublicSlug: (token: string, id: string, slug: string | null) =>
+        request<{ publicSlug: string | null; publicUrl: string | null }>(
+          `/recruitment/processes/${id}/public-slug`,
+          { method: 'PATCH', body: JSON.stringify({ slug }) },
+          token,
+        ),
       /** S6.3 — KPIs del proceso (widget). */
       getMetrics: (token: string, id: string) =>
         request<{

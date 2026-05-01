@@ -291,6 +291,9 @@ async function main() {
       )`,
       `CREATE INDEX IF NOT EXISTS idx_rcsh_candidate_changed ON recruitment_candidate_stage_history(candidate_id, changed_at)`,
       `CREATE INDEX IF NOT EXISTS idx_rcsh_tenant_changed ON recruitment_candidate_stage_history(tenant_id, changed_at)`,
+      // S7.1 — Indice unico parcial para public_slug por tenant.
+      // Permite NULL multiple (procesos no publicos) sin colisionar.
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_rp_tenant_pubslug ON recruitment_processes(tenant_id, public_slug) WHERE public_slug IS NOT NULL`,
     ];
     for (const sql of tableFixes) {
       try { await client.query(sql); } catch { /* already exists */ }
@@ -347,6 +350,8 @@ async function main() {
       // borra definitivamente cuando vencen los 24m.
       { table: 'recruitment_candidates', column: 'cv_url_archived', sql: `ALTER TABLE "recruitment_candidates" ADD COLUMN IF NOT EXISTS "cv_url_archived" text NULL` },
       { table: 'recruitment_candidates', column: 'cv_archived_at', sql: `ALTER TABLE "recruitment_candidates" ADD COLUMN IF NOT EXISTS "cv_archived_at" timestamptz NULL` },
+      // S7.1 — slug publico para job board.
+      { table: 'recruitment_processes', column: 'public_slug', sql: `ALTER TABLE "recruitment_processes" ADD COLUMN IF NOT EXISTS "public_slug" varchar(60) NULL` },
     ];
 
     for (const fix of columnFixes) {

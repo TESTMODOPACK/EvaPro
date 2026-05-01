@@ -464,6 +464,201 @@ describe('RecruitmentService', () => {
     });
   });
 
+  // ─── Job board publico (S7.1) ─────────────────────────────────────
+
+  describe('setPublicSlug', () => {
+    const processId = fakeUuid(200);
+
+    it('lanza si proceso no existe', async () => {
+      processRepo.findOne.mockResolvedValue(null);
+      await expect(
+        service.setPublicSlug(TENANT_ID, processId, 'devops-2026', ADMIN_ID),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('lanza si proceso no es external', async () => {
+      processRepo.findOne.mockResolvedValue({
+        id: processId,
+        tenantId: TENANT_ID,
+        processType: 'internal',
+      });
+      await expect(
+        service.setPublicSlug(TENANT_ID, processId, 'x-2026', ADMIN_ID),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('lanza si slug tiene caracteres invalidos (espacios, caracteres no permitidos)', async () => {
+      processRepo.findOne.mockResolvedValue({
+        id: processId,
+        tenantId: TENANT_ID,
+        processType: 'external',
+      });
+      await expect(
+        service.setPublicSlug(TENANT_ID, processId, 'devops senior', ADMIN_ID),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        service.setPublicSlug(TENANT_ID, processId, 'devops_senior', ADMIN_ID),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('normaliza slug a lowercase automaticamente', async () => {
+      processRepo.findOne
+        .mockResolvedValueOnce({ id: processId, tenantId: TENANT_ID, processType: 'external' })
+        .mockResolvedValueOnce(null);
+      tenantRepo.findOne.mockResolvedValue({ slug: 'acme' });
+
+      const r = await service.setPublicSlug(TENANT_ID, processId, 'Devops-Senior', ADMIN_ID);
+      expect(r.publicSlug).toBe('devops-senior');
+    });
+
+    it('lanza si slug es muy corto', async () => {
+      processRepo.findOne.mockResolvedValue({
+        id: processId,
+        tenantId: TENANT_ID,
+        processType: 'external',
+      });
+      await expect(
+        service.setPublicSlug(TENANT_ID, processId, 'ab', ADMIN_ID),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('lanza si slug ya existe en otro proceso del tenant', async () => {
+      processRepo.findOne
+        .mockResolvedValueOnce({ id: processId, tenantId: TENANT_ID, processType: 'external' })
+        .mockResolvedValueOnce({ id: fakeUuid(201), tenantId: TENANT_ID, publicSlug: 'devops-2026' });
+      await expect(
+        service.setPublicSlug(TENANT_ID, processId, 'devops-2026', ADMIN_ID),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('publica con slug valido + audit', async () => {
+      processRepo.findOne
+        .mockResolvedValueOnce({ id: processId, tenantId: TENANT_ID, processType: 'external' })
+        .mockResolvedValueOnce(null);
+      tenantRepo.findOne.mockResolvedValue({ slug: 'acme' });
+
+      const r = await service.setPublicSlug(TENANT_ID, processId, 'devops-2026', ADMIN_ID);
+
+      expect(r.publicSlug).toBe('devops-2026');
+      expect(r.publicUrl).toBe('/jobs/acme/devops-2026');
+      const auditCall = (auditService.log as jest.Mock).mock.calls.find(
+        (c) => c[2] === 'recruitment.process_published',
+      );
+      expect(auditCall).toBeDefined();
+    });
+
+    it('despublica con slug=null + audit', async () => {
+      processRepo.findOne.mockResolvedValueOnce({
+        id: processId, tenantId: TENANT_ID, processType: 'external', publicSlug: 'old-slug',
+      });
+      tenantRepo.findOne.mockResolvedValue({ slug: 'acme' });
+
+      const r = await service.setPublicSlug(TENANT_ID, processId, null, ADMIN_ID);
+
+      expect(r.publicSlug).toBeNull();
+      expect(r.publicUrl).toBeNull();
+      const auditCall = (auditService.log as jest.Mock).mock.calls.find(
+        (c) => c[2] === 'recruitment.process_unpublished',
+      );
+      expect(auditCall).toBeDefined();
+    });
+  });
+
+  describe('getPublicProcess', () => {
+    it('lanza si tenant no existe', async () => {
+      tenantRepo.findOne.mockResolvedValue(null);
+      await expect(
+        service.getPublicProcess('inexistente', 'job-1'),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('lanza si proceso no existe / no esta publico', async () => {
+      tenantRepo.findOne.mockResolvedValue({ id: TENANT_ID, name: 'Acme', slug: 'acme' });
+      processRepo.findOne.mockResolvedValue(null);
+      await expect(
+        service.getPublicProcess('acme', 'job-1'),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('retorna metadata segura del proceso', async () => {
+      tenantRepo.findOne.mockResolvedValue({ id: TENANT_ID, name: 'Acme', slug: 'acme' });
+      processRepo.findOne.mockResolvedValue({
+        title: 'Devops Senior',
+        position: 'Devops',
+        department: 'Tech',
+        description: 'Buscamos...',
+        requirements: [{ category: 'tech', text: 'AWS' }],
+        endDate: '2026-12-31',
+        publicSlug: 'devops-2026',
+      });
+
+      const r = await service.getPublicProcess('acme', 'devops-2026');
+
+      expect(r.tenantName).toBe('Acme');
+      expect(r.title).toBe('Devops Senior');
+      expect((r as any).candidates).toBeUndefined();
+      expect((r as any).scoringWeights).toBeUndefined();
+    });
+  });
+
+  describe('applyToPublicProcess', () => {
+    it('lanza si campos obligatorios faltan', async () => {
+      await expect(
+        service.applyToPublicProcess('acme', 'job-1', { firstName: 'X' } as any),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('lanza si email invalido', async () => {
+      await expect(
+        service.applyToPublicProcess('acme', 'job-1', {
+          firstName: 'X', lastName: 'Y', email: 'bad-email',
+        } as any),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('lanza si tenant no existe', async () => {
+      tenantRepo.findOne.mockResolvedValue(null);
+      await expect(
+        service.applyToPublicProcess('x', 'job-1', {
+          firstName: 'X', lastName: 'Y', email: 'x@y.com',
+        } as any),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('lanza si email ya aplico al proceso (dedup)', async () => {
+      tenantRepo.findOne.mockResolvedValue({ id: TENANT_ID, name: 'Acme', slug: 'acme' });
+      processRepo.findOne.mockResolvedValue({ id: fakeUuid(200), tenantId: TENANT_ID });
+      candidateRepo.findOne.mockResolvedValue({ id: fakeUuid(300) });
+      await expect(
+        service.applyToPublicProcess('acme', 'job-1', {
+          firstName: 'X', lastName: 'Y', email: 'dup@y.com',
+        } as any),
+      ).rejects.toThrow(); // ConflictException
+    });
+
+    it('crea candidato + audit + history', async () => {
+      tenantRepo.findOne.mockResolvedValue({ id: TENANT_ID, name: 'Acme', slug: 'acme' });
+      processRepo.findOne.mockResolvedValue({ id: fakeUuid(200), tenantId: TENANT_ID, title: 'Job' });
+      candidateRepo.findOne.mockResolvedValue(null);
+      candidateRepo.save.mockResolvedValue({
+        id: fakeUuid(300),
+        stage: CandidateStage.REGISTERED,
+        email: 'new@y.com',
+      });
+
+      const r = await service.applyToPublicProcess('acme', 'job-1', {
+        firstName: 'New', lastName: 'Cand', email: 'new@y.com',
+        coverLetter: 'Hola mucho gusto',
+      } as any);
+
+      expect(r.ok).toBe(true);
+      const auditCall = (auditService.log as jest.Mock).mock.calls.find(
+        (c) => c[2] === 'recruitment.candidate_self_applied',
+      );
+      expect(auditCall).toBeDefined();
+    });
+  });
+
   // ─── getProcessMetrics (S6.3) ─────────────────────────────────────
 
   describe('getProcessMetrics', () => {

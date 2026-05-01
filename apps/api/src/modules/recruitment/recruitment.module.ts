@@ -16,6 +16,7 @@ import { Position } from '../tenants/entities/position.entity';
 import { Tenant } from '../tenants/entities/tenant.entity';
 import { RecruitmentService } from './recruitment.service';
 import { RecruitmentController } from './recruitment.controller';
+import { PublicJobsController } from './public-jobs.controller';
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 import { AuditModule } from '../audit/audit.module';
 import { AiInsightsModule } from '../ai-insights/ai-insights.module';
@@ -60,7 +61,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     // legacy (pre-S1) tiene candidato 'hired' sin cascada al User.
     NotificationsModule,
   ],
-  controllers: [RecruitmentController],
+  controllers: [RecruitmentController, PublicJobsController],
   providers: [RecruitmentService],
   exports: [RecruitmentService],
 })

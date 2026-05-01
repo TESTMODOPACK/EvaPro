@@ -2195,6 +2195,241 @@ export class RecruitmentService {
   }
 
   /**
+   * S7.1 — Setear/limpiar slug publico para job board. Solo aplica a
+   * procesos external + active. El slug debe ser url-safe (lowercase
+   * letras/numeros/guiones, 3-60 chars). Unico por tenant.
+   *
+   * Si publicSlug=null, "despublica" el proceso (default cuando se crea
+   * el proceso).
+   */
+  async setPublicSlug(
+    tenantId: string,
+    processId: string,
+    slug: string | null,
+    callerUserId: string,
+  ): Promise<{ publicSlug: string | null; publicUrl: string | null }> {
+    const process = await this.processRepo.findOne({ where: { id: processId, tenantId } });
+    if (!process) throw new NotFoundException('Proceso no encontrado');
+    if (process.processType !== 'external') {
+      throw new BadRequestException('Solo procesos external pueden tener slug publico.');
+    }
+    if (slug !== null) {
+      // Validar formato.
+      const cleanedSlug = slug.trim().toLowerCase();
+      if (!/^[a-z0-9](?:[a-z0-9-]{1,58}[a-z0-9])?$/.test(cleanedSlug)) {
+        throw new BadRequestException(
+          'Slug invalido. Debe tener 3-60 caracteres, solo lowercase letras/numeros/guiones, no empezar/terminar con guion.',
+        );
+      }
+      // Verificar unicidad por tenant (el indice unique parcial protege a
+      // nivel BD, pero damos error claro en service antes del 23505).
+      const existing = await this.processRepo.findOne({
+        where: { tenantId, publicSlug: cleanedSlug },
+      });
+      if (existing && existing.id !== processId) {
+        throw new BadRequestException(
+          `El slug "${cleanedSlug}" ya esta en uso por otro proceso de este tenant. Elija otro.`,
+        );
+      }
+      process.publicSlug = cleanedSlug;
+    } else {
+      process.publicSlug = null;
+    }
+    await this.processRepo.save(process);
+
+    // Audit
+    await this.auditService
+      .log(
+        tenantId, callerUserId,
+        slug ? 'recruitment.process_published' : 'recruitment.process_unpublished',
+        'recruitment_process', processId,
+        { slug: process.publicSlug },
+      )
+      .catch(() => undefined);
+
+    // Resolver tenant slug para devolver URL publica completa.
+    const tenant = await this.tenantRepo.findOne({ where: { id: tenantId }, select: ['slug'] });
+    const publicUrl = process.publicSlug && tenant?.slug
+      ? `/jobs/${tenant.slug}/${process.publicSlug}`
+      : null;
+    return { publicSlug: process.publicSlug, publicUrl };
+  }
+
+  /**
+   * S7.1 — Lookup publico de proceso (sin auth). Usado por el job board.
+   * Retorna SOLO datos seguros: titulo, cargo, descripcion, requirements,
+   * deadline. NO devuelve candidatos, scoringWeights, evaluators, etc.
+   */
+  async getPublicProcess(tenantSlug: string, processSlug: string): Promise<any> {
+    const tenant = await this.tenantRepo.findOne({
+      where: { slug: tenantSlug, isActive: true } as any,
+      select: ['id', 'name', 'slug'],
+    });
+    if (!tenant) throw new NotFoundException('Empresa no encontrada o inactiva.');
+
+    const process = await this.processRepo.findOne({
+      where: {
+        tenantId: tenant.id,
+        publicSlug: processSlug,
+        status: ProcessStatus.ACTIVE,
+        processType: 'external',
+      },
+    });
+    if (!process) {
+      throw new NotFoundException('Esta postulacion no esta abierta o ya fue cerrada.');
+    }
+
+    return {
+      tenantName: tenant.name,
+      tenantSlug: tenant.slug,
+      processSlug: process.publicSlug,
+      title: process.title,
+      position: process.position,
+      department: process.department,
+      description: process.description,
+      requirements: process.requirements,
+      endDate: process.endDate,
+    };
+  }
+
+  /**
+   * S7.1 — Auto-aplicar a un proceso publico desde el job board.
+   *
+   * Reglas defensivas:
+   *   - Solo external + active + tenant active.
+   *   - Dedup por email en el proceso (409 si ya aplicaste).
+   *   - Rate limit por IP (5 aplicaciones / hora). Se trackea en memoria
+   *     simple (in-process) — para multi-replica usar Redis. Por ahora
+   *     monolithic API se cubre con esto.
+   *   - Validacion server-side de campos obligatorios (firstName, lastName,
+   *     email, phone). El CV es opcional en este flow inicial.
+   *   - Audit log con metadata.source='public_jobboard'.
+   *
+   * El candidato se crea con stage='registered'. El admin lo ve en su
+   * pipeline igual que candidatos agregados manualmente (la metadata
+   * source los distingue para reportes).
+   */
+  async applyToPublicProcess(
+    tenantSlug: string,
+    processSlug: string,
+    dto: { firstName: string; lastName: string; email: string; phone?: string; linkedIn?: string; coverLetter?: string; cvUrl?: string },
+    requesterIp?: string,
+  ): Promise<{ ok: boolean; message: string }> {
+    // Validacion basica.
+    if (!dto.firstName?.trim() || !dto.lastName?.trim() || !dto.email?.trim()) {
+      throw new BadRequestException('Nombres, apellidos y email son obligatorios.');
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(dto.email)) {
+      throw new BadRequestException('Email invalido.');
+    }
+
+    // Rate limit por IP (in-memory simple).
+    if (requesterIp && !this.checkApplicationRateLimit(requesterIp)) {
+      throw new BadRequestException(
+        'Demasiadas aplicaciones desde tu IP recientemente. Intenta en una hora.',
+      );
+    }
+
+    // Resolver tenant + proceso.
+    const tenant = await this.tenantRepo.findOne({
+      where: { slug: tenantSlug, isActive: true } as any,
+      select: ['id', 'name', 'slug'],
+    });
+    if (!tenant) throw new NotFoundException('Empresa no encontrada o inactiva.');
+
+    const process = await this.processRepo.findOne({
+      where: {
+        tenantId: tenant.id,
+        publicSlug: processSlug,
+        status: ProcessStatus.ACTIVE,
+        processType: 'external',
+      },
+    });
+    if (!process) {
+      throw new NotFoundException('Esta postulacion no esta abierta o ya fue cerrada.');
+    }
+
+    // Dedup por email en el proceso.
+    const existing = await this.candidateRepo.findOne({
+      where: { processId: process.id, email: dto.email },
+    });
+    if (existing) {
+      throw new ConflictException('Ya hay una postulacion con este email para este proceso.');
+    }
+
+    // Crear candidato.
+    const candidate = this.candidateRepo.create({
+      processId: process.id,
+      tenantId: tenant.id,
+      candidateType: 'external',
+      firstName: dto.firstName.trim(),
+      lastName: dto.lastName.trim(),
+      email: dto.email.trim(),
+      phone: dto.phone?.trim() || null,
+      linkedIn: dto.linkedIn?.trim() || null,
+      cvUrl: dto.cvUrl || null,
+      recruiterNotes: dto.coverLetter
+        ? `Cover letter (auto-postulacion):\n\n${dto.coverLetter.trim().slice(0, 4000)}`
+        : null,
+    });
+    const saved = await this.candidateRepo.save(candidate);
+
+    // Audit + history. ChangedBy=null (auto-postulacion, no hay admin).
+    this.auditService
+      .log(tenant.id, null, 'recruitment.candidate_self_applied', 'recruitment_candidate', saved.id, {
+        processId: process.id,
+        processTitle: process.title,
+        email: saved.email,
+        source: 'public_jobboard',
+        ip: requesterIp ?? null,
+      })
+      .catch(() => undefined);
+    await this.recordStageTransition({
+      candidateId: saved.id,
+      tenantId: tenant.id,
+      fromStage: null,
+      toStage: saved.stage,
+      changedBy: null,
+      source: 'self_applied',
+    });
+
+    return {
+      ok: true,
+      message: 'Postulacion recibida. Revisaremos tu CV y te contactaremos pronto.',
+    };
+  }
+
+  /**
+   * S7.1 — Rate limit in-memory simple por IP. Mantiene un map de
+   * IP → timestamps de aplicaciones en la ultima hora. Devuelve true
+   * si la IP puede aplicar (< 5 en la ultima hora), false si supero.
+   *
+   * Limitacion: en multi-replica no comparte estado. Para HA usar Redis
+   * + INCR/EXPIRE. Por ahora API es monolithic, suficiente.
+   */
+  private applicationRateLimits = new Map<string, number[]>();
+  private checkApplicationRateLimit(ip: string, maxPerHour = 5): boolean {
+    const now = Date.now();
+    const oneHourAgo = now - 60 * 60 * 1000;
+    const arr = (this.applicationRateLimits.get(ip) ?? []).filter((ts) => ts > oneHourAgo);
+    if (arr.length >= maxPerHour) {
+      this.applicationRateLimits.set(ip, arr);
+      return false;
+    }
+    arr.push(now);
+    this.applicationRateLimits.set(ip, arr);
+    // Cleanup periodico para no acumular IPs huerfanas indefinidamente.
+    if (this.applicationRateLimits.size > 10000) {
+      for (const [k, v] of this.applicationRateLimits.entries()) {
+        const filtered = v.filter((ts) => ts > oneHourAgo);
+        if (filtered.length === 0) this.applicationRateLimits.delete(k);
+        else this.applicationRateLimits.set(k, filtered);
+      }
+    }
+    return true;
+  }
+
+  /**
    * S6.3 — Metricas del proceso.
    *
    * Devuelve KPIs computados a partir de:

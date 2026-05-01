@@ -55,6 +55,20 @@ export class RecruitmentController {
     return this.service.updateProcess(tenantId, id, dto, req.user.userId);
   }
 
+  /**
+   * S7.1 — Setear/limpiar slug publico para job board.
+   * Body: { slug: string | null }
+   */
+  @Patch('processes/:id/public-slug')
+  @Roles('tenant_admin')
+  setPublicSlug(
+    @Request() req: any,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: { slug: string | null },
+  ) {
+    return this.service.setPublicSlug(req.user.tenantId, id, dto.slug ?? null, req.user.userId);
+  }
+
   // ─── Candidates ───────────────────────────────────────────────────
 
   @Post('processes/:id/candidates')
