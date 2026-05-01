@@ -42,6 +42,12 @@ export default function ResponderEncuestaPage() {
 
   useEffect(() => {
     if (!token || !surveyId) return;
+    // T10 — esperar a que el user este disponible para que localKey
+    // tenga userId. Si el zustand auth store se hidrata async (caso
+    // real al recargar pagina), `user` puede ser null en el primer
+    // render: sin este guard la carga inicial corria con localKey=null
+    // y nunca leia el respaldo local.
+    if (!user?.userId) return;
     // T3 — usar respond-view para que el backend aplique shuffle
     // determinista de preguntas si settings.randomizeQuestions=true.
     // El orden es estable por usuario (recargar no remezcla).
@@ -91,7 +97,9 @@ export default function ResponderEncuestaPage() {
       })
       .catch((e) => toast(e.message || 'Error al cargar encuesta', 'error'))
       .finally(() => setLoading(false));
-  }, [token, surveyId]);
+    // T10 — incluir user?.userId en deps: si el store se hidrata tarde,
+    // el effect re-ejecuta una vez disponible.
+  }, [token, surveyId, user?.userId]);
 
   const handleAnswer = (questionId: string, value: any) => {
     setAnswers((prev) => ({ ...prev, [questionId]: value }));

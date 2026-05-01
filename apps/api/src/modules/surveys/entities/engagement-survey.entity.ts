@@ -17,11 +17,18 @@ import { SurveyAssignment } from './survey-assignment.entity';
 /**
  * T3 — Settings tipados de la encuesta. Ver comentario en el campo
  * `settings` de EngagementSurvey para semantica detallada.
+ *
+ * T12 — `kAnonymityThreshold`: minimo de respuestas necesarias para
+ * mostrar agregados por grupo (departamento, categoria × depto) en
+ * encuestas anonimas. Default = 5. Por debajo del threshold la celda
+ * se suprime (devuelta con `suppressed: true`) para evitar
+ * re-identificacion en grupos pequeños.
  */
 export interface SurveySettings {
   showProgressBar?: boolean;
   randomizeQuestions?: boolean;
   allowPartialSave?: boolean;
+  kAnonymityThreshold?: number;
 }
 
 @Entity('engagement_surveys')

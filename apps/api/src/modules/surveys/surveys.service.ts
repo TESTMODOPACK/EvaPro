@@ -88,6 +88,26 @@ export class SurveysService {
   }
 
   /**
+   * T12 — K-anonymity threshold aplicable a una encuesta.
+   *
+   * Solo aplica a encuestas anonimas: en no-anonimas el respondente es
+   * identificable por diseño y la supresion de celdas no aporta. El
+   * threshold por defecto es 5 (estandar de la literatura de privacidad
+   * agregada — N=5 es el minimo para reducir riesgo de re-identificacion
+   * en agrupamientos pequeños). Configurable por encuesta via
+   * `settings.kAnonymityThreshold` con minimo 2 (N=1 nunca es seguro).
+   *
+   * Retorna 0 cuando no aplica supresion (encuesta no anonima); el
+   * caller usa `if (k > 0)` para decidir si suprimir.
+   */
+  private getKAnonymityThreshold(survey: EngagementSurvey): number {
+    if (!survey.isAnonymous) return 0;
+    const raw = survey.settings?.kAnonymityThreshold;
+    if (typeof raw !== 'number' || !Number.isFinite(raw)) return 5;
+    return Math.max(2, Math.floor(raw));
+  }
+
+  /**
    * T4 — Sanitiza un array de UUIDs de departamento. Acepta solo strings
    * con shape de UUID v1-v5 y descarta el resto. Asi evitamos guardar
    * basura (e.g., nombres de departamento mezclados con IDs cuando el
@@ -108,6 +128,14 @@ export class SurveysService {
     if (typeof src.showProgressBar === 'boolean') out.showProgressBar = src.showProgressBar;
     if (typeof src.randomizeQuestions === 'boolean') out.randomizeQuestions = src.randomizeQuestions;
     if (typeof src.allowPartialSave === 'boolean') out.allowPartialSave = src.allowPartialSave;
+    // T12 — kAnonymityThreshold: enforced en getKAnonymityThreshold con
+    // minimo 2 y default 5. Aqui solo descartamos valores no numericos
+    // o negativos para que el jsonb no quede sucio. Cap superior 100 —
+    // valores mas altos no tienen sentido practico (un tenant con 100
+    // users por dept tendria k=100 = sin supresion ni datos).
+    if (typeof src.kAnonymityThreshold === 'number' && Number.isFinite(src.kAnonymityThreshold) && src.kAnonymityThreshold >= 2 && src.kAnonymityThreshold <= 100) {
+      out.kAnonymityThreshold = Math.floor(src.kAnonymityThreshold);
+    }
 
     // Defense-in-depth: partial save server-side requiere asociar la
     // respuesta parcial a un userId. Si la encuesta es anonima, NO podemos
@@ -625,40 +653,46 @@ export class SurveysService {
     let failEmail = 0;
     let failPush = 0;
 
+    // T8 — Envolvemos cada llamada en Promise.resolve().then(...) para
+    // que un error SINCRONO en sendSurveyInvitation o buildPushMessage
+    // no aborte el chunk entero. Sin esto, una sola entrada con
+    // language/email malformeado tumbaba el dispatch a los siguientes
+    // users del lote.
+    const safeEmail = (u: User) => Promise.resolve()
+      .then(() => this.emailService.sendSurveyInvitation(u.email, {
+        firstName: u.firstName,
+        surveyTitle: survey.title,
+        dueDate,
+        isAnonymous: survey.isAnonymous,
+        tenantId,
+        userId: u.id,
+      }))
+      .then(() => { okEmail++; })
+      .catch((e) => {
+        failEmail++;
+        this.logger.warn(`[launch ${surveyId}] email to ${u.email} failed: ${e?.message}`);
+      });
+
+    const safePush = (u: User) => Promise.resolve()
+      .then(() => {
+        const pushMsg = buildPushMessage('surveyActive', u.language ?? 'es', { title: survey.title });
+        return this.pushService.sendToUser(
+          u.id,
+          {
+            title: pushMsg.title,
+            body: pushMsg.body,
+            url: `/dashboard/encuestas-clima/${surveyId}/responder`,
+            tag: `survey-${surveyId}`,
+          },
+          'surveys',
+        );
+      })
+      .then(() => { okPush++; })
+      .catch(() => { failPush++; });
+
     for (let i = 0; i < targetUsers.length; i += CONCURRENCY) {
       const chunk = targetUsers.slice(i, i + CONCURRENCY);
-      const tasks = chunk.flatMap((u) => [
-        this.emailService
-          .sendSurveyInvitation(u.email, {
-            firstName: u.firstName,
-            surveyTitle: survey.title,
-            dueDate,
-            isAnonymous: survey.isAnonymous,
-            tenantId,
-            userId: u.id,
-          })
-          .then(() => { okEmail++; })
-          .catch((e) => {
-            failEmail++;
-            this.logger.warn(`[launch ${surveyId}] email to ${u.email} failed: ${e?.message}`);
-          }),
-        (() => {
-          const pushMsg = buildPushMessage('surveyActive', u.language ?? 'es', { title: survey.title });
-          return this.pushService
-            .sendToUser(
-              u.id,
-              {
-                title: pushMsg.title,
-                body: pushMsg.body,
-                url: `/dashboard/encuestas-clima/${surveyId}/responder`,
-                tag: `survey-${surveyId}`,
-              },
-              'surveys',
-            )
-            .then(() => { okPush++; })
-            .catch(() => { failPush++; });
-        })(),
-      ]);
+      const tasks = chunk.flatMap((u) => [safeEmail(u), safePush(u)]);
       await Promise.allSettled(tasks);
     }
 
@@ -1213,6 +1247,7 @@ export class SurveysService {
   async getResultsByDepartment(tenantId: string, surveyId: string): Promise<any[]> {
     const survey = await this.findById(tenantId, surveyId);
     const responses = await this.responseRepo.find({ where: { surveyId, tenantId, isComplete: true } });
+    const k = this.getKAnonymityThreshold(survey); // T12
 
     const deptScores: Record<string, { scores: number[]; count: number }> = {};
 
@@ -1234,11 +1269,36 @@ export class SurveysService {
       }
     }
 
-    return Object.entries(deptScores).map(([department, data]) => ({
-      department,
-      responseCount: data.count,
-      average: data.scores.length > 0 ? Number((data.scores.reduce((a, b) => a + b, 0) / data.scores.length).toFixed(2)) : 0,
-    })).sort((a, b) => b.average - a.average);
+    // T12 — supresion por k-anonymity. Si la encuesta es anonima y un
+    // dept tiene < k respuestas, el row se devuelve marcado como
+    // suppressed (sin promedio ni count especifico) para que el
+    // frontend muestre placeholder y el admin entienda que no hay
+    // suficientes respuestas para mostrar agregados sin riesgo de
+    // re-identificacion. En no anonimas k=0 y nunca se suprime.
+    return Object.entries(deptScores)
+      .map(([department, data]) => {
+        if (k > 0 && data.count < k) {
+          return {
+            department,
+            responseCount: data.count,
+            average: 0,
+            suppressed: true,
+            suppressionReason: `Menos de ${k} respuestas — agregado oculto por privacidad.`,
+          };
+        }
+        return {
+          department,
+          responseCount: data.count,
+          average: data.scores.length > 0 ? Number((data.scores.reduce((a, b) => a + b, 0) / data.scores.length).toFixed(2)) : 0,
+        };
+      })
+      .sort((a, b) => {
+        // Suppressed rows al final para que el admin vea primero los
+        // depts con datos.
+        if (a.suppressed && !b.suppressed) return 1;
+        if (!a.suppressed && b.suppressed) return -1;
+        return b.average - a.average;
+      });
   }
 
   /**
@@ -1326,25 +1386,53 @@ export class SurveysService {
       }
     }
 
-    // Generar matriz plana en orden estable: dept × category, aunque
-    // alguna celda no tenga datos (null para que el frontend pinte gris).
-    const departments = Object.keys(cellScores);
+    // T12 — k-anonymity threshold (0 si encuesta no anonima). Suprime
+    // dept entero si su count total < k (no expone su row en el heatmap)
+    // y celdas individuales si el count de la celda < k aunque el dept
+    // global tenga suficientes respuestas (un dept con 50 respuestas
+    // puede tener una categoria especifica con 2, igualmente
+    // identificable).
+    const k = this.getKAnonymityThreshold(survey);
+
+    // Calcular cantidad de RESPONSES por dept (no de likert ratings).
+    // Un user contesta multiples preguntas, su voto cuenta UNA vez por
+    // dept para el threshold de k-anonymity.
+    const deptResponseCount: Record<string, number> = {};
+    for (const r of responses) {
+      const dept = r.department || 'Sin departamento';
+      deptResponseCount[dept] = (deptResponseCount[dept] || 0) + 1;
+    }
+
+    // Generar matriz plana en orden estable: dept × category. Celdas
+    // sin datos = null (gris). Celdas con count < k (y survey anonima)
+    // = suppressed.
+    const allDepts = Object.keys(cellScores);
+    const visibleDepts = k > 0
+      ? allDepts.filter((d) => (deptResponseCount[d] || 0) >= k)
+      : allDepts;
+    const suppressedDepts = k > 0
+      ? allDepts.filter((d) => (deptResponseCount[d] || 0) < k)
+      : [];
     const categoryList = [...categories].sort();
-    const cells: Array<{ department: string; category: string; average: number | null; count: number }> = [];
-    for (const dept of departments) {
+    const cells: Array<{ department: string; category: string; average: number | null; count: number; suppressed?: boolean }> = [];
+    for (const dept of visibleDepts) {
       for (const cat of categoryList) {
         const arr = cellScores[dept][cat] || [];
-        cells.push({
-          department: dept,
-          category: cat,
-          average: arr.length > 0 ? Number((arr.reduce((a, b) => a + b, 0) / arr.length).toFixed(2)) : null,
-          count: arr.length,
-        });
+        if (k > 0 && arr.length > 0 && arr.length < k) {
+          cells.push({ department: dept, category: cat, average: null, count: arr.length, suppressed: true });
+        } else {
+          cells.push({
+            department: dept,
+            category: cat,
+            average: arr.length > 0 ? Number((arr.reduce((a, b) => a + b, 0) / arr.length).toFixed(2)) : null,
+            count: arr.length,
+          });
+        }
       }
     }
 
     const overallByDepartment: Record<string, number> = {};
-    for (const dept of departments) {
+    for (const dept of visibleDepts) {
       const arr = deptOverall[dept];
       overallByDepartment[dept] = arr.length > 0
         ? Number((arr.reduce((a, b) => a + b, 0) / arr.length).toFixed(2))
@@ -1352,13 +1440,20 @@ export class SurveysService {
     }
 
     // Ordenar dept por overall ASC (peor primero — mas accionable visualmente).
-    departments.sort((a, b) => (overallByDepartment[a] || 0) - (overallByDepartment[b] || 0));
+    visibleDepts.sort((a, b) => (overallByDepartment[a] || 0) - (overallByDepartment[b] || 0));
 
     return {
-      departments,
+      departments: visibleDepts,
       categories: categoryList,
       cells,
       overallByDepartment,
+      // T12 — info al frontend para mostrar disclaimer si se suprimio algo.
+      kAnonymity: {
+        threshold: k,
+        applied: k > 0,
+        suppressedDepartments: suppressedDepts.length,
+        suppressedCells: cells.filter((c) => c.suppressed).length,
+      },
     };
   }
 
@@ -1541,7 +1636,10 @@ export class SurveysService {
         averageByCategory: results.averageByCategory,
         averageByQuestion: results.averageByQuestion,
         enps,
-        departmentResults: deptResults,
+        // T12 — filtrar departments suprimidos por k-anonymity para que
+        // el AI prompt no reciba "average=0, suppressed=true" como
+        // dato real (lo interpretaria como dept con clima critico).
+        departmentResults: deptResults.filter((d: any) => !d.suppressed),
         openResponses: results.openResponses.slice(0, 50), // Limit to avoid token overflow
       },
       { force },
