@@ -67,6 +67,27 @@ export class SurveysService {
    *   - centraliza los defaults aqui (mismo lugar para create/update).
    */
   /**
+   * T11 — Conversion correcta de likert 1-5 a escala 1-10.
+   *
+   * El comportamiento previo (`raw * 2`) producia 2-10 en vez de 1-10
+   * y desplazaba el "neutro" (3 raw) a 6 cuando el verdadero neutro
+   * en 1-10 es 5.5. Eso sesgaba todos los promedios hacia arriba —
+   * en particular el AI prompt interpretaba "≥6" como aceptable
+   * cuando lo correcto era "≥5.5", y el threshold visual de 6 quedaba
+   * tocando el neutro semantico.
+   *
+   * Formula correcta (lerp): `f(x) = (x - 1) * 9 / 4 + 1`
+   *   1 → 1, 2 → 3.25, 3 → 5.5, 4 → 7.75, 5 → 10.
+   *
+   * Centralizado para que cualquier consumer del modulo (results,
+   * eNPS, heatmap, dept, trends, export) use exactamente la misma
+   * formula y un eventual cambio futuro sea de un solo punto.
+   */
+  private likertToTen(raw: number): number {
+    return ((raw - 1) * 9) / 4 + 1;
+  }
+
+  /**
    * T4 — Sanitiza un array de UUIDs de departamento. Acepta solo strings
    * con shape de UUID v1-v5 y descarta el resto. Asi evitamos guardar
    * basura (e.g., nombres de departamento mezclados con IDs cuando el
@@ -991,12 +1012,18 @@ export class SurveysService {
     }
 
     // Calculate averages by category
-    // Note: climate surveys use likert_5 internally (scores 1-5) but we
-    // present results on a 1-10 scale (×2) so they can be compared directly
-    // against the 1-10 performance evaluation scale. NPS questions are
-    // already 0-10 and remain unchanged.
+    // T11 — climate surveys use likert_5 internally (scores 1-5) but we
+    // present results on a 1-10 scale via lerp (likertToTen) so they
+    // can be compared directly against the 1-10 performance evaluation
+    // scale. NPS questions are already 0-10 and remain unchanged.
     const categoryScores: Record<string, number[]> = {};
     const questionScores: Record<string, number[]> = {};
+    // T11 — para likert_5 guardamos tambien los valores RAW 1-5 para que
+    // la distribucion use buckets enteros que coincidan con las opciones
+    // del Likert (1=Muy desacuerdo, ..., 5=Muy de acuerdo). El lerp a
+    // 1-10 produce 1, 3.25, 5.5, 7.75, 10 — no enteros — y bucketizar
+    // con Math.round daria distribucion sesgada.
+    const questionRawScores: Record<string, number[]> = {};
     const openResponses: Array<{ questionId: string; questionText: string; category: string; text: string }> = [];
 
     for (const r of responses) {
@@ -1007,13 +1034,18 @@ export class SurveysService {
         if (question.questionType === 'likert_5' || question.questionType === 'nps') {
           const raw = typeof ans.value === 'number' ? ans.value : parseFloat(ans.value as string);
           if (!isNaN(raw)) {
-            // Normalize likert_5 (1-5) → 2-10 to align with NPS/perf scale.
-            const numVal = question.questionType === 'likert_5' ? raw * 2 : raw;
+            // T11 — lerp likert_5 (1-5) → 1-10 (no ×2). NPS llega 0-10.
+            const numVal = question.questionType === 'likert_5' ? this.likertToTen(raw) : raw;
             if (!categoryScores[question.category]) categoryScores[question.category] = [];
             categoryScores[question.category].push(numVal);
 
             if (!questionScores[question.id]) questionScores[question.id] = [];
             questionScores[question.id].push(numVal);
+
+            if (question.questionType === 'likert_5') {
+              if (!questionRawScores[question.id]) questionRawScores[question.id] = [];
+              questionRawScores[question.id].push(raw);
+            }
           }
         } else if (question.questionType === 'open_text' && ans.value) {
           openResponses.push({
@@ -1048,17 +1080,22 @@ export class SurveysService {
       })
       .sort((a, b) => b.average - a.average);
 
-    // Likert distribution per question — buckets 2,4,6,8,10 (×2 of 1-5 raw)
+    // T11 — Likert distribution por pregunta usando buckets RAW 1-5
+    // (los niveles del Likert que el respondente realmente eligio).
+    // Antes los buckets eran 2,4,6,8,10 (resultado de ×2), confuso de
+    // leer. Con el lerp lineal del agregado los valores transformados
+    // ya no son enteros (1, 3.25, 5.5, 7.75, 10), por lo que la unica
+    // forma honesta de distribuir es con los raw 1-5.
     const likertDistribution = survey.questions
       .filter((q) => q.questionType === 'likert_5')
       .map((q) => {
-        const scores = questionScores[q.id] || []; // already ×2
-        const dist: Record<number, number> = { 2: 0, 4: 0, 6: 0, 8: 0, 10: 0 };
-        for (const s of scores) {
-          const bucket = Math.round(s) as number;
+        const raw = questionRawScores[q.id] || [];
+        const dist: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+        for (const s of raw) {
+          const bucket = Math.round(s);
           if (dist[bucket] !== undefined) dist[bucket] += 1;
         }
-        const total = scores.length || 1;
+        const total = raw.length || 1;
         return {
           questionId: q.id,
           questionText: q.questionText,
@@ -1117,11 +1154,12 @@ export class SurveysService {
     const npsQuestions = survey.questions.filter((q) => q.questionType === 'nps');
     const likertQuestions = survey.questions.filter((q) => q.questionType === 'likert_5');
 
-    // Strategy: prefer native NPS questions if available; otherwise derive
-    // eNPS from likert_5 responses by applying the standard 0-10 classification
-    // on each respondent's likert average ×2 (so max 5 → 10 = promoter).
-    // See AIHR/CultureMonkey/Matter references — this is equivalent to the
-    // 5-point eNPS mapping Promoter=5, Passive=4, Detractor=1-3.
+    // T11 — Strategy: prefer native NPS questions if available; otherwise
+    // derive eNPS from likert_5 responses applying lerp likertToTen (1→1,
+    // 5→10) sobre el promedio del respondente, y la clasificacion estandar
+    // 0-10. Equivalente a la mapeo 5-point eNPS Promoter=5, Passive=4,
+    // Detractor=1-3 (un promedio de 5 raw → 10 transformado → promoter,
+    // un 4 raw → 7.75 → passive, un 3 raw → 5.5 → detractor).
     const useNps = npsQuestions.length > 0;
     const sourceQuestions = useNps ? npsQuestions : likertQuestions;
 
@@ -1142,7 +1180,7 @@ export class SurveysService {
         const raw = typeof ans.value === 'number' ? ans.value : parseFloat(ans.value as string);
         if (isNaN(raw)) continue;
         // Likert 1-5 → 2-10 for classification; NPS already 0-10.
-        scores.push(question.questionType === 'likert_5' ? raw * 2 : raw);
+        scores.push(question.questionType === 'likert_5' ? this.likertToTen(raw) : raw);
       }
 
       if (scores.length === 0) continue;
@@ -1189,9 +1227,9 @@ export class SurveysService {
 
         const raw = typeof ans.value === 'number' ? ans.value : parseFloat(ans.value as string);
         if (!isNaN(raw)) {
-          // Normalize likert_5 (1-5) → 2-10 so the department averages match
-          // the 1-10 scale used everywhere else (getSurveyResults, eNPS, etc).
-          deptScores[dept].scores.push(raw * 2);
+          // T11 — lerp likert_5 (1-5) → 1-10 (likertToTen) en lugar de
+          // ×2, para que coincida con el promedio general y eNPS.
+          deptScores[dept].scores.push(this.likertToTen(raw));
         }
       }
     }
@@ -1207,7 +1245,7 @@ export class SurveysService {
    * T5 — Heatmap dept × categoria.
    *
    * Devuelve la matriz de promedios por (departamento, categoria) en
-   * escala 1-10 (mismo ×2 que el resto). Permite drill-down visual:
+   * escala 1-10 (lerp likertToTen, igual que el resto). Permite drill-down visual:
    * un dept con buen promedio general puede tener una categoria
    * especifica baja (e.g., "Cultura" en IT alto pero "Bienestar" en
    * IT critico).
@@ -1280,7 +1318,7 @@ export class SurveysService {
         if (!q) continue;
         const raw = typeof ans.value === 'number' ? ans.value : parseFloat(ans.value as string);
         if (isNaN(raw)) continue;
-        const norm = raw * 2; // 1-5 → 2-10
+        const norm = this.likertToTen(raw); // T11 — lerp 1-5 → 1-10
 
         if (!cellScores[dept][q.category]) cellScores[dept][q.category] = [];
         cellScores[dept][q.category].push(norm);
@@ -1389,9 +1427,9 @@ export class SurveysService {
           const raw = typeof ans.value === 'number' ? ans.value : parseFloat(ans.value as string);
           if (!isNaN(raw)) {
             if (!categoryScores[q.category]) categoryScores[q.category] = [];
-            // Normalize to 1-10 scale so trends are consistent with
-            // getSurveyResults / getResultsByDepartment / eNPS.
-            categoryScores[q.category].push(raw * 2);
+            // T11 — lerp 1-5 → 1-10 (likertToTen) consistente con
+            // getResults / getResultsByDepartment / eNPS / heatmap.
+            categoryScores[q.category].push(this.likertToTen(raw));
           }
         }
       }
@@ -1754,7 +1792,7 @@ export class SurveysService {
 
     const rows: string[] = [];
     rows.push(`Encuesta,${this.escapeCsv(results.survey.title)}`);
-    rows.push(`Escala de puntuación,1 a 10 (normalizada desde likert 1-5 ×2)`);
+    rows.push(`Escala de puntuación,1 a 10 (lerp lineal desde likert 1-5: 1→1 / 3→5.5 / 5→10)`);
     rows.push(`Tasa de respuesta,${results.responseRate}%`);
     rows.push(`Respuestas,${results.totalResponses} de ${results.totalAssigned}`);
     rows.push(`Promedio general,${results.overallAverage} / 10`);
@@ -1813,7 +1851,7 @@ export class SurveysService {
     ws1.addRow(['Encuesta de Clima']).font = { bold: true, size: 14 };
     ws1.addRow([]);
     ws1.addRow(['Encuesta', results.survey.title]);
-    ws1.addRow(['Escala de puntuación', '1 a 10 (normalizada desde likert 1-5 ×2)']);
+    ws1.addRow(['Escala de puntuación', '1 a 10 (lerp lineal desde likert 1-5: 1→1 / 3→5.5 / 5→10)']);
     ws1.addRow(['Tasa de respuesta', `${results.responseRate}%`]);
     ws1.addRow(['Respuestas', `${results.totalResponses} de ${results.totalAssigned}`]);
     ws1.addRow(['Promedio general', `${results.overallAverage} / 10`]);
