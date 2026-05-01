@@ -1663,34 +1663,7 @@ export class SurveysService {
           for (const survey of activeSurveys) {
             // Skip if past end date
             if (new Date() > survey.endDate) continue;
-
-            const pendingAssignments = await this.assignmentRepo.find({
-              where: { tenantId, surveyId: survey.id, status: 'pending' },
-              relations: ['user'],
-            });
-
-            const toNotify = pendingAssignments.filter((a) => a.reminderCount < 3 && a.user);
-
-            if (toNotify.length === 0) continue;
-
-            const notifications = toNotify.map((a) => ({
-              tenantId: a.tenantId,
-              userId: a.userId,
-              type: 'survey_reminder' as any,
-              title: 'Recordatorio: encuesta pendiente',
-              message: `Tienes pendiente la encuesta "${survey.title}". ${survey.isAnonymous ? 'Tus respuestas son anónimas.' : ''} Fecha límite: ${survey.endDate.toISOString().split('T')[0]}.`,
-              metadata: { surveyId: survey.id },
-            }));
-
-            await this.notificationsService.createBulk(notifications);
-
-            // Update reminder count
-            for (const a of toNotify) {
-              a.reminderCount = (a.reminderCount || 0) + 1;
-            }
-            await this.assignmentRepo.save(toNotify);
-
-            this.logger.log(`[Cron] Sent ${toNotify.length} survey reminders for "${survey.title}"`);
+            await this.remindOneSurvey(tenantId, survey);
           }
         } catch (error) {
           this.logger.error(`[Cron] Error in remindIncompleteSurveys (tenant=${tenantId.slice(0, 8)}): ${error}`);
@@ -1698,6 +1671,73 @@ export class SurveysService {
         }
       },
     );
+  }
+
+  /**
+   * T9 — Paginacion del cron de recordatorios.
+   *
+   * El loop original cargaba TODOS los pending assignments con
+   * `relations: ['user']` en una sola query. Para tenants enterprise
+   * con miles de users por encuesta esto:
+   *   - inflaba memoria de Node con N rows + N user objects;
+   *   - hacia un single UPDATE de N filas al final (lock largo);
+   *   - dejaba el cron expuesto a OOM si el dataset crecia.
+   *
+   * Ahora procesamos en lotes de PAGE_SIZE=200 con LIMIT/OFFSET. Cada
+   * lote:
+   *   - filtra reminderCount<3 y user activo;
+   *   - crea notificaciones in-app via createBulk;
+   *   - actualiza reminderCount con un UPDATE acotado.
+   * Si un lote falla, el resto sigue procesandose en proximas
+   * iteraciones (el cron es idempotente por reminderCount).
+   *
+   * Tambien excluimos assignments cuyos users hayan sido desactivados
+   * tras el launch — antes les llegaba reminder pero no tenian login.
+   */
+  private async remindOneSurvey(tenantId: string, survey: EngagementSurvey): Promise<void> {
+    const PAGE_SIZE = 200;
+    const dueDate = survey.endDate.toISOString().split('T')[0];
+    let offset = 0;
+    let totalSent = 0;
+
+    while (true) {
+      const pending = await this.assignmentRepo.find({
+        where: { tenantId, surveyId: survey.id, status: 'pending' },
+        relations: ['user'],
+        order: { id: 'ASC' },
+        take: PAGE_SIZE,
+        skip: offset,
+      });
+      if (pending.length === 0) break;
+
+      const toNotify = pending.filter((a) => a.reminderCount < 3 && a.user && a.user.isActive);
+
+      if (toNotify.length > 0) {
+        const notifications = toNotify.map((a) => ({
+          tenantId: a.tenantId,
+          userId: a.userId,
+          type: 'survey_reminder' as any,
+          title: 'Recordatorio: encuesta pendiente',
+          message: `Tienes pendiente la encuesta "${survey.title}". ${survey.isAnonymous ? 'Tus respuestas son anónimas.' : ''} Fecha límite: ${dueDate}.`,
+          metadata: { surveyId: survey.id },
+        }));
+        await this.notificationsService.createBulk(notifications);
+
+        for (const a of toNotify) {
+          a.reminderCount = (a.reminderCount || 0) + 1;
+        }
+        await this.assignmentRepo.save(toNotify);
+        totalSent += toNotify.length;
+      }
+
+      // Si el lote vino mas chico que PAGE_SIZE, ya no hay mas paginas.
+      if (pending.length < PAGE_SIZE) break;
+      offset += PAGE_SIZE;
+    }
+
+    if (totalSent > 0) {
+      this.logger.log(`[Cron] Sent ${totalSent} survey reminders for "${survey.title}" (paginado)`);
+    }
   }
 
   // ─── Export ────────────────────────────────────────────────────────────
