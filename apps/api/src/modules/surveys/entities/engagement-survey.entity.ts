@@ -53,8 +53,23 @@ export class EngagementSurvey {
   @Column({ type: 'varchar', length: 20, default: 'all', name: 'target_audience', comment: 'all | by_department | custom' })
   targetAudience: string;
 
+  /**
+   * T4 — Nombres de departamentos objetivo (legacy, se conserva para
+   * retrocompat con encuestas creadas antes de targetDepartmentIds y
+   * para tenants cuyo catalogo de departamentos viene de custom-settings
+   * sin IDs estables).
+   */
   @Column({ type: 'jsonb', name: 'target_departments', default: () => "'[]'" })
   targetDepartments: string[];
+
+  /**
+   * T4 — UUIDs de departamentos objetivo. Tiene precedencia sobre
+   * `targetDepartments` cuando el array no esta vacio. Hace que el
+   * matching de target audience sea robusto frente a renames del
+   * departamento (los IDs no cambian, los nombres si).
+   */
+  @Column({ type: 'jsonb', name: 'target_department_ids', default: () => "'[]'" })
+  targetDepartmentIds: string[];
 
   @Column({ type: 'timestamptz', name: 'start_date' })
   startDate: Date;
