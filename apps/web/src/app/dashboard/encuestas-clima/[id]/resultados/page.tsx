@@ -145,10 +145,15 @@ export default function ResultadosEncuestaPage() {
   if (loading) return <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Cargando resultados...</div>;
   if (!results) return <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>No se encontraron resultados</div>;
 
+  // Escala normalizada 1-10 (backend multiplica likert_5 ×2 y nps llega 0-10).
+  // PolarRadiusAxis usa domain={[0, 10]}, fullMark debe coincidir para que
+  // el radar represente proporcionalmente el promedio respecto del máximo
+  // y para que cualquier remoción futura del domain explícito no rompa la
+  // visualización.
   const radarData = (results.averageByCategory || []).map((c: any) => ({
     category: c.category,
     promedio: c.average,
-    fullMark: 5,
+    fullMark: 10,
   }));
 
   const enpsColors = { promoters: '#16a34a', passives: '#eab308', detractors: '#ef4444' };
