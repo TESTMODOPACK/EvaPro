@@ -66,6 +66,20 @@ export class SurveysService {
    *     sin defensas extra.
    *   - centraliza los defaults aqui (mismo lugar para create/update).
    */
+  /**
+   * T4 — Sanitiza un array de UUIDs de departamento. Acepta solo strings
+   * con shape de UUID v1-v5 y descarta el resto. Asi evitamos guardar
+   * basura (e.g., nombres de departamento mezclados con IDs cuando el
+   * cliente envia mal el payload).
+   */
+  private sanitizeDeptIds(input: unknown): string[] {
+    if (!Array.isArray(input)) return [];
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    return input
+      .filter((v): v is string => typeof v === 'string' && UUID_RE.test(v.trim()))
+      .map((s) => s.trim());
+  }
+
   private sanitizeSettings(input: unknown, isAnonymous?: boolean): SurveySettings {
     if (!input || typeof input !== 'object') input = {};
     const src = input as Record<string, unknown>;
@@ -112,6 +126,10 @@ export class SurveysService {
       isAnonymous?: boolean;
       targetAudience?: string;
       targetDepartments?: string[];
+      /** T4 — preferido sobre `targetDepartments` para evitar matching
+       *  por nombre. Si llega vacio, se mantiene matching legacy por
+       *  nombre (retrocompat con tenants sin IDs estables). */
+      targetDepartmentIds?: string[];
       startDate: string;
       endDate: string;
       settings?: Record<string, any>;
@@ -138,13 +156,21 @@ export class SurveysService {
     }
 
     const isAnonymous = dto.isAnonymous ?? true;
+    // T4 — Sanitizar arrays: solo strings no vacios. departmentIds se valida
+    // con regex UUID basico para evitar guardar basura en el jsonb.
+    const sanitizedDeptNames = Array.isArray(dto.targetDepartments)
+      ? dto.targetDepartments.filter((s) => typeof s === 'string' && s.trim().length > 0)
+      : [];
+    const sanitizedDeptIds = this.sanitizeDeptIds(dto.targetDepartmentIds);
+
     const survey = this.surveyRepo.create({
       tenantId,
       title: dto.title,
       description: dto.description ?? null,
       isAnonymous,
       targetAudience: dto.targetAudience ?? 'all',
-      targetDepartments: dto.targetDepartments ?? [],
+      targetDepartments: sanitizedDeptNames,
+      targetDepartmentIds: sanitizedDeptIds,
       startDate,
       endDate,
       createdBy: userId,
@@ -289,6 +315,8 @@ export class SurveysService {
       isAnonymous?: boolean;
       targetAudience?: string;
       targetDepartments?: string[];
+      /** T4 — preferido sobre targetDepartments. */
+      targetDepartmentIds?: string[];
       startDate?: string;
       endDate?: string;
       settings?: Record<string, any>;
@@ -312,7 +340,14 @@ export class SurveysService {
     if (dto.description !== undefined) survey.description = dto.description;
     if (dto.isAnonymous !== undefined) survey.isAnonymous = dto.isAnonymous;
     if (dto.targetAudience !== undefined) survey.targetAudience = dto.targetAudience;
-    if (dto.targetDepartments !== undefined) survey.targetDepartments = dto.targetDepartments;
+    if (dto.targetDepartments !== undefined) {
+      survey.targetDepartments = Array.isArray(dto.targetDepartments)
+        ? dto.targetDepartments.filter((s) => typeof s === 'string' && s.trim().length > 0)
+        : [];
+    }
+    if (dto.targetDepartmentIds !== undefined) {
+      survey.targetDepartmentIds = this.sanitizeDeptIds(dto.targetDepartmentIds);
+    }
     if (dto.startDate !== undefined) survey.startDate = new Date(dto.startDate);
     if (dto.endDate !== undefined) survey.endDate = new Date(dto.endDate);
     // Sanitize tomando isAnonymous DESPUES de aplicar el dto: si el admin
@@ -475,13 +510,26 @@ export class SurveysService {
   private async getTargetUsers(tenantId: string, survey: EngagementSurvey): Promise<User[]> {
     const where: any = { tenantId, isActive: true };
 
-    if (survey.targetAudience === 'by_department' && survey.targetDepartments.length > 0) {
-      // Prefer departmentId if available (targetDepartmentIds), fallback to text
-      if ((survey as any).targetDepartmentIds?.length > 0) {
-        where.departmentId = In((survey as any).targetDepartmentIds);
-      } else {
+    if (survey.targetAudience === 'by_department') {
+      // T4 — preferir matching por departmentId (estable frente a renames).
+      // Fallback a matching por nombre cuando aplica.
+      const idCount = survey.targetDepartmentIds?.length ?? 0;
+      const nameCount = survey.targetDepartments?.length ?? 0;
+
+      if (idCount > 0 && nameCount > idCount) {
+        // Catalogo mixto: el admin selecciono mas departamentos por nombre
+        // de los que tienen IDs (tipico cuando el tenant tiene legacy
+        // custom-settings sin id mezclados con la tabla nueva). Caer a
+        // matching por nombre para no perder los legacy silenciosamente.
+        where.department = In(survey.targetDepartments);
+      } else if (idCount > 0) {
+        where.departmentId = In(survey.targetDepartmentIds);
+      } else if (nameCount > 0) {
         where.department = In(survey.targetDepartments);
       }
+      // Si ambos estan vacios y target=='by_department', no se aplica filtro
+      // de dept (devuelve todos los users del tenant). Es coherente con el
+      // comportamiento previo a T4 — el launch ya valida que haya users.
     }
     // 'all' or 'custom' (custom uses all for now, can be extended)
 
