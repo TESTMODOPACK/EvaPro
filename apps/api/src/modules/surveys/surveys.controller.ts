@@ -40,11 +40,16 @@ export class SurveysController {
     return this.surveysService.getMyPendingSurveys(req.user.tenantId, req.user.userId);
   }
 
-  /** Get survey trends across closed surveys */
+  /** Get survey trends across closed surveys.
+   *  T2 — Manager ve la evolucion historica de su equipo (encuestas no
+   *  anonimas asignadas a el o sus reportes directos). Las anonimas se
+   *  omiten del trend del manager para preservar anonimato (ver getTrends).
+   */
   @Get('trends')
-  @Roles('super_admin', 'tenant_admin')
+  @Roles('super_admin', 'tenant_admin', 'manager')
   getTrends(@Request() req: any) {
-    return this.surveysService.getTrends(req.user.tenantId);
+    const managerId = req.user.role === 'manager' ? req.user.userId : undefined;
+    return this.surveysService.getTrends(req.user.tenantId, managerId);
   }
 
   /** Encuestas activas próximas a cerrar con baja participación.
