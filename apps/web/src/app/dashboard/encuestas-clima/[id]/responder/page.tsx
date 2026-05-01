@@ -19,7 +19,16 @@ export default function ResponderEncuestaPage() {
   const router = useRouter();
   const surveyId = params.id as string;
   const token = useAuthStore((s) => s.token);
+  const user = useAuthStore((s) => s.user);
   const toast = useToastStore((s) => s.toast);
+
+  // T10 — Autosave en localStorage. Cubre el caso de encuestas anonimas
+  // (no podemos persistir server-side sin asociar un userId) y actua
+  // como respaldo adicional en no-anonimas si falla la conexion.
+  // Storage key incluye userId para no leer respuestas de otra sesion
+  // en el mismo dispositivo. Si no hay userId aun (auth cargando), no
+  // intentamos cargar/guardar.
+  const localKey = user?.userId ? `surveyAnswers:${user.userId}:${surveyId}` : null;
 
   const [survey, setSurvey] = useState<any>(null);
   const [answers, setAnswers] = useState<Record<string, any>>({});
@@ -46,6 +55,11 @@ export default function ResponderEncuestaPage() {
         setSurvey(data);
         const init: Record<string, any> = {};
         (data.questions || []).forEach((q: any) => { init[q.id] = null; });
+        // Prioridad: 1) progress server-side (T3), 2) localStorage (T10),
+        // 3) vacio. Si server devuelve respuestas, NO leemos local — el
+        // server es la fuente de verdad y evitamos sobreescribir avances
+        // hechos desde otro dispositivo.
+        let hydratedFromServer = false;
         if (progress?.answers && Array.isArray(progress.answers)) {
           for (const a of progress.answers) {
             if (a && typeof a === 'object' && 'questionId' in a) {
@@ -53,6 +67,25 @@ export default function ResponderEncuestaPage() {
             }
           }
           if (progress.updatedAt) setPartialSavedAt(new Date(progress.updatedAt));
+          hydratedFromServer = true;
+        }
+        // T10 — fallback a localStorage solo si server no aporto data.
+        // Tipico para encuestas anonimas (server nunca persiste) o
+        // no-anonimas sin allowPartialSave (server no expone progress).
+        if (!hydratedFromServer && localKey && typeof window !== 'undefined') {
+          try {
+            const raw = window.localStorage.getItem(localKey);
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              if (parsed && typeof parsed === 'object' && parsed.answers && typeof parsed.answers === 'object') {
+                for (const [qid, val] of Object.entries(parsed.answers)) {
+                  if (qid in init) init[qid] = val;
+                }
+              }
+            }
+          } catch {
+            // localStorage corrupto: ignorar y arrancar limpio.
+          }
         }
         setAnswers(init);
       })
@@ -63,6 +96,30 @@ export default function ResponderEncuestaPage() {
   const handleAnswer = (questionId: string, value: any) => {
     setAnswers((prev) => ({ ...prev, [questionId]: value }));
   };
+
+  // T10 — Autosave a localStorage cada vez que cambian las answers, con
+  // debounce de 500ms para no escribir en cada keystroke en open_text.
+  // Solo escribe si hay al menos UNA respuesta (no contamina storage con
+  // un objeto vacio si el user solo abre la pagina).
+  useEffect(() => {
+    if (!localKey || typeof window === 'undefined') return;
+    if (loading) return; // no autosave hasta hidratar
+    const hasAny = Object.values(answers).some((v) => v !== null && v !== '' && v !== undefined);
+    if (!hasAny) return;
+
+    const handle = setTimeout(() => {
+      try {
+        window.localStorage.setItem(
+          localKey,
+          JSON.stringify({ answers, updatedAt: new Date().toISOString() }),
+        );
+      } catch {
+        // QuotaExceeded o similar: ignorar; el server-side (si aplica) y
+        // el envio final cubren la persistencia. localStorage es respaldo.
+      }
+    }, 500);
+    return () => clearTimeout(handle);
+  }, [answers, localKey, loading]);
 
   const canPartialSave = !!survey && !survey.isAnonymous && !!survey.settings?.allowPartialSave;
 
@@ -106,6 +163,12 @@ export default function ResponderEncuestaPage() {
         .map(([questionId, value]) => ({ questionId, value }));
 
       await api.surveys.respond(token, surveyId, formattedAnswers);
+      // T10 — limpiar respaldo local al submit exitoso. Evita que un
+      // usuario que vuelve a la URL despues de submitear vea sus
+      // respuestas viejas hidratadas.
+      if (localKey && typeof window !== 'undefined') {
+        try { window.localStorage.removeItem(localKey); } catch { /* ignore */ }
+      }
       toast('Respuestas enviadas exitosamente. ¡Gracias por participar!', 'success');
       router.push('/dashboard/encuestas-clima');
     } catch (e: any) {
