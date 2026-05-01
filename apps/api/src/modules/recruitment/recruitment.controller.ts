@@ -292,6 +292,50 @@ export class RecruitmentController {
     return this.service.submitInterview(tenantId, req.user.userId, candidateId, dto);
   }
 
+  /**
+   * S7.2 — Agendar slot de entrevista (envia .ics + recordatorios).
+   * Body: { evaluatorId, scheduledAt (ISO), durationMinutes?, meetingUrl?, adminNotes? }
+   */
+  @Post('candidates/:id/schedule-interview')
+  @Roles('super_admin', 'tenant_admin')
+  scheduleInterview(
+    @Request() req: any,
+    @Param('id', ParseUUIDPipe) candidateId: string,
+    @Body() dto: any,
+  ) {
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('super_admin debe operar dentro de un tenant especifico.');
+    }
+    return this.service.scheduleInterview(tenantId, candidateId, dto, req.user.userId);
+  }
+
+  /**
+   * S7.2 — Cancelar slot agendado (envia .ics CANCEL).
+   * Body: { reason?: string }
+   */
+  @Patch('interview-slots/:id/cancel')
+  @Roles('super_admin', 'tenant_admin')
+  cancelInterviewSlot(
+    @Request() req: any,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: { reason?: string },
+  ) {
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('super_admin debe operar dentro de un tenant especifico.');
+    }
+    return this.service.cancelInterviewSlot(tenantId, id, dto.reason ?? null, req.user.userId);
+  }
+
+  /**
+   * S7.2 — Listar entrevistas proximas del candidato.
+   */
+  @Get('candidates/:id/upcoming-interviews')
+  getUpcomingInterviews(@Request() req: any, @Param('id', ParseUUIDPipe) id: string) {
+    return this.service.listUpcomingSlots(req.user.tenantId, id);
+  }
+
   @Get('candidates/:id/interviews')
   getInterviews(@Request() req: any, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.getInterviews(req.user.tenantId, id);

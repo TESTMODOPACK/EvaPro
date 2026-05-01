@@ -12,6 +12,8 @@ import { RecruitmentCandidate, CandidateStage } from './entities/recruitment-can
 import { RecruitmentEvaluator } from './entities/recruitment-evaluator.entity';
 import { RecruitmentInterview } from './entities/recruitment-interview.entity';
 import { RecruitmentCandidateStageHistory } from './entities/recruitment-candidate-stage-history.entity';
+import { RecruitmentInterviewSlot, InterviewSlotStatus } from './entities/recruitment-interview-slot.entity';
+import { buildIcs } from './utils/ics-generator';
 import { User } from '../users/entities/user.entity';
 import { UserMovement, MovementType } from '../users/entities/user-movement.entity';
 import { EvaluationAssignment } from '../evaluations/entities/evaluation-assignment.entity';
@@ -42,6 +44,9 @@ export class RecruitmentService {
     // S6.1 — historial de transiciones de stage para metricas.
     @InjectRepository(RecruitmentCandidateStageHistory)
     private readonly stageHistoryRepo: Repository<RecruitmentCandidateStageHistory>,
+    // S7.2 — slots de entrevistas agendadas.
+    @InjectRepository(RecruitmentInterviewSlot)
+    private readonly interviewSlotRepo: Repository<RecruitmentInterviewSlot>,
     @InjectRepository(User) private readonly userRepo: Repository<User>,
     @InjectRepository(EvaluationAssignment) private readonly evalAssignmentRepo: Repository<EvaluationAssignment>,
     @InjectRepository(EvaluationResponse) private readonly evalResponseRepo: Repository<EvaluationResponse>,
@@ -2192,6 +2197,300 @@ export class RecruitmentService {
       );
     }
     return { emailSent };
+  }
+
+  /**
+   * S7.2 — Agendar entrevista entre candidato y evaluador.
+   *
+   * Crea un RecruitmentInterviewSlot y dispara emails con .ics adjunto
+   * a candidato (si tiene email) y evaluador. Diseño:
+   *
+   *   - Sincrono respecto al BD: la respuesta se devuelve solo cuando
+   *     el slot esta persistido. El email se intenta tambien sincrono
+   *     pero fallos quedan logueados sin abortar la creacion del slot.
+   *   - UID del .ics es slot.id para que reagendar (cambiar scheduledAt)
+   *     emita REQUEST con mismo UID y los clientes actualicen el evento.
+   *   - Cancelar emite METHOD:CANCEL con mismo UID — los clientes borran
+   *     el evento.
+   *
+   * Reglas:
+   *   - Solo admin (tenant_admin) — validado en controller.
+   *   - Candidato debe pertenecer al tenant.
+   *   - Evaluator debe ser User activo del tenant.
+   *   - scheduledAt debe ser futuro.
+   *   - durationMinutes 15 - 240 (rango razonable).
+   */
+  async scheduleInterview(
+    tenantId: string,
+    candidateId: string,
+    dto: {
+      evaluatorId: string;
+      scheduledAt: string; // ISO datetime
+      durationMinutes?: number;
+      meetingUrl?: string;
+      adminNotes?: string;
+    },
+    callerUserId: string,
+  ): Promise<RecruitmentInterviewSlot> {
+    if (!dto.evaluatorId || !dto.scheduledAt) {
+      throw new BadRequestException('evaluatorId y scheduledAt son obligatorios.');
+    }
+    const scheduledAt = new Date(dto.scheduledAt);
+    if (isNaN(scheduledAt.getTime())) {
+      throw new BadRequestException('scheduledAt invalido (formato ISO requerido).');
+    }
+    if (scheduledAt.getTime() <= Date.now()) {
+      throw new BadRequestException('La fecha de la entrevista debe ser futura.');
+    }
+    const durationMinutes = dto.durationMinutes ?? 60;
+    if (durationMinutes < 15 || durationMinutes > 240) {
+      throw new BadRequestException('Duracion debe estar entre 15 y 240 minutos.');
+    }
+
+    const candidate = await this.candidateRepo.findOne({ where: { id: candidateId, tenantId } });
+    if (!candidate) throw new NotFoundException('Candidato no encontrado.');
+
+    const evaluator = await this.userRepo.findOne({
+      where: { id: dto.evaluatorId, tenantId, isActive: true },
+      select: ['id', 'firstName', 'lastName', 'email'],
+    });
+    if (!evaluator) throw new NotFoundException('Evaluador no encontrado o inactivo.');
+
+    const slot = this.interviewSlotRepo.create({
+      tenantId,
+      candidateId,
+      evaluatorId: dto.evaluatorId,
+      scheduledAt,
+      durationMinutes,
+      meetingUrl: dto.meetingUrl?.trim() || null,
+      adminNotes: dto.adminNotes?.trim() || null,
+      createdBy: callerUserId,
+      status: InterviewSlotStatus.SCHEDULED,
+    });
+    const saved = await this.interviewSlotRepo.save(slot);
+
+    // Audit
+    this.auditService
+      .log(tenantId, callerUserId, 'recruitment.interview_scheduled', 'recruitment_interview_slot', saved.id, {
+        candidateId,
+        evaluatorId: dto.evaluatorId,
+        scheduledAt: scheduledAt.toISOString(),
+        durationMinutes,
+      })
+      .catch(() => undefined);
+
+    // Enviar emails con .ics. NO bloqueamos la respuesta si falla.
+    this.sendInterviewIcs(saved, candidate, evaluator, 'CONFIRMED').catch((e: any) => {
+      this.logger.warn(`[scheduleInterview] envio .ics fallo para slot ${saved.id}: ${e?.message ?? e}`);
+    });
+
+    return saved;
+  }
+
+  /**
+   * S7.2 — Cancelar slot. Emite .ics METHOD:CANCEL para que los clientes
+   * de calendario borren el evento.
+   */
+  async cancelInterviewSlot(
+    tenantId: string,
+    slotId: string,
+    cancelReason: string | null,
+    callerUserId: string,
+  ): Promise<RecruitmentInterviewSlot> {
+    const slot = await this.interviewSlotRepo.findOne({ where: { id: slotId, tenantId } });
+    if (!slot) throw new NotFoundException('Slot no encontrado.');
+    if (slot.status === InterviewSlotStatus.CANCELLED) {
+      throw new BadRequestException('Slot ya esta cancelado.');
+    }
+    if (slot.status === InterviewSlotStatus.COMPLETED) {
+      throw new BadRequestException('No se puede cancelar un slot ya completado.');
+    }
+    slot.status = InterviewSlotStatus.CANCELLED;
+    slot.cancelReason = cancelReason?.trim() || null;
+    const saved = await this.interviewSlotRepo.save(slot);
+
+    this.auditService
+      .log(tenantId, callerUserId, 'recruitment.interview_cancelled', 'recruitment_interview_slot', slotId, {
+        candidateId: slot.candidateId,
+        evaluatorId: slot.evaluatorId,
+        scheduledAt: slot.scheduledAt.toISOString(),
+        reason: cancelReason ?? null,
+      })
+      .catch(() => undefined);
+
+    // Cancellation email + .ics CANCEL.
+    const candidate = await this.candidateRepo.findOne({ where: { id: slot.candidateId, tenantId } });
+    const evaluator = await this.userRepo.findOne({
+      where: { id: slot.evaluatorId, tenantId },
+      select: ['id', 'firstName', 'lastName', 'email'],
+    });
+    if (candidate && evaluator) {
+      this.sendInterviewIcs(saved, candidate, evaluator, 'CANCELLED').catch((e: any) => {
+        this.logger.warn(`[cancelInterviewSlot] envio cancel .ics fallo: ${e?.message ?? e}`);
+      });
+    }
+
+    return saved;
+  }
+
+  /**
+   * S7.2 — Listar slots proximos del candidato (admin/manager view).
+   */
+  async listUpcomingSlots(
+    tenantId: string,
+    candidateId: string,
+  ): Promise<RecruitmentInterviewSlot[]> {
+    return this.interviewSlotRepo
+      .createQueryBuilder('s')
+      .where('s.tenantId = :tid', { tid: tenantId })
+      .andWhere('s.candidateId = :cid', { cid: candidateId })
+      .andWhere('s.status != :cancelled', { cancelled: InterviewSlotStatus.CANCELLED })
+      .andWhere('s.scheduledAt >= :now', { now: new Date() })
+      .orderBy('s.scheduledAt', 'ASC')
+      .getMany();
+  }
+
+  /**
+   * S7.2 — Helper privado: envia el .ics a candidato + evaluator.
+   * action='CONFIRMED' al agendar, 'CANCELLED' al cancelar.
+   */
+  private async sendInterviewIcs(
+    slot: RecruitmentInterviewSlot,
+    candidate: RecruitmentCandidate,
+    evaluator: { firstName: string; lastName: string; email: string },
+    action: 'CONFIRMED' | 'CANCELLED',
+  ): Promise<void> {
+    const tenantRow = await this.tenantRepo.findOne({ where: { id: slot.tenantId }, select: ['name'] });
+    const orgName = tenantRow?.name ?? 'Eva360';
+    const candidateName = `${candidate.firstName ?? ''} ${candidate.lastName ?? ''}`.trim();
+    const title = action === 'CANCELLED'
+      ? `[CANCELADA] Entrevista — ${orgName}`
+      : `Entrevista — ${orgName}`;
+    const dateStr = slot.scheduledAt.toLocaleString('es-CL', {
+      year: 'numeric', month: 'long', day: 'numeric',
+      hour: '2-digit', minute: '2-digit', timeZoneName: 'short',
+    });
+    const description = action === 'CANCELLED'
+      ? `La entrevista programada para ${dateStr} fue cancelada.${slot.cancelReason ? ` Motivo: ${slot.cancelReason}` : ''}`
+      : `Entrevista entre ${candidateName} y ${evaluator.firstName} ${evaluator.lastName}.${slot.meetingUrl ? `\n\nLink: ${slot.meetingUrl}` : ''}${slot.adminNotes ? `\n\nNotas: ${slot.adminNotes}` : ''}`;
+
+    const ics = buildIcs({
+      uid: `${slot.id}@eva360`,
+      scheduledAt: slot.scheduledAt,
+      durationMinutes: slot.durationMinutes,
+      title,
+      description,
+      location: slot.meetingUrl ?? '',
+      organizerName: orgName,
+      organizerEmail: 'no-reply@eva360.app',
+      attendeeName: candidateName || 'Candidato',
+      attendeeEmail: candidate.email ?? '',
+      status: action,
+    });
+
+    const recipients: string[] = [];
+    if (candidate.email) recipients.push(candidate.email);
+    if (evaluator.email) recipients.push(evaluator.email);
+    if (recipients.length === 0) return;
+
+    const html = action === 'CANCELLED'
+      ? `<p>La entrevista programada para <strong>${dateStr}</strong> fue cancelada.</p>${slot.cancelReason ? `<p><strong>Motivo:</strong> ${slot.cancelReason}</p>` : ''}`
+      : `<p>Te confirmamos una entrevista para <strong>${dateStr}</strong>.</p>${slot.meetingUrl ? `<p><strong>Link:</strong> <a href="${slot.meetingUrl}">${slot.meetingUrl}</a></p>` : ''}<p>Adjuntamos invitacion .ics — ábrela para agregarla a tu calendario.</p>`;
+
+    await this.emailService.sendWithAttachments(
+      recipients,
+      title,
+      html,
+      [{ filename: 'invite.ics', content: ics, contentType: 'text/calendar; charset=utf-8' }],
+      slot.tenantId,
+    );
+  }
+
+  /**
+   * S7.2 — Cron diario que envia recordatorios de entrevistas:
+   *   - 24h antes: si scheduledAt esta en (now+23h, now+25h] y reminderSent24h=false
+   *   - 1h antes:  si scheduledAt esta en (now+45min, now+75min] y reminderSent1h=false
+   *
+   * El job corre cada 15 minutos para cubrir las ventanas de 1h con
+   * suficiente granularidad. Idempotente via los flags.
+   */
+  @Cron('*/15 * * * *')
+  async sendInterviewReminders(): Promise<void> {
+    await runWithCronLock(
+      'recruitment.sendInterviewReminders',
+      this.dataSource,
+      this.logger,
+      async () => {
+        const now = Date.now();
+        const in1h = new Date(now + 60 * 60 * 1000);
+        const in75min = new Date(now + 75 * 60 * 1000);
+        const in23h = new Date(now + 23 * 60 * 60 * 1000);
+        const in25h = new Date(now + 25 * 60 * 60 * 1000);
+
+        // Recordatorios 24h.
+        const slots24h = await this.interviewSlotRepo
+          .createQueryBuilder('s')
+          .where('s.status = :status', { status: InterviewSlotStatus.SCHEDULED })
+          .andWhere('s.scheduledAt > :start', { start: in23h })
+          .andWhere('s.scheduledAt <= :end', { end: in25h })
+          .andWhere('s.reminderSent24h = false')
+          .getMany();
+
+        for (const s of slots24h) {
+          await this.sendReminderEmail(s, '24h').catch((e: any) => {
+            this.logger.warn(`[sendInterviewReminders] 24h reminder fallo slot ${s.id}: ${e?.message ?? e}`);
+          });
+          await this.interviewSlotRepo.update({ id: s.id }, { reminderSent24h: true });
+        }
+
+        // Recordatorios 1h.
+        const slots1h = await this.interviewSlotRepo
+          .createQueryBuilder('s')
+          .where('s.status = :status', { status: InterviewSlotStatus.SCHEDULED })
+          .andWhere('s.scheduledAt > :start', { start: in1h })
+          .andWhere('s.scheduledAt <= :end', { end: in75min })
+          .andWhere('s.reminderSent1h = false')
+          .getMany();
+
+        for (const s of slots1h) {
+          await this.sendReminderEmail(s, '1h').catch((e: any) => {
+            this.logger.warn(`[sendInterviewReminders] 1h reminder fallo slot ${s.id}: ${e?.message ?? e}`);
+          });
+          await this.interviewSlotRepo.update({ id: s.id }, { reminderSent1h: true });
+        }
+
+        if (slots24h.length + slots1h.length > 0) {
+          this.logger.log(
+            `[sendInterviewReminders] enviados: ${slots24h.length} (24h) + ${slots1h.length} (1h)`,
+          );
+        }
+      },
+    );
+  }
+
+  private async sendReminderEmail(slot: RecruitmentInterviewSlot, kind: '24h' | '1h'): Promise<void> {
+    const candidate = await this.candidateRepo.findOne({ where: { id: slot.candidateId, tenantId: slot.tenantId } });
+    const evaluator = await this.userRepo.findOne({
+      where: { id: slot.evaluatorId, tenantId: slot.tenantId },
+      select: ['firstName', 'lastName', 'email'],
+    });
+    if (!candidate || !evaluator) return;
+
+    const recipients: string[] = [];
+    if (candidate.email) recipients.push(candidate.email);
+    if (evaluator.email) recipients.push(evaluator.email);
+    if (recipients.length === 0) return;
+
+    const dateStr = slot.scheduledAt.toLocaleString('es-CL', {
+      year: 'numeric', month: 'long', day: 'numeric',
+      hour: '2-digit', minute: '2-digit', timeZoneName: 'short',
+    });
+    const subject = kind === '24h'
+      ? `Recordatorio: entrevista en 24h (${dateStr})`
+      : `Recordatorio: entrevista en 1h (${dateStr})`;
+    const html = `<p>Te recordamos tu entrevista programada para <strong>${dateStr}</strong>.</p>${slot.meetingUrl ? `<p><strong>Link:</strong> <a href="${slot.meetingUrl}">${slot.meetingUrl}</a></p>` : ''}`;
+
+    await this.emailService.send(recipients, subject, html);
   }
 
   /**

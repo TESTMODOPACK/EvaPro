@@ -27,6 +27,7 @@ import { RecruitmentCandidate, CandidateStage } from './entities/recruitment-can
 import { RecruitmentEvaluator } from './entities/recruitment-evaluator.entity';
 import { RecruitmentInterview } from './entities/recruitment-interview.entity';
 import { RecruitmentCandidateStageHistory } from './entities/recruitment-candidate-stage-history.entity';
+import { RecruitmentInterviewSlot } from './entities/recruitment-interview-slot.entity';
 import { User } from '../users/entities/user.entity';
 import { UserMovement } from '../users/entities/user-movement.entity';
 import { EvaluationAssignment } from '../evaluations/entities/evaluation-assignment.entity';
@@ -57,6 +58,7 @@ describe('RecruitmentService', () => {
   let evaluatorRepo: any;
   let interviewRepo: any;
   let stageHistoryRepo: any;
+  let interviewSlotRepo: any;
   let userRepo: any;
   let tenantRepo: any;
   let auditService: any;
@@ -74,6 +76,7 @@ describe('RecruitmentService', () => {
     evaluatorRepo = createMockRepository();
     interviewRepo = createMockRepository();
     stageHistoryRepo = createMockRepository();
+    interviewSlotRepo = createMockRepository();
     userRepo = createMockRepository();
     tenantRepo = createMockRepository();
     auditService = createMockAuditService();
@@ -96,6 +99,7 @@ describe('RecruitmentService', () => {
         { provide: getRepositoryToken(RecruitmentEvaluator), useValue: evaluatorRepo },
         { provide: getRepositoryToken(RecruitmentInterview), useValue: interviewRepo },
         { provide: getRepositoryToken(RecruitmentCandidateStageHistory), useValue: stageHistoryRepo },
+        { provide: getRepositoryToken(RecruitmentInterviewSlot), useValue: interviewSlotRepo },
         { provide: getRepositoryToken(User), useValue: userRepo },
         { provide: getRepositoryToken(UserMovement), useValue: createMockRepository() },
         { provide: getRepositoryToken(EvaluationAssignment), useValue: createMockRepository() },
@@ -724,6 +728,154 @@ describe('RecruitmentService', () => {
       expect(m.winnerScore).toBe(9.2);
       expect(m.runnerUpScore).toBe(7.5);
       expect(m.timeToHireDays).toBe(31); // 2026-03-01 → 2026-04-01
+    });
+  });
+
+  // ─── Calendar integration (S7.2) ──────────────────────────────────
+
+  describe('scheduleInterview', () => {
+    const candidateId = fakeUuid(300);
+    const evaluatorId = fakeUuid(2);
+
+    it('lanza si faltan campos obligatorios', async () => {
+      await expect(
+        service.scheduleInterview(TENANT_ID, candidateId, {} as any, ADMIN_ID),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('lanza si scheduledAt invalido', async () => {
+      await expect(
+        service.scheduleInterview(TENANT_ID, candidateId, {
+          evaluatorId,
+          scheduledAt: 'not-a-date',
+        }, ADMIN_ID),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('lanza si scheduledAt es pasado', async () => {
+      await expect(
+        service.scheduleInterview(TENANT_ID, candidateId, {
+          evaluatorId,
+          scheduledAt: '2020-01-01T10:00:00Z',
+        }, ADMIN_ID),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('lanza si duracion fuera de rango', async () => {
+      const future = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+      await expect(
+        service.scheduleInterview(TENANT_ID, candidateId, {
+          evaluatorId, scheduledAt: future, durationMinutes: 5,
+        }, ADMIN_ID),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        service.scheduleInterview(TENANT_ID, candidateId, {
+          evaluatorId, scheduledAt: future, durationMinutes: 500,
+        }, ADMIN_ID),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('lanza si candidato no existe', async () => {
+      const future = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+      candidateRepo.findOne.mockResolvedValue(null);
+      await expect(
+        service.scheduleInterview(TENANT_ID, candidateId, {
+          evaluatorId, scheduledAt: future,
+        }, ADMIN_ID),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('lanza si evaluator no existe / inactivo', async () => {
+      const future = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+      candidateRepo.findOne.mockResolvedValue({ id: candidateId, tenantId: TENANT_ID });
+      userRepo.findOne.mockResolvedValue(null);
+      await expect(
+        service.scheduleInterview(TENANT_ID, candidateId, {
+          evaluatorId, scheduledAt: future,
+        }, ADMIN_ID),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('crea slot + audit + email', async () => {
+      const future = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+      candidateRepo.findOne.mockResolvedValue({
+        id: candidateId, tenantId: TENANT_ID,
+        firstName: 'Juan', lastName: 'P', email: 'j@p.com',
+      });
+      userRepo.findOne.mockResolvedValue({
+        id: evaluatorId, firstName: 'Eve', lastName: 'L', email: 'e@l.com',
+      });
+      tenantRepo.findOne.mockResolvedValue({ name: 'Acme' });
+      interviewSlotRepo.save.mockResolvedValue({
+        id: fakeUuid(500),
+        tenantId: TENANT_ID,
+        candidateId,
+        evaluatorId,
+        scheduledAt: new Date(future),
+        durationMinutes: 60,
+      });
+
+      const r = await service.scheduleInterview(TENANT_ID, candidateId, {
+        evaluatorId, scheduledAt: future,
+      }, ADMIN_ID);
+
+      expect(r.id).toBe(fakeUuid(500));
+      const auditCall = (auditService.log as jest.Mock).mock.calls.find(
+        (c) => c[2] === 'recruitment.interview_scheduled',
+      );
+      expect(auditCall).toBeDefined();
+    });
+  });
+
+  describe('cancelInterviewSlot', () => {
+    const slotId = fakeUuid(500);
+
+    it('lanza si slot no existe', async () => {
+      interviewSlotRepo.findOne.mockResolvedValue(null);
+      await expect(
+        service.cancelInterviewSlot(TENANT_ID, slotId, 'razon', ADMIN_ID),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('lanza si slot ya cancelado', async () => {
+      interviewSlotRepo.findOne.mockResolvedValue({
+        id: slotId, tenantId: TENANT_ID, status: 'cancelled',
+      });
+      await expect(
+        service.cancelInterviewSlot(TENANT_ID, slotId, 'razon', ADMIN_ID),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('lanza si slot completed', async () => {
+      interviewSlotRepo.findOne.mockResolvedValue({
+        id: slotId, tenantId: TENANT_ID, status: 'completed',
+      });
+      await expect(
+        service.cancelInterviewSlot(TENANT_ID, slotId, 'razon', ADMIN_ID),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('cancela + audit', async () => {
+      interviewSlotRepo.findOne.mockResolvedValue({
+        id: slotId, tenantId: TENANT_ID, status: 'scheduled',
+        candidateId: fakeUuid(300), evaluatorId: fakeUuid(2),
+        scheduledAt: new Date('2026-12-31'), durationMinutes: 60,
+      });
+      interviewSlotRepo.save.mockResolvedValue({
+        id: slotId, tenantId: TENANT_ID, status: 'cancelled', cancelReason: 'razon',
+        candidateId: fakeUuid(300), evaluatorId: fakeUuid(2),
+        scheduledAt: new Date('2026-12-31'), durationMinutes: 60,
+      });
+      candidateRepo.findOne.mockResolvedValue(null); // No envia email pero no falla.
+      userRepo.findOne.mockResolvedValue(null);
+
+      const r = await service.cancelInterviewSlot(TENANT_ID, slotId, 'razon valida', ADMIN_ID);
+
+      expect(r.status).toBe('cancelled');
+      const auditCall = (auditService.log as jest.Mock).mock.calls.find(
+        (c) => c[2] === 'recruitment.interview_cancelled',
+      );
+      expect(auditCall).toBeDefined();
     });
   });
 

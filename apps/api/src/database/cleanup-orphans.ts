@@ -294,6 +294,27 @@ async function main() {
       // S7.1 — Indice unico parcial para public_slug por tenant.
       // Permite NULL multiple (procesos no publicos) sin colisionar.
       `CREATE UNIQUE INDEX IF NOT EXISTS idx_rp_tenant_pubslug ON recruitment_processes(tenant_id, public_slug) WHERE public_slug IS NOT NULL`,
+      // S7.2 — slots de entrevistas agendadas con .ics + recordatorios.
+      `CREATE TABLE IF NOT EXISTS recruitment_interview_slots (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id uuid NOT NULL,
+        candidate_id uuid NOT NULL,
+        evaluator_id uuid NOT NULL,
+        scheduled_at timestamptz NOT NULL,
+        duration_minutes int NOT NULL DEFAULT 60,
+        meeting_url text NULL,
+        status varchar(20) NOT NULL DEFAULT 'scheduled',
+        cancel_reason text NULL,
+        admin_notes text NULL,
+        created_by uuid NOT NULL,
+        reminder_sent_24h boolean NOT NULL DEFAULT false,
+        reminder_sent_1h boolean NOT NULL DEFAULT false,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now()
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_ris_evaluator_scheduled ON recruitment_interview_slots(evaluator_id, scheduled_at)`,
+      `CREATE INDEX IF NOT EXISTS idx_ris_candidate_scheduled ON recruitment_interview_slots(candidate_id, scheduled_at)`,
+      `CREATE INDEX IF NOT EXISTS idx_ris_tenant_status ON recruitment_interview_slots(tenant_id, status)`,
     ];
     for (const sql of tableFixes) {
       try { await client.query(sql); } catch { /* already exists */ }

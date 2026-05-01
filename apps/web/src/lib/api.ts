@@ -745,6 +745,37 @@ export const api = {
         token,
       ),
     /**
+     * S7.2 — Agendar slot de entrevista (envia .ics + recordatorios).
+     */
+    scheduleInterview: (
+      token: string,
+      candidateId: string,
+      data: { evaluatorId: string; scheduledAt: string; durationMinutes?: number; meetingUrl?: string; adminNotes?: string },
+    ) =>
+      request<any>(
+        `/recruitment/candidates/${candidateId}/schedule-interview`,
+        { method: 'POST', body: JSON.stringify(data) },
+        token,
+      ),
+    /**
+     * S7.2 — Cancelar slot agendado (envia .ics CANCEL).
+     */
+    cancelInterviewSlot: (token: string, slotId: string, reason?: string) =>
+      request<any>(
+        `/recruitment/interview-slots/${slotId}/cancel`,
+        { method: 'PATCH', body: JSON.stringify({ reason }) },
+        token,
+      ),
+    /**
+     * S7.2 — Listar entrevistas proximas del candidato.
+     */
+    getUpcomingInterviews: (token: string, candidateId: string) =>
+      request<any[]>(
+        `/recruitment/candidates/${candidateId}/upcoming-interviews`,
+        {},
+        token,
+      ),
+    /**
      * S6.2 — Bulk: cambia stage a N candidatos. Bloquea hired source/dest.
      */
     bulkUpdateStage: (token: string, candidateIds: string[], stage: string) =>
