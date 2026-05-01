@@ -27,6 +27,10 @@ export default function ResultadosEncuestaPage() {
   const toast = useToastStore((s) => s.toast);
   const queryClient = useQueryClient();
   const isAdmin = user?.role === 'tenant_admin' || user?.role === 'super_admin';
+  // T2 — Manager puede ver el tab Tendencias scoped a su equipo (backend
+  // filtra a respuestas de su equipo y omite encuestas anonimas).
+  const isManager = user?.role === 'manager';
+  const canViewTrends = isAdmin || isManager;
   const { isBlocked: aiBlocked } = useAiQuota();
 
   const [results, setResults] = useState<any>(null);
@@ -80,7 +84,7 @@ export default function ResultadosEncuestaPage() {
         api.surveys.getResults(token, surveyId),
         api.surveys.getENPS(token, surveyId),
         isAdmin ? api.surveys.getResultsByDept(token, surveyId) : Promise.resolve([]),
-        isAdmin ? api.surveys.getTrends(token) : Promise.resolve([]),
+        canViewTrends ? api.surveys.getTrends(token) : Promise.resolve([]),
       ]);
       setResults(res);
       setEnps(enpsData);
@@ -168,7 +172,7 @@ export default function ResultadosEncuestaPage() {
     ...(isAdmin ? [{ key: 'department', label: 'Por Departamento' }] : []),
     { key: 'responses', label: 'Comentarios' },
     ...(isAdmin ? [{ key: 'ai', label: 'Análisis IA' }] : []),
-    ...(isAdmin ? [{ key: 'trends', label: 'Tendencias' }] : []),
+    ...(canViewTrends ? [{ key: 'trends', label: 'Tendencias' }] : []),
   ];
 
   return (
@@ -779,11 +783,22 @@ export default function ResultadosEncuestaPage() {
       )}
 
       {/* ─── Trends Tab ─── */}
-      {activeTab === 'trends' && isAdmin && (
+      {activeTab === 'trends' && canViewTrends && (
         <div className="card" style={{ padding: '1.25rem' }}>
-          <h3 style={{ margin: '0 0 1rem', fontSize: '1rem', fontWeight: 600 }}>Tendencias Históricas</h3>
+          <h3 style={{ margin: '0 0 0.5rem', fontSize: '1rem', fontWeight: 600 }}>
+            Tendencias Históricas
+            {isManager && !isAdmin && (
+              <span style={{ marginLeft: '0.5rem', fontSize: '0.72rem', fontWeight: 500, color: 'var(--text-muted)' }}>
+                (encuestas no anónimas asignadas a tu equipo)
+              </span>
+            )}
+          </h3>
           {trends.length < 2 ? (
-            <p style={{ color: 'var(--text-muted)' }}>Se necesitan al menos 2 encuestas cerradas para ver tendencias.</p>
+            <p style={{ color: 'var(--text-muted)' }}>
+              {isManager && !isAdmin
+                ? 'Se necesitan al menos 2 encuestas no anónimas cerradas con tu equipo asignado para ver tendencias.'
+                : 'Se necesitan al menos 2 encuestas cerradas para ver tendencias.'}
+            </p>
           ) : (
             <>
               <ResponsiveContainer width="100%" height={350}>

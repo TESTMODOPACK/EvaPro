@@ -781,18 +781,62 @@ export class SurveysService {
     })).sort((a, b) => b.average - a.average);
   }
 
-  async getTrends(tenantId: string): Promise<any[]> {
+  /**
+   * Tendencias historicas de encuestas cerradas.
+   *
+   * T2 — Manager scope:
+   *   - admin (managerId=undefined) → todas las encuestas cerradas, todas las
+   *     respuestas (comportamiento original).
+   *   - manager → resuelve su equipo (reportes directos + self) y, por cada
+   *     encuesta:
+   *       * encuestas anonimas se OMITEN del trend (filtrar respuestas por
+   *         respondentId rompe el anonimato cuando el equipo es chico, mismo
+   *         criterio que getResults/getENPS — ver P7.2).
+   *       * encuestas no anonimas se filtran a respuestas del equipo y a
+   *         asignaciones del equipo, igual que getResults.
+   *       * encuestas sin asignaciones del equipo se omiten (no aplica el
+   *         trend para el manager).
+   *
+   * Cada encuesta sigue retornando los mismos campos (surveyId, title,
+   * endDate, responseRate, overallAverage, categories) — la respuesta
+   * solo varia en cantidad de filas, manteniendo el contrato del frontend.
+   */
+  async getTrends(tenantId: string, managerId?: string): Promise<any[]> {
     const surveys = await this.surveyRepo.find({
       where: { tenantId, status: 'closed' },
       order: { endDate: 'ASC' },
     });
 
+    // Resolver equipo del manager una sola vez (no por encuesta).
+    let teamIds: Set<string> | null = null;
+    if (managerId) {
+      const reports = await this.userRepo.find({
+        where: { tenantId, managerId },
+        select: ['id'],
+      });
+      teamIds = new Set(reports.map((u) => u.id));
+      teamIds.add(managerId);
+    }
+
     const trends: any[] = [];
 
     for (const survey of surveys) {
+      // Manager scope: omitir encuestas anonimas para preservar anonimato.
+      if (teamIds && survey.isAnonymous) continue;
+
       const questions = await this.questionRepo.find({ where: { surveyId: survey.id } });
-      const responses = await this.responseRepo.find({ where: { surveyId: survey.id, tenantId, isComplete: true } });
-      const totalAssigned = await this.assignmentRepo.count({ where: { surveyId: survey.id, tenantId } });
+
+      const responseWhere: any = { surveyId: survey.id, tenantId, isComplete: true };
+      if (teamIds) responseWhere.respondentId = In([...teamIds]);
+      const responses = await this.responseRepo.find({ where: responseWhere });
+
+      const assignWhere: any = { surveyId: survey.id, tenantId };
+      if (teamIds) assignWhere.userId = In([...teamIds]);
+      const totalAssigned = await this.assignmentRepo.count({ where: assignWhere });
+
+      // Manager: si el equipo no fue asignado a esta encuesta, no aporta al
+      // trend (evita filas con responseRate=0 / overallAverage=0 ruidosas).
+      if (teamIds && totalAssigned === 0) continue;
 
       const categoryScores: Record<string, number[]> = {};
       for (const r of responses) {
