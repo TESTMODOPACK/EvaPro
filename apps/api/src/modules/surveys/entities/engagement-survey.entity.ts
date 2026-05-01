@@ -14,6 +14,16 @@ import { User } from '../../users/entities/user.entity';
 import { SurveyQuestion } from './survey-question.entity';
 import { SurveyAssignment } from './survey-assignment.entity';
 
+/**
+ * T3 — Settings tipados de la encuesta. Ver comentario en el campo
+ * `settings` de EngagementSurvey para semantica detallada.
+ */
+export interface SurveySettings {
+  showProgressBar?: boolean;
+  randomizeQuestions?: boolean;
+  allowPartialSave?: boolean;
+}
+
 @Entity('engagement_surveys')
 @Index('idx_survey_tenant', ['tenantId'])
 @Index('idx_survey_status', ['tenantId', 'status'])
@@ -59,8 +69,26 @@ export class EngagementSurvey {
   @JoinColumn({ name: 'created_by' })
   creator: User;
 
+  /**
+   * T3 — Tipo concreto del jsonb `settings` para el responder.
+   *
+   * - showProgressBar (default true): muestra barra de progreso en
+   *   `responder/page.tsx`. Algunos admin prefieren ocultarla en
+   *   encuestas muy cortas para no presionar al respondente.
+   * - randomizeQuestions (default false): aleatoriza el orden de las
+   *   preguntas DENTRO de cada categoria (preserva agrupamiento visual)
+   *   con un seed estable por (surveyId, userId) para que el mismo
+   *   respondente vea siempre el mismo orden si recarga.
+   * - allowPartialSave (default false): habilita guardar respuestas a
+   *   medias en el servidor. Solo aplica a encuestas NO anonimas — en
+   *   anonimas no se persiste nada server-side hasta que el respondente
+   *   submitea (en T10 se manejara via localStorage).
+   *
+   * Cualquier campo no listado se ignora. La forma se valida en el
+   * service antes de persistir (sanitizeSettings).
+   */
   @Column({ type: 'jsonb', default: () => "'{}'", comment: '{ allowPartialSave, showProgressBar, randomizeQuestions }' })
-  settings: Record<string, any>;
+  settings: SurveySettings;
 
   @Column({ type: 'int', default: 0, name: 'response_count' })
   responseCount: number;
