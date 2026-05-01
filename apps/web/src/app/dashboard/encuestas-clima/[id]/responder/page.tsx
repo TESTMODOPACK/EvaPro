@@ -231,7 +231,10 @@ export default function ResponderEncuestaPage() {
                   {q.isRequired && <span style={{ color: 'var(--danger)' }}> *</span>}
                 </p>
 
-                {/* Likert 1-5 (resultados se presentan en escala 1-10 ×2) */}
+                {/* Likert 1-5 — T11: la conversion a 1-10 ahora es lerp
+                    lineal (1→1, 3→5.5, 5→10) en vez de ×2. Mostramos el
+                    equivalente debajo de cada boton para que el respondente
+                    sepa como se va a leer su voto en el reporte. */}
                 {q.questionType === 'likert_5' && (
                   <>
                     <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
@@ -257,13 +260,13 @@ export default function ResponderEncuestaPage() {
                           <div style={{ fontSize: '1.1rem', fontWeight: 700 }}>{l.value}</div>
                           <div style={{ fontSize: '0.7rem' }}>{l.label}</div>
                           <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', marginTop: 2 }}>
-                            = {l.value * 2}/10
+                            = {(((l.value - 1) * 9) / 4 + 1).toFixed(2).replace(/\.?0+$/, '')}/10
                           </div>
                         </button>
                       ))}
                     </div>
                     <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', margin: '0.35rem 0 0', fontStyle: 'italic' }}>
-                      Los resultados se presentan en escala 1-10 para compararse con las evaluaciones de desempeño.
+                      Los resultados se presentan en escala 1-10 (lerp lineal) para compararse con las evaluaciones de desempeño.
                     </p>
                   </>
                 )}

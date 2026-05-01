@@ -428,7 +428,7 @@ export default function ResultadosEncuestaPage() {
                 {enps && enps.enps !== null && (
                   <p style={{ margin: '0 0 0.35rem' }}>
                     <strong>eNPS:</strong> Score de {enps.enps > 0 ? '+' : ''}{enps.enps}
-                    {enps.source === 'likert_derived' ? ' (derivado de escala Likert ×2)' : ''}
+                    {enps.source === 'likert_derived' ? ' (derivado del Likert con lerp 1-10)' : ''}
                     {enps.enps >= 50 ? ' — excelente, los colaboradores son embajadores de la organización.' : enps.enps >= 30 ? ' — muy bueno, mayoría promotores.' : enps.enps >= 0 ? ' — aceptable, hay espacio para mejorar la experiencia del colaborador.' : ' — bajo, requiere atención urgente para revertir la insatisfacción.'}
                   </p>
                 )}
@@ -448,16 +448,26 @@ export default function ResultadosEncuestaPage() {
             </div>
           )}
 
-          {/* Likert Distribution — with legend, labels, and analysis */}
+          {/* Likert Distribution — T11: ahora los buckets son 1-5 RAW (las
+              opciones que el respondente realmente eligio). El promedio
+              global se calcula en raw 1-5 y se transforma a 1-10 con lerp
+              para mostrar consistente con el resto del modulo. */}
           {(results.likertDistribution || []).length > 0 && (() => {
-            // Buckets 2,4,6,8,10 come from the backend after ×2 normalization.
-            const likertLabels: Record<number, string> = { 2: 'Muy insatisfecho', 4: 'Insatisfecho', 6: 'Neutral', 8: 'Satisfecho', 10: 'Muy satisfecho' };
-            const likertColors: Record<number, string> = { 2: '#ef4444', 4: '#f97316', 6: '#eab308', 8: '#22c55e', 10: '#16a34a' };
-            // Find weakest and strongest questions
+            const likertLabels: Record<number, string> = {
+              1: 'Muy en desacuerdo',
+              2: 'En desacuerdo',
+              3: 'Neutral',
+              4: 'De acuerdo',
+              5: 'Muy de acuerdo',
+            };
+            const likertColors: Record<number, string> = { 1: '#ef4444', 2: '#f97316', 3: '#eab308', 4: '#22c55e', 5: '#16a34a' };
+            const lerp = (raw: number) => ((raw - 1) * 9) / 4 + 1; // T11
+            // Find weakest and strongest questions (avg en raw 1-5, display en 1-10)
             const withAvg = results.likertDistribution.map((q: any) => {
               const total = q.distribution.reduce((s: number, d: any) => s + d.count, 0);
-              const avg = total > 0 ? q.distribution.reduce((s: number, d: any) => s + d.level * d.count, 0) / total : 0;
-              return { ...q, avg: Math.round(avg * 100) / 100, total };
+              const rawAvg = total > 0 ? q.distribution.reduce((s: number, d: any) => s + d.level * d.count, 0) / total : 0;
+              const avg = Math.round(lerp(rawAvg) * 100) / 100;
+              return { ...q, avg, total };
             });
             const sorted = [...withAvg].sort((a, b) => a.avg - b.avg);
             const weakest = sorted[0];
@@ -467,11 +477,11 @@ export default function ResultadosEncuestaPage() {
             <div className="card" style={{ padding: '1.25rem' }}>
               <h3 style={{ margin: '0 0 0.25rem', fontSize: '1rem', fontWeight: 600 }}>Distribución de Respuestas por Pregunta</h3>
               <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: '0 0 0.75rem' }}>
-                Cada barra muestra el porcentaje de respuestas en cada nivel de satisfacción (escala 1-10 ×2 de Likert 1-5).
+                Cada barra muestra el porcentaje de respuestas por opción Likert (1-5). El promedio se presenta en escala 1-10 (lerp lineal) para comparar con otras métricas.
               </p>
               {/* Legend */}
               <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '1rem', padding: '0.5rem 0.75rem', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)' }}>
-                {[2, 4, 6, 8, 10].map(level => (
+                {[1, 2, 3, 4, 5].map(level => (
                   <div key={level} style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.75rem' }}>
                     <span style={{ width: 12, height: 12, borderRadius: 2, background: likertColors[level], display: 'inline-block' }} />
                     <span style={{ color: 'var(--text-secondary)' }}>{level} — {likertLabels[level]}</span>
