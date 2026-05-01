@@ -1050,6 +1050,127 @@ export class SurveysService {
   }
 
   /**
+   * T5 — Heatmap dept × categoria.
+   *
+   * Devuelve la matriz de promedios por (departamento, categoria) en
+   * escala 1-10 (mismo ×2 que el resto). Permite drill-down visual:
+   * un dept con buen promedio general puede tener una categoria
+   * especifica baja (e.g., "Cultura" en IT alto pero "Bienestar" en
+   * IT critico).
+   *
+   * Manager scope: mismo patron que getResults/getENPS/getTrends.
+   *   - encuesta anonima + manager → 403 (no se puede filtrar por
+   *     respondentId sin romper anonimato).
+   *   - manager + encuesta no anonima → filtra responses al equipo.
+   *   - admin → todas las respuestas.
+   *
+   * Forma de la respuesta:
+   *   {
+   *     departments: string[],        // ordenadas por overall asc (peor primero)
+   *     categories: string[],         // unicas en la encuesta
+   *     cells: Array<{                // matriz plana
+   *       department: string,
+   *       category: string,
+   *       average: number | null,    // null si no hay respuestas
+   *       count: number,
+   *     }>,
+   *     overallByDepartment: Record<string, number>, // promedio general por dept
+   *   }
+   *
+   * El frontend pinta la matriz como CSS Grid con color por threshold
+   * (≥8 verde, 6-8 ambar, <6 rojo, null gris).
+   */
+  async getResultsHeatmap(tenantId: string, surveyId: string, managerId?: string): Promise<any> {
+    const survey = await this.findById(tenantId, surveyId);
+
+    if (managerId && survey.isAnonymous) {
+      throw new ForbiddenException(
+        'Las encuestas anonimas solo pueden ser revisadas por administradores. Los managers no tienen acceso para preservar el anonimato.',
+      );
+    }
+
+    let teamIds: Set<string> | null = null;
+    if (managerId) {
+      const reports = await this.userRepo.find({
+        where: { tenantId, managerId },
+        select: ['id'],
+      });
+      teamIds = new Set(reports.map((u) => u.id));
+      teamIds.add(managerId);
+    }
+
+    const responseWhere: any = { surveyId, tenantId, isComplete: true };
+    if (teamIds) responseWhere.respondentId = In([...teamIds]);
+    const responses = await this.responseRepo.find({ where: responseWhere });
+
+    // Indexar preguntas y categorias unicas (solo likert_5).
+    const likertById = new Map<string, { id: string; category: string }>();
+    const categories = new Set<string>();
+    for (const q of survey.questions) {
+      if (q.questionType !== 'likert_5') continue;
+      likertById.set(q.id, { id: q.id, category: q.category });
+      categories.add(q.category);
+    }
+
+    // Acumuladores: cellScores[dept][category] = number[]; deptOverall[dept] = number[]
+    const cellScores: Record<string, Record<string, number[]>> = {};
+    const deptOverall: Record<string, number[]> = {};
+
+    for (const r of responses) {
+      const dept = r.department || 'Sin departamento';
+      if (!cellScores[dept]) cellScores[dept] = {};
+      if (!deptOverall[dept]) deptOverall[dept] = [];
+
+      for (const ans of r.answers) {
+        const q = likertById.get(ans.questionId);
+        if (!q) continue;
+        const raw = typeof ans.value === 'number' ? ans.value : parseFloat(ans.value as string);
+        if (isNaN(raw)) continue;
+        const norm = raw * 2; // 1-5 → 2-10
+
+        if (!cellScores[dept][q.category]) cellScores[dept][q.category] = [];
+        cellScores[dept][q.category].push(norm);
+        deptOverall[dept].push(norm);
+      }
+    }
+
+    // Generar matriz plana en orden estable: dept × category, aunque
+    // alguna celda no tenga datos (null para que el frontend pinte gris).
+    const departments = Object.keys(cellScores);
+    const categoryList = [...categories].sort();
+    const cells: Array<{ department: string; category: string; average: number | null; count: number }> = [];
+    for (const dept of departments) {
+      for (const cat of categoryList) {
+        const arr = cellScores[dept][cat] || [];
+        cells.push({
+          department: dept,
+          category: cat,
+          average: arr.length > 0 ? Number((arr.reduce((a, b) => a + b, 0) / arr.length).toFixed(2)) : null,
+          count: arr.length,
+        });
+      }
+    }
+
+    const overallByDepartment: Record<string, number> = {};
+    for (const dept of departments) {
+      const arr = deptOverall[dept];
+      overallByDepartment[dept] = arr.length > 0
+        ? Number((arr.reduce((a, b) => a + b, 0) / arr.length).toFixed(2))
+        : 0;
+    }
+
+    // Ordenar dept por overall ASC (peor primero — mas accionable visualmente).
+    departments.sort((a, b) => (overallByDepartment[a] || 0) - (overallByDepartment[b] || 0));
+
+    return {
+      departments,
+      categories: categoryList,
+      cells,
+      overallByDepartment,
+    };
+  }
+
+  /**
    * Tendencias historicas de encuestas cerradas.
    *
    * T2 — Manager scope:

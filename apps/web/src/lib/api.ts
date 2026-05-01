@@ -1841,6 +1841,14 @@ export const api = {
     getResults: (token: string, id: string) => request<any>(`/surveys/${id}/results`, {}, token),
     getResultsByDept: (token: string, id: string) =>
       request<any[]>(`/surveys/${id}/results/department`, {}, token),
+    /** T5 — Heatmap dept × categoria. Disponible para admin y manager. */
+    getResultsHeatmap: (token: string, id: string) =>
+      request<{
+        departments: string[];
+        categories: string[];
+        cells: Array<{ department: string; category: string; average: number | null; count: number }>;
+        overallByDepartment: Record<string, number>;
+      }>(`/surveys/${id}/results/heatmap`, {}, token),
     getENPS: (token: string, id: string) => request<any>(`/surveys/${id}/results/enps`, {}, token),
     getTrends: (token: string) => request<any[]>("/surveys/trends", {}, token),
     generateAiAnalysis: (token: string, id: string, force = false) =>

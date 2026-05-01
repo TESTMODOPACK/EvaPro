@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Fragment } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams, useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
@@ -36,6 +36,14 @@ export default function ResultadosEncuestaPage() {
   const [results, setResults] = useState<any>(null);
   const [enps, setEnps] = useState<any>(null);
   const [deptResults, setDeptResults] = useState<any[]>([]);
+  // T5 — heatmap dept × categoria (admin-only por ahora; el endpoint
+  // soporta manager scope para extension futura).
+  const [heatmap, setHeatmap] = useState<{
+    departments: string[];
+    categories: string[];
+    cells: Array<{ department: string; category: string; average: number | null; count: number }>;
+    overallByDepartment: Record<string, number>;
+  } | null>(null);
   const [trends, setTrends] = useState<any[]>([]);
   const [aiAnalysis, setAiAnalysis] = useState<any>(null);
   const [orgPlans, setOrgPlans] = useState<any[]>([]);
@@ -80,16 +88,20 @@ export default function ResultadosEncuestaPage() {
     if (!token) return;
     setLoading(true);
     try {
-      const [res, enpsData, dept, trendData] = await Promise.all([
+      const [res, enpsData, dept, trendData, heat] = await Promise.all([
         api.surveys.getResults(token, surveyId),
         api.surveys.getENPS(token, surveyId),
         isAdmin ? api.surveys.getResultsByDept(token, surveyId) : Promise.resolve([]),
         canViewTrends ? api.surveys.getTrends(token) : Promise.resolve([]),
+        // T5 — heatmap dept × categoria. Catch silencioso por si el
+        // endpoint no esta disponible aun (deploy escalonado).
+        isAdmin ? api.surveys.getResultsHeatmap(token, surveyId).catch(() => null) : Promise.resolve(null),
       ]);
       setResults(res);
       setEnps(enpsData);
       setDeptResults(dept);
       setTrends(trendData);
+      setHeatmap(heat);
 
       // Load AI analysis if exists
       try {
@@ -575,6 +587,82 @@ export default function ResultadosEncuestaPage() {
                   </div>
                 );
               })()}
+
+              {/* T5 — Heatmap dept × categoria. Permite ver de un vistazo
+                  donde cada departamento brilla y donde necesita atencion,
+                  cosa que el bar/tabla por dept (promedio agregado) oculta. */}
+              {heatmap && heatmap.departments.length > 0 && heatmap.categories.length > 0 && (
+                <div style={{ marginTop: '1.5rem' }}>
+                  <h4 style={{ margin: '0 0 0.5rem', fontSize: '0.95rem', fontWeight: 600 }}>Heatmap por Departamento × Categoría</h4>
+                  <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.75rem', lineHeight: 1.5 }}>
+                    Cada celda es el promedio (escala 1-10) de la categoría en ese departamento. <strong style={{ color: '#16a34a' }}>≥8</strong> verde fortaleza · <strong style={{ color: '#eab308' }}>6-8</strong> ámbar aceptable · <strong style={{ color: '#ef4444' }}>{'<6'}</strong> rojo área crítica · gris sin datos.
+                  </p>
+                  <div style={{ overflowX: 'auto' }}>
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: `minmax(140px, max-content) repeat(${heatmap.categories.length}, minmax(72px, 1fr)) minmax(72px, max-content)`,
+                        gap: 2,
+                        fontSize: '0.78rem',
+                        minWidth: 'fit-content',
+                      }}
+                    >
+                      {/* Header row */}
+                      <div style={{ padding: '0.4rem 0.5rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Departamento</div>
+                      {heatmap.categories.map((cat) => (
+                        <div key={`h-${cat}`} style={{ padding: '0.4rem 0.5rem', fontWeight: 600, color: 'var(--text-secondary)', textAlign: 'center' }}>{cat}</div>
+                      ))}
+                      <div style={{ padding: '0.4rem 0.5rem', fontWeight: 600, color: 'var(--text-secondary)', textAlign: 'center' }}>Promedio</div>
+
+                      {/* Data rows */}
+                      {heatmap.departments.map((dept) => (
+                        <Fragment key={`row-${dept}`}>
+                          <div style={{ padding: '0.4rem 0.5rem', fontWeight: 500, background: 'var(--bg-card)' }}>{dept}</div>
+                          {heatmap.categories.map((cat) => {
+                            const cell = heatmap.cells.find((c) => c.department === dept && c.category === cat);
+                            const avg = cell?.average ?? null;
+                            const bg = avg === null
+                              ? 'rgba(148,163,184,0.15)'
+                              : avg >= 8
+                                ? 'rgba(22,163,74,0.18)'
+                                : avg >= 6
+                                  ? 'rgba(234,179,8,0.18)'
+                                  : 'rgba(239,68,68,0.18)';
+                            const fg = avg === null ? 'var(--text-muted)' : 'var(--text)';
+                            return (
+                              <div
+                                key={`c-${dept}-${cat}`}
+                                title={cell ? `${cat}: ${avg ?? 'sin datos'} (${cell.count} respuestas)` : 'sin datos'}
+                                style={{
+                                  padding: '0.4rem 0.5rem',
+                                  textAlign: 'center',
+                                  background: bg,
+                                  color: fg,
+                                  fontWeight: 600,
+                                  borderRadius: 4,
+                                }}
+                              >
+                                {avg === null ? '—' : avg.toFixed(1)}
+                              </div>
+                            );
+                          })}
+                          {/* Promedio dept */}
+                          <div
+                            style={{
+                              padding: '0.4rem 0.5rem',
+                              textAlign: 'center',
+                              background: 'var(--bg-card)',
+                              fontWeight: 700,
+                            }}
+                          >
+                            {(heatmap.overallByDepartment[dept] ?? 0).toFixed(1)}
+                          </div>
+                        </Fragment>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
             </>
           )}
         </div>
