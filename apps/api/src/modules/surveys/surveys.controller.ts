@@ -194,6 +194,15 @@ export class SurveysController {
     return this.surveysService.getResultsByDepartment(req.user.tenantId, id);
   }
 
+  /** T5 — Heatmap dept × categoria. Manager scope identico a getResults
+   *  (anonimas → 403, no anonimas → scoped a su equipo). */
+  @Get(':id/results/heatmap')
+  @Roles('super_admin', 'tenant_admin', 'manager')
+  getResultsHeatmap(@Param('id', ParseUUIDPipe) id: string, @Request() req: any) {
+    const managerId = req.user.role === 'manager' ? req.user.userId : undefined;
+    return this.surveysService.getResultsHeatmap(req.user.tenantId, id, managerId);
+  }
+
   /** Get eNPS — must be before :id/results.
    *  P7.2 — Manager ve eNPS de su equipo (si survey no es anónima). */
   @Get(':id/results/enps')
