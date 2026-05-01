@@ -330,6 +330,9 @@ export class SurveysService {
         sortOrder?: number;
       }>;
     },
+    /** T6 — Quien ejecuta el update, para auditoria. Opcional para no
+     *  romper a callers internos que no propagan el userId todavia. */
+    callerUserId?: string,
   ): Promise<EngagementSurvey> {
     const where = tenantId ? { id: surveyId, tenantId } : { id: surveyId };
     const survey = await this.surveyRepo.findOne({ where });
@@ -386,6 +389,21 @@ export class SurveysService {
       }
     });
 
+    // T6 — auditar el update con un resumen de los campos tocados.
+    if (callerUserId) {
+      await this.auditService.log(
+        survey.tenantId,
+        callerUserId,
+        'survey_updated',
+        'engagement_survey',
+        surveyId,
+        {
+          fieldsChanged: Object.keys(dto).filter((k) => (dto as any)[k] !== undefined),
+          questionsReplaced: !!dto.questions,
+        },
+      );
+    }
+
     // Usa survey.tenantId authoritative (soporta super_admin cross-tenant).
     return this.findById(survey.tenantId, surveyId);
   }
@@ -401,7 +419,13 @@ export class SurveysService {
    * contienen datos anonimizados que no deben persistir si el admin decide
    * borrarlas. Las respuestas se eliminan via CASCADE en la relacion FK.
    */
-  async delete(tenantId: string | undefined, surveyId: string, callerRole?: string): Promise<void> {
+  async delete(
+    tenantId: string | undefined,
+    surveyId: string,
+    callerRole?: string,
+    /** T6 — para auditar quien borro la encuesta. */
+    callerUserId?: string,
+  ): Promise<void> {
     const where = tenantId ? { id: surveyId, tenantId } : { id: surveyId };
     const survey = await this.surveyRepo.findOne({ where });
     if (!survey) throw new NotFoundException('Encuesta no encontrada');
@@ -429,7 +453,32 @@ export class SurveysService {
       await this.aiInsightsService.clearCache(effectiveTenantId, 'survey_analysis' as any, surveyId);
     } catch { /* ignore — insight may not exist */ }
 
+    // T6 — capturar metadata ANTES del remove para que el audit log
+    // tenga contexto util en investigacion (titulo, status, # respuestas
+    // estimadas, rol del caller).
+    const auditMeta: Record<string, any> = {
+      title: survey.title,
+      status: survey.status,
+      callerRole,
+    };
+    if (survey.status !== 'draft') {
+      auditMeta.responseCount = await this.responseRepo.count({
+        where: { surveyId, tenantId: effectiveTenantId },
+      });
+    }
+
     await this.surveyRepo.remove(survey);
+
+    if (callerUserId) {
+      await this.auditService.log(
+        effectiveTenantId,
+        callerUserId,
+        'survey_deleted',
+        'engagement_survey',
+        surveyId,
+        auditMeta,
+      );
+    }
 
     // Cleanup notifications referencing this survey
     this.notificationsService.cleanupByMetadata(effectiveTenantId, 'surveyId', surveyId).catch((e) => this.logger.warn(`Survey notification cleanup failed: ${e.message}`));
@@ -437,7 +486,12 @@ export class SurveysService {
 
   // ─── Distribution ──────────────────────────────────────────────────────
 
-  async launch(tenantId: string | undefined, surveyId: string): Promise<EngagementSurvey> {
+  async launch(
+    tenantId: string | undefined,
+    surveyId: string,
+    /** T6 — caller para auditoria. */
+    callerUserId?: string,
+  ): Promise<EngagementSurvey> {
     const survey = await this.findById(tenantId, surveyId);
     // Authoritative tenantId desde la entidad (soporta super_admin cross-tenant).
     const effectiveTenantId = survey.tenantId;
@@ -504,6 +558,25 @@ export class SurveysService {
     }
 
     this.logger.log(`Survey "${survey.title}" launched to ${targetUsers.length} users`);
+
+    // T6 — auditar el launch con metadata util para compliance: a quien
+    // se le envio la encuesta (cantidad), si es anonima, audiencia.
+    if (callerUserId) {
+      await this.auditService.log(
+        effectiveTenantId,
+        callerUserId,
+        'survey_launched',
+        'engagement_survey',
+        surveyId,
+        {
+          title: survey.title,
+          isAnonymous: survey.isAnonymous,
+          targetAudience: survey.targetAudience,
+          targetUserCount: targetUsers.length,
+        },
+      );
+    }
+
     return this.findById(effectiveTenantId, surveyId);
   }
 
@@ -1264,7 +1337,12 @@ export class SurveysService {
 
   // ─── Close ─────────────────────────────────────────────────────────────
 
-  async closeSurvey(tenantId: string | undefined, surveyId: string): Promise<EngagementSurvey> {
+  async closeSurvey(
+    tenantId: string | undefined,
+    surveyId: string,
+    /** T6 — caller para auditoria. */
+    callerUserId?: string,
+  ): Promise<EngagementSurvey> {
     const where = tenantId ? { id: surveyId, tenantId } : { id: surveyId };
     const survey = await this.surveyRepo.findOne({ where });
     if (!survey) throw new NotFoundException('Encuesta no encontrada');
@@ -1292,6 +1370,20 @@ export class SurveysService {
     }).catch(() => {});
 
     this.logger.log(`Survey "${survey.title}" closed with ${responseCount} responses`);
+
+    // T6 — auditar el cierre. responseCount es informativo para
+    // compliance / investigaciones de N pequeño.
+    if (callerUserId) {
+      await this.auditService.log(
+        effectiveTenantId,
+        callerUserId,
+        'survey_closed',
+        'engagement_survey',
+        surveyId,
+        { title: survey.title, responseCount },
+      );
+    }
+
     return this.findById(effectiveTenantId, surveyId);
   }
 
@@ -1318,7 +1410,7 @@ export class SurveysService {
       throw new BadRequestException('No hay respuestas para analizar.');
     }
 
-    return this.aiInsightsService.analyzeSurvey(
+    const insight = await this.aiInsightsService.analyzeSurvey(
       effectiveTenantId,
       surveyId,
       generatedBy,
@@ -1335,6 +1427,23 @@ export class SurveysService {
       },
       { force },
     );
+
+    // T6 — auditar la generacion del analisis. `force` indica si se
+    // invalido la cache previa (consume credito IA del mes).
+    await this.auditService.log(
+      effectiveTenantId,
+      generatedBy,
+      'survey_ai_analysis_generated',
+      'engagement_survey',
+      surveyId,
+      {
+        force,
+        responseRate: results.responseRate,
+        totalResponses: results.totalResponses,
+      },
+    );
+
+    return insight;
   }
 
   async getAiAnalysis(tenantId: string, surveyId: string): Promise<any> {
@@ -1347,6 +1456,8 @@ export class SurveysService {
     tenantId: string | undefined,
     surveyId: string,
     targetPlanId?: string,
+    /** T6 — para auditoria. */
+    callerUserId?: string,
   ): Promise<any> {
     // Resolver el tenantId authoritative desde la encuesta.
     const survey = await this.findById(tenantId, surveyId);
@@ -1398,7 +1509,60 @@ export class SurveysService {
     }
 
     this.logger.log(`Created ${createdInitiatives.length} org initiatives from survey ${surveyId}`);
+
+    // T6 — auditar la creacion de iniciativas desde IA. Sirve para
+    // rastrear que decisiones organizacionales nacen de un analisis IA.
+    if (callerUserId) {
+      await this.auditService.log(
+        effectiveTenantId,
+        callerUserId,
+        'survey_initiatives_created',
+        'engagement_survey',
+        surveyId,
+        {
+          targetPlanId: planId,
+          initiativeCount: createdInitiatives.length,
+        },
+      );
+    }
+
     return { created: createdInitiatives.length, initiatives: createdInitiatives };
+  }
+
+  /**
+   * T6 — Audit log de export para compliance. Llamado desde el controller
+   * antes de servir el archivo, asi queda registrado QUIEN, CUANDO y QUE
+   * formato de export descargo (con IP) — data sensible, especialmente
+   * en encuestas anonimas donde el export incluye respuestas abiertas.
+   */
+  async auditExport(
+    tenantId: string,
+    surveyId: string,
+    callerUserId: string,
+    format: string,
+    ipAddress?: string,
+  ): Promise<void> {
+    // Resolver titulo de la encuesta para que el audit log sea legible
+    // sin tener que joinear engagement_surveys despues.
+    const survey = await this.surveyRepo.findOne({
+      where: { id: surveyId, tenantId },
+      select: ['id', 'title', 'isAnonymous', 'status'],
+    });
+    if (!survey) return; // si no existe, exportResults va a 404 igual
+    await this.auditService.log(
+      tenantId,
+      callerUserId,
+      'survey_exported',
+      'engagement_survey',
+      surveyId,
+      {
+        title: survey.title,
+        format,
+        isAnonymous: survey.isAnonymous,
+        status: survey.status,
+      },
+      ipAddress,
+    );
   }
 
   // ─── Cron: Survey Reminders ────────────────────────────────────────────

@@ -100,7 +100,7 @@ export class SurveysController {
   @Roles('super_admin', 'tenant_admin')
   update(@Param('id', ParseUUIDPipe) id: string, @Request() req: any, @Body() dto: any) {
     const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
-    return this.surveysService.update(tenantId, id, dto);
+    return this.surveysService.update(tenantId, id, dto, req.user.userId);
   }
 
   /** Delete a survey. tenant_admin can only delete drafts; super_admin
@@ -110,7 +110,7 @@ export class SurveysController {
   @HttpCode(HttpStatus.NO_CONTENT)
   delete(@Param('id', ParseUUIDPipe) id: string, @Request() req: any) {
     const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
-    return this.surveysService.delete(tenantId, id, req.user.role);
+    return this.surveysService.delete(tenantId, id, req.user.role, req.user.userId);
   }
 
   /** Launch a survey (draft → active) */
@@ -118,7 +118,7 @@ export class SurveysController {
   @Roles('super_admin', 'tenant_admin')
   launch(@Param('id', ParseUUIDPipe) id: string, @Request() req: any) {
     const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
-    return this.surveysService.launch(tenantId, id);
+    return this.surveysService.launch(tenantId, id, req.user.userId);
   }
 
   /** Close a survey (active → closed) */
@@ -126,7 +126,7 @@ export class SurveysController {
   @Roles('super_admin', 'tenant_admin')
   close(@Param('id', ParseUUIDPipe) id: string, @Request() req: any) {
     const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
-    return this.surveysService.closeSurvey(tenantId, id);
+    return this.surveysService.closeSurvey(tenantId, id, req.user.userId);
   }
 
   /** Submit survey response */
@@ -170,6 +170,10 @@ export class SurveysController {
   ) {
     const tenantId = req.user.tenantId;
     const ext = format?.toLowerCase() || 'csv';
+
+    // T6 — auditar el export antes de servir el archivo. El metadata
+    // incluye formato e IP para investigar exfiltracion en compliance.
+    await this.surveysService.auditExport(tenantId, id, req.user.userId, ext, req.ip);
 
     if (ext === 'xlsx') {
       const buffer = await this.surveysService.exportSurveyXlsx(tenantId, id);
@@ -263,6 +267,6 @@ export class SurveysController {
     @Body() dto: { targetPlanId?: string },
   ) {
     const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
-    return this.surveysService.createInitiativesFromSurvey(tenantId, id, dto.targetPlanId);
+    return this.surveysService.createInitiativesFromSurvey(tenantId, id, dto.targetPlanId, req.user.userId);
   }
 }
