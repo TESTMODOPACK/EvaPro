@@ -61,6 +61,70 @@ export class ObjectivesService {
     }
   }
 
+  /**
+   * T2.1 — BUG-3 fix. Valida que la suma de pesos de los objetivos del usuario
+   * dentro de un mismo bucket de ciclo no exceda 100%.
+   *
+   * Bucketing: dos objetivos comparten bucket si tienen el mismo `(userId, cycleId)`.
+   * `cycleId=null` define el bucket "sin ciclo", independiente de cualquier ciclo
+   * concreto. Esto permite proponer un objetivo de peso 100% en Q2 aunque el
+   * usuario ya tenga 100% completado en Q1 — los buckets son independientes.
+   *
+   * Conteo:
+   *   - ABANDONED se excluye (objetivo cancelado, no compromete capacidad)
+   *   - DRAFT, PENDING_APPROVAL, ACTIVE, COMPLETED suman
+   *   - El `excludeId` opcional permite ignorar el objetivo que se está
+   *     actualizando (caso update/submit) para no contarlo dos veces
+   *
+   * Antes de T2.1 esta validación vivía inline en submitForApproval, no
+   * filtraba por cycleId, y no se ejecutaba en create/update — permitiendo
+   * crear DRAFTs con 200% que quedaban bloqueados al intentar enviarse.
+   *
+   * @throws BadRequestException si el total excedería 100%
+   */
+  private async validateWeightSum(params: {
+    tenantId: string;
+    userId: string;
+    cycleId: string | null | undefined;
+    candidateWeight: number;
+    excludeId?: string;
+  }): Promise<void> {
+    const { tenantId, userId, cycleId, candidateWeight, excludeId } = params;
+    if (!candidateWeight || candidateWeight <= 0) return; // peso 0 no aporta a la suma
+
+    const qb = this.objectiveRepo
+      .createQueryBuilder('o')
+      .where('o.tenantId = :tenantId', { tenantId })
+      .andWhere('o.userId = :userId', { userId })
+      .andWhere('o.status != :abandoned', {
+        abandoned: ObjectiveStatus.ABANDONED,
+      });
+
+    if (cycleId) {
+      qb.andWhere('o.cycleId = :cycleId', { cycleId });
+    } else {
+      qb.andWhere('o.cycleId IS NULL');
+    }
+
+    if (excludeId) {
+      qb.andWhere('o.id != :excludeId', { excludeId });
+    }
+
+    const siblings = await qb.getMany();
+    const existingWeight = siblings.reduce(
+      (sum, o) => sum + Number(o.weight || 0),
+      0,
+    );
+    const totalWeight = existingWeight + Number(candidateWeight);
+
+    if (totalWeight > 100) {
+      const bucketLabel = cycleId ? 'este ciclo' : 'objetivos sin ciclo';
+      throw new BadRequestException(
+        `La suma de pesos de los objetivos del colaborador en ${bucketLabel} sería ${totalWeight}%. El total no puede superar 100%.`,
+      );
+    }
+  }
+
   // ─── CRUD ───────────────────────────────────────────────────────────────────
 
   async create(tenantId: string, userId: string, dto: CreateObjectiveDto): Promise<Objective> {
@@ -71,6 +135,15 @@ export class ObjectivesService {
     // B3.15: Validate parent objective if provided
     if (dto.parentObjectiveId) {
       await this.validateParentObjective(tenantId, dto.parentObjectiveId);
+    }
+    // T2.2 — BUG-3: validar suma de pesos en el bucket de ciclo del candidato
+    if (dto.weight && dto.weight > 0) {
+      await this.validateWeightSum({
+        tenantId,
+        userId,
+        cycleId: dto.cycleId ?? null,
+        candidateWeight: dto.weight,
+      });
     }
 
     const obj = this.objectiveRepo.create({
@@ -270,6 +343,26 @@ export class ObjectivesService {
     if (dto.targetDate !== undefined) this.validateTargetDate(dto.targetDate);
     // B7.2: cycleId must be an open cycle (only when field is being changed)
     if (dto.cycleId !== undefined && dto.cycleId) await this.validateCycleOpen(dto.cycleId, tenantId);
+    // T2.3 — BUG-3: si cambia weight o cycleId, validar contra el bucket
+    // resultante. Usa el cycleId nuevo si se está cambiando, y el peso nuevo
+    // si se está cambiando. excludeId=id para no contar el mismo objetivo.
+    if (dto.weight !== undefined || dto.cycleId !== undefined) {
+      const effectiveWeight =
+        dto.weight !== undefined ? dto.weight : Number(obj.weight || 0);
+      const effectiveCycleId =
+        dto.cycleId !== undefined
+          ? (dto.cycleId ?? null)
+          : (obj.cycleId ?? null);
+      if (effectiveWeight > 0) {
+        await this.validateWeightSum({
+          tenantId,
+          userId: obj.userId,
+          cycleId: effectiveCycleId,
+          candidateWeight: effectiveWeight,
+          excludeId: id,
+        });
+      }
+    }
     if (dto.title !== undefined) obj.title = dto.title;
     if (dto.description !== undefined) obj.description = dto.description;
     if (dto.type !== undefined) obj.type = dto.type;
@@ -277,6 +370,10 @@ export class ObjectivesService {
     if (dto.targetDate !== undefined) obj.targetDate = new Date(dto.targetDate);
     if (dto.progress !== undefined) obj.progress = dto.progress;
     if (dto.weight !== undefined) obj.weight = dto.weight;
+    // T2.3 incidental fix: cycleId estaba en el DTO y se validaba, pero nunca
+    // se aplicaba al obj — los cambios de ciclo no persistían. Se aplica
+    // ahora para que la validación de pesos por bucket sea coherente.
+    if (dto.cycleId !== undefined) obj.cycleId = dto.cycleId;
     if (dto.parentObjectiveId !== undefined) {
       if (dto.parentObjectiveId) {
         if (dto.parentObjectiveId === id) {
@@ -295,19 +392,17 @@ export class ObjectivesService {
       throw new BadRequestException('Solo objetivos en estado borrador pueden enviarse a aprobación');
     }
 
-    // B2.9: Validate weight sum = 100% for all active/pending objectives of same user
-    if (obj.weight > 0) {
-      const userObjectives = await this.objectiveRepo.find({
-        where: { tenantId, userId: obj.userId },
+    // T2.4 — BUG-3: usa el helper compartido. Reemplaza la validación inline
+    // que (a) no filtraba por cycleId y (b) sumaba COMPLETED de todos los
+    // ciclos del usuario, bloqueando submits válidos en períodos nuevos.
+    if (Number(obj.weight) > 0) {
+      await this.validateWeightSum({
+        tenantId,
+        userId: obj.userId,
+        cycleId: obj.cycleId ?? null,
+        candidateWeight: Number(obj.weight),
+        excludeId: id,
       });
-      const totalWeight = userObjectives
-        .filter((o) => o.id !== id && o.status !== ObjectiveStatus.ABANDONED)
-        .reduce((sum, o) => sum + Number(o.weight || 0), Number(obj.weight));
-      if (totalWeight > 100) {
-        throw new BadRequestException(
-          `La suma de pesos de los objetivos del colaborador sería ${totalWeight}%. El total no puede superar 100%.`,
-        );
-      }
     }
 
     obj.status = ObjectiveStatus.PENDING_APPROVAL;

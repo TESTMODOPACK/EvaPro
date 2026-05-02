@@ -970,12 +970,26 @@ function ObjetivosPageContent() {
   const atRiskCount = atRiskData?.length || 0;
   const atRiskIds = new Set((atRiskData || []).map((o: any) => o.id));
 
-  // Item 10: Weight total calculation
-  const myObjectives = objectives?.filter((o: any) => {
-    const uid = o.userId || o.user?.id;
-    return uid === userId && o.status !== 'abandoned';
-  }) || [];
-  const totalWeight = myObjectives.reduce((sum: number, o: any) => sum + Number(o.weight || 0), 0);
+  // T2.5 — BUG-3: helper que replica la lógica del helper backend
+  // `validateWeightSum`. Suma pesos del usuario `targetUserId` en el bucket
+  // `(cycleId)` excluyendo ABANDONED. Mismo bucketing que el server: dos
+  // objetivos comparten bucket si comparten `cycleId` (incluyendo `null`
+  // como bucket "sin ciclo").
+  function weightSumForBucket(
+    targetUserId: string,
+    cycleId: string | null,
+  ): number {
+    if (!objectives) return 0;
+    return (objectives as any[])
+      .filter((o: any) => {
+        const uid = o.userId || o.user?.id;
+        if (uid !== targetUserId) return false;
+        if (o.status === 'abandoned') return false;
+        const ocid = o.cycleId || null;
+        return ocid === cycleId;
+      })
+      .reduce((sum: number, o: any) => sum + Number(o.weight || 0), 0);
+  }
 
   // Colapsar todos los grupos excepto el primero al cargar (admin/manager).
   // Se ejecuta UNA VEZ cuando objectives carga; usar ref para detectar
@@ -1862,9 +1876,31 @@ function ObjetivosPageContent() {
                   onChange={(e) => setForm({ ...form, weight: Math.min(100, Math.max(0, Number(e.target.value))) })}
                   style={{ width: '100%' }}
                 />
-                <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
-                  La suma de todos los objetivos no puede superar 100%
-                </p>
+                {/* T2.5 — BUG-3: preview en vivo de la suma de pesos del bucket
+                    seleccionado en el form. Se actualiza al cambiar weight,
+                    cycleId o el destinatario (form.userId si admin/manager). */}
+                {(() => {
+                  const targetUid = (isAdmin || isManager) && form.userId ? form.userId : userId;
+                  const bucketCycle = form.cycleId || null;
+                  const existingSum = weightSumForBucket(targetUid, bucketCycle);
+                  const newSum = existingSum + Number(form.weight || 0);
+                  const overLimit = newSum > 100;
+                  const bucketLabel = bucketCycle
+                    ? 'en este ciclo'
+                    : 'en objetivos sin ciclo';
+                  return (
+                    <p style={{
+                      fontSize: '0.7rem',
+                      color: overLimit ? 'var(--danger)' : 'var(--text-muted)',
+                      marginTop: '0.2rem',
+                      fontWeight: overLimit ? 600 : 400,
+                    }}>
+                      {overLimit
+                        ? `⚠ Suma ${bucketLabel}: ${newSum}% — supera el 100% permitido`
+                        : `Pesos asignados ${bucketLabel}: ${existingSum}% + ${Number(form.weight || 0)}% = ${newSum}% / 100%`}
+                    </p>
+                  );
+                })()}
               </div>
               <div>
                 <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
