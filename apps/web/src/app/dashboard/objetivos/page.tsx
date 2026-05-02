@@ -1216,12 +1216,43 @@ function ObjetivosPageContent() {
     setBulkApproving(true);
     try {
       const ids = Array.from(selectedForApproval);
-      for (let i = 0; i < ids.length; i++) {
-        await api.objectives.approve(token, ids[i]);
+      // T4.3 — BUG-10: una sola llamada al endpoint transaccional. Cada item
+      // tiene su propio try/catch en el backend; el response trae el detalle
+      // de éxitos y fallidos.
+      const result = await api.objectives.bulkApprove(token, ids);
+      const okCount = result.approved.length;
+      const failCount = result.failed.length;
+
+      if (failCount === 0) {
+        toast.success(`${okCount} objetivo${okCount !== 1 ? 's' : ''} aprobado${okCount !== 1 ? 's' : ''}`);
+      } else if (okCount === 0) {
+        // Todo falló — muestra primer motivo como referencia
+        const firstReason = result.failed[0]?.reason || 'Error desconocido';
+        toast.error(`No se pudo aprobar ningún objetivo. Motivo: ${firstReason}`);
+      } else {
+        // Mixto: éxito parcial. Muestro contadores; los IDs fallidos quedan
+        // con highlight via el invalidate (el backend sí cambió los OK).
+        const reasons = Array.from(new Set(result.failed.map((f: any) => f.reason)));
+        toast.warning(
+          `${okCount} aprobado${okCount !== 1 ? 's' : ''}, ${failCount} con error${failCount !== 1 ? 'es' : ''}: ${reasons.join('; ')}`,
+        );
       }
-      setSelectedForApproval(new Set());
+
+      // Sólo limpiar selección de los que efectivamente se aprobaron — los
+      // fallidos quedan seleccionados para que el usuario pueda revisar.
+      const approvedSet = new Set(result.approved);
+      setSelectedForApproval((prev) => {
+        const next = new Set<string>();
+        Array.from(prev).forEach((id) => {
+          if (!approvedSet.has(id)) next.add(id);
+        });
+        return next;
+      });
       queryClient.invalidateQueries({ queryKey: ['objectives'] });
-    } catch {} finally {
+    } catch (err: any) {
+      // Error de red o auth — el endpoint completo falló
+      toast.error(err?.message || 'Error al aprobar los objetivos');
+    } finally {
       setBulkApproving(false);
     }
   }

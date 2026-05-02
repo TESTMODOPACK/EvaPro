@@ -17,6 +17,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationType } from '../notifications/entities/notification.entity';
 import { PushService } from '../notifications/push.service';
 import { buildPushMessage } from '../notifications/push-messages';
+import { assertManagerCanAccessUser } from '../../common/utils/validate-manager-scope';
 
 @Injectable()
 export class ObjectivesService {
@@ -448,6 +449,63 @@ export class ObjectivesService {
     }
 
     return saved;
+  }
+
+  /**
+   * T4.1 — BUG-10: aprobación en batch transaccional por-item.
+   *
+   * Cada id se procesa en su propio try/catch. Un fallo (objetivo no
+   * existe, no está en PENDING_APPROVAL, manager fuera de scope, etc.)
+   * NO aborta los siguientes — devuelve `{ approved, failed }` con el
+   * detalle. Esto reemplaza el loop secuencial cliente-side previo
+   * que ante un fallo en la mitad dejaba estado parcial sin reportarlo.
+   *
+   * No se envuelve en una transacción única intencionalmente: por diseño,
+   * cada aprobación es independiente y debe persistir si tiene éxito,
+   * aunque otra del mismo batch falle.
+   *
+   * Validación de scope idéntica al single-approve:
+   *   - super_admin / tenant_admin: aprueban cualquier objetivo del tenant
+   *   - manager: solo objetivos propios o de reportes directos
+   *     (assertManagerCanAccessUser per-item)
+   */
+  async bulkApprove(
+    tenantId: string | undefined,
+    ids: string[],
+    callerUserId: string,
+    callerRole: string,
+  ): Promise<{
+    approved: string[];
+    failed: Array<{ id: string; reason: string }>;
+  }> {
+    const approved: string[] = [];
+    const failed: Array<{ id: string; reason: string }> = [];
+
+    for (const id of ids) {
+      try {
+        // Manager scope check (mirrors controller's single-approve flow)
+        if (callerRole === 'manager') {
+          const objective = await this.findById(tenantId, id);
+          if (objective.userId !== callerUserId) {
+            await assertManagerCanAccessUser(
+              this.userRepo,
+              callerUserId,
+              callerRole,
+              objective.userId,
+              objective.tenantId,
+            );
+          }
+        }
+
+        await this.approve(tenantId, id, callerUserId);
+        approved.push(id);
+      } catch (err: unknown) {
+        const reason = err instanceof Error ? err.message : 'Error desconocido';
+        failed.push({ id, reason });
+      }
+    }
+
+    return { approved, failed };
   }
 
   async approve(tenantId: string | undefined, id: string, approvedBy?: string): Promise<Objective> {

@@ -25,6 +25,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { ObjectivesService } from './objectives.service';
 import { CreateObjectiveDto } from './dto/create-objective.dto';
 import { UpdateObjectiveDto, CreateObjectiveUpdateDto } from './dto/update-objective.dto';
+import { BulkApproveDto } from './dto/bulk-approve.dto';
 import { FeatureGuard } from '../../common/guards/feature.guard';
 import { Feature } from '../../common/decorators/feature.decorator';
 import { PlanFeature } from '../../common/constants/plan-features';
@@ -247,6 +248,24 @@ export class ObjectivesController {
       }
     }
     return this.objectivesService.approve(tenantId, id, req.user.userId);
+  }
+
+  /**
+   * T4.1 — BUG-10: bulk approval transaccional. Reemplaza el loop
+   * client-side que no reportaba fallidos. Cada item se procesa de
+   * manera independiente; un fallo no aborta el resto.
+   */
+  @Post('bulk-approve')
+  @Roles('super_admin', 'tenant_admin', 'manager')
+  bulkApprove(@Request() req: any, @Body() dto: BulkApproveDto) {
+    const tenantId =
+      req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.objectivesService.bulkApprove(
+      tenantId,
+      dto.ids,
+      req.user.userId,
+      req.user.role,
+    );
   }
 
   @Post(':id/reject')

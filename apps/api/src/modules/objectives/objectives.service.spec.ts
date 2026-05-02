@@ -1570,3 +1570,242 @@ describe('ObjectivesService — Tarea 3 (parent auto-completion)', () => {
     });
   });
 });
+
+// ─── Tarea 4 — BUG-10: bulk approval transaccional ─────────────────────
+
+describe('ObjectivesService — Tarea 4 (bulkApprove)', () => {
+  let service: ObjectivesService;
+  let objRepo: any;
+  let userRepo: any;
+
+  const ID_A = fakeUuid(601);
+  const ID_B = fakeUuid(602);
+  const ID_C = fakeUuid(603);
+
+  beforeEach(async () => {
+    objRepo = createMockRepository();
+    userRepo = createMockRepository();
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        ObjectivesService,
+        { provide: getRepositoryToken(Objective), useValue: objRepo },
+        {
+          provide: getRepositoryToken(ObjectiveUpdate),
+          useValue: createMockRepository(),
+        },
+        {
+          provide: getRepositoryToken(ObjectiveComment),
+          useValue: createMockRepository(),
+        },
+        {
+          provide: getRepositoryToken(KeyResult),
+          useValue: createMockRepository(),
+        },
+        { provide: getRepositoryToken(User), useValue: userRepo },
+        {
+          provide: getRepositoryToken(EvaluationCycle),
+          useValue: createMockRepository(),
+        },
+        { provide: AuditService, useValue: createMockAuditService() },
+        {
+          provide: EmailService,
+          useValue: {
+            sendObjectiveAssigned: jest.fn().mockResolvedValue(undefined),
+            sendObjectiveCompleted: jest.fn().mockResolvedValue(undefined),
+          },
+        },
+        {
+          provide: RecognitionService,
+          useValue: {
+            addPoints: jest.fn().mockResolvedValue(undefined),
+            checkAutoBadges: jest.fn().mockResolvedValue(undefined),
+          },
+        },
+        {
+          provide: NotificationsService,
+          useValue: createMockNotificationsService(),
+        },
+        {
+          provide: PushService,
+          useValue: { sendToUser: jest.fn().mockResolvedValue(undefined) },
+        },
+      ],
+    }).compile();
+
+    service = module.get<ObjectivesService>(ObjectivesService);
+  });
+
+  function setupFindByIdSequence(objs: Array<Objective | null>): any {
+    const qb = objRepo.createQueryBuilder();
+    for (const obj of objs) {
+      qb.getOne.mockResolvedValueOnce(obj);
+    }
+    return qb;
+  }
+
+  it('should approve all when all ids are valid PENDING_APPROVAL (admin)', async () => {
+    const a = makeObj({ id: ID_A, status: ObjectiveStatus.PENDING_APPROVAL });
+    const b = makeObj({ id: ID_B, status: ObjectiveStatus.PENDING_APPROVAL });
+    setupFindByIdSequence([a, b]);
+    objRepo.save.mockImplementation((entity: any) => Promise.resolve(entity));
+    userRepo.findOne.mockResolvedValue(null); // no manager email lookup
+
+    const result = await service.bulkApprove(TID, [ID_A, ID_B], ACTOR, 'tenant_admin');
+
+    expect(result.approved).toEqual([ID_A, ID_B]);
+    expect(result.failed).toEqual([]);
+    expect(objRepo.save).toHaveBeenCalledTimes(2);
+  });
+
+  it('should partially fail — one is DRAFT, others approve', async () => {
+    const a = makeObj({ id: ID_A, status: ObjectiveStatus.PENDING_APPROVAL });
+    const b = makeObj({ id: ID_B, status: ObjectiveStatus.DRAFT }); // not approvable
+    const c = makeObj({ id: ID_C, status: ObjectiveStatus.PENDING_APPROVAL });
+    setupFindByIdSequence([a, b, c]);
+    objRepo.save.mockImplementation((entity: any) => Promise.resolve(entity));
+    userRepo.findOne.mockResolvedValue(null);
+
+    const result = await service.bulkApprove(
+      TID,
+      [ID_A, ID_B, ID_C],
+      ACTOR,
+      'tenant_admin',
+    );
+
+    expect(result.approved).toEqual([ID_A, ID_C]);
+    expect(result.failed).toHaveLength(1);
+    expect(result.failed[0].id).toBe(ID_B);
+    expect(result.failed[0].reason).toMatch(/pendientes de aprobación/);
+    expect(objRepo.save).toHaveBeenCalledTimes(2); // only A and C saved
+  });
+
+  it('should mark non-existent id as failed with NotFoundException reason', async () => {
+    const a = makeObj({ id: ID_A, status: ObjectiveStatus.PENDING_APPROVAL });
+    setupFindByIdSequence([a, null]); // second id returns null
+    objRepo.save.mockImplementation((entity: any) => Promise.resolve(entity));
+    userRepo.findOne.mockResolvedValue(null);
+
+    const result = await service.bulkApprove(
+      TID,
+      [ID_A, ID_B],
+      ACTOR,
+      'tenant_admin',
+    );
+
+    expect(result.approved).toEqual([ID_A]);
+    expect(result.failed).toEqual([
+      { id: ID_B, reason: expect.stringMatching(/no encontrado/) },
+    ]);
+  });
+
+  it('should reject manager-out-of-scope items but approve in-scope ones', async () => {
+    const MGR_USER_ID = fakeUuid(700);
+    const REPORT_USER_ID = fakeUuid(701);
+    const STRANGER_USER_ID = fakeUuid(702);
+
+    // ID_A: belongs to a direct report — manager can approve
+    const a = makeObj({
+      id: ID_A,
+      userId: REPORT_USER_ID,
+      status: ObjectiveStatus.PENDING_APPROVAL,
+    });
+    // ID_B: belongs to someone outside manager's team — should fail
+    const b = makeObj({
+      id: ID_B,
+      userId: STRANGER_USER_ID,
+      status: ObjectiveStatus.PENDING_APPROVAL,
+    });
+
+    // bulkApprove flow: for manager, findById is called first to read userId,
+    // then approve calls findById again. So 2 findById per item = 4 total.
+    // But for ID_B, the scope check throws → approve never runs → only 1 findById for B.
+    setupFindByIdSequence([a, a, b]);
+
+    // assertManagerCanAccessUser does userRepo.findOne({ where: { id: targetUserId, tenantId } })
+    // and verifies target.managerId === callerUserId. Mock differentiates
+    // REPORT_USER_ID (in team) from STRANGER_USER_ID (not in team).
+    userRepo.findOne.mockImplementation((opts: any) => {
+      const where = opts?.where ?? {};
+      if (where.id === REPORT_USER_ID) {
+        return Promise.resolve({
+          id: REPORT_USER_ID,
+          managerId: MGR_USER_ID,
+        });
+      }
+      if (where.id === STRANGER_USER_ID) {
+        return Promise.resolve({
+          id: STRANGER_USER_ID,
+          managerId: 'other-mgr-id',
+        });
+      }
+      return Promise.resolve(null);
+    });
+    objRepo.save.mockImplementation((entity: any) => Promise.resolve(entity));
+
+    const result = await service.bulkApprove(
+      TID,
+      [ID_A, ID_B],
+      MGR_USER_ID,
+      'manager',
+    );
+
+    expect(result.approved).toEqual([ID_A]);
+    expect(result.failed).toHaveLength(1);
+    expect(result.failed[0].id).toBe(ID_B);
+    // The exact wording depends on assertManagerCanAccessUser's exception
+    expect(result.failed[0].reason).toBeTruthy();
+  });
+
+  it('should NOT roll back successful approvals when a later one fails', async () => {
+    // Simulates the "transactional per-item" property: A succeeds, B fails,
+    // A's status change must persist (not rolled back).
+    const a = makeObj({ id: ID_A, status: ObjectiveStatus.PENDING_APPROVAL });
+    const b = makeObj({ id: ID_B, status: ObjectiveStatus.ACTIVE }); // wrong status
+    setupFindByIdSequence([a, b]);
+    objRepo.save.mockImplementation((entity: any) => Promise.resolve(entity));
+    userRepo.findOne.mockResolvedValue(null);
+
+    const result = await service.bulkApprove(
+      TID,
+      [ID_A, ID_B],
+      ACTOR,
+      'tenant_admin',
+    );
+
+    expect(result.approved).toEqual([ID_A]);
+    expect(result.failed).toHaveLength(1);
+    // A was definitively saved with ACTIVE status (no rollback simulation
+    // needed because we never opened an outer transaction)
+    expect(objRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({ id: ID_A, status: ObjectiveStatus.ACTIVE }),
+    );
+  });
+
+  it('should be a no-op tolerant of empty arrays', async () => {
+    // The DTO blocks empty arrays at the validator layer, but the service
+    // method should still behave gracefully if called directly.
+    const result = await service.bulkApprove(TID, [], ACTOR, 'tenant_admin');
+
+    expect(result.approved).toEqual([]);
+    expect(result.failed).toEqual([]);
+    expect(objRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('should pass approvedBy=callerUserId to the underlying approve()', async () => {
+    const a = makeObj({ id: ID_A, status: ObjectiveStatus.PENDING_APPROVAL });
+    setupFindByIdSequence([a]);
+    objRepo.save.mockImplementation((entity: any) => Promise.resolve(entity));
+    userRepo.findOne.mockResolvedValue(null);
+
+    await service.bulkApprove(TID, [ID_A], ACTOR, 'tenant_admin');
+
+    expect(objRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: ID_A,
+        status: ObjectiveStatus.ACTIVE,
+        approvedBy: ACTOR,
+      }),
+    );
+  });
+});

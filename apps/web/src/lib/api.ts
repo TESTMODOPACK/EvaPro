@@ -1426,6 +1426,13 @@ export const api = {
       request<ObjectiveData>(`/objectives/${id}/submit-for-approval`, { method: "POST" }, token),
     approve: (token: string, id: string) =>
       request<ObjectiveData>(`/objectives/${id}/approve`, { method: "POST" }, token),
+    /** T4.2 — BUG-10: bulk approve transaccional. Reemplaza el loop sequencial. */
+    bulkApprove: (token: string, ids: string[]) =>
+      request<{ approved: string[]; failed: Array<{ id: string; reason: string }> }>(
+        `/objectives/bulk-approve`,
+        { method: "POST", body: JSON.stringify({ ids }) },
+        token,
+      ),
     reject: (token: string, id: string, reason?: string) =>
       request<ObjectiveData>(`/objectives/${id}/reject`, { method: "POST", body: JSON.stringify({ reason }) }, token),
     atRisk: (token: string, userId?: string) =>
