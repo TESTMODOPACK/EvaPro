@@ -14,6 +14,7 @@ import { EmailService } from '../notifications/email.service';
 import { RecognitionService } from '../recognition/recognition.service';
 import { PointsSource } from '../recognition/entities/user-points.entity';
 import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationType } from '../notifications/entities/notification.entity';
 import { PushService } from '../notifications/push.service';
 import { buildPushMessage } from '../notifications/push-messages';
 
@@ -417,6 +418,108 @@ export class ObjectivesService {
     this.auditService.log(effectiveTenantId, obj.userId, 'objective.cancelled', 'objective', id, { title: obj.title }).catch(() => {});
   }
 
+  // ─── Completion (shared helper) ─────────────────────────────────────────────
+
+  /**
+   * Transitions an objective to COMPLETED status, persists it, and fires the
+   * standard completion side-effects:
+   *   - Audit log "objective.completed"
+   *   - +10 recognition points (G4)
+   *   - In-app notification to the owner
+   *   - Auto-badge check
+   *   - Email to the direct manager (best-effort)
+   *
+   * Idempotent: if the objective is already COMPLETED the helper returns
+   * without re-firing side-effects (no duplicate points, no duplicate emails).
+   *
+   * Caller responsibilities:
+   *   - Validate prerequisites (e.g. OKR with all KRs completed) before
+   *     invoking — the helper does NOT validate, it only completes.
+   *   - Trigger `propagateProgressToParent` afterwards if the cascading-OKR
+   *     hierarchy needs to be updated.
+   *
+   * Used by: addProgressUpdate (manual SMART/KPI/OKR-no-KR completion),
+   * recalculateProgressFromKRs (auto-completion when KRs reach 100%, T1.2),
+   * propagateProgressToParent (parent auto-completion when all children
+   * complete, Task 3).
+   */
+  private async completeObjective(obj: Objective, completedBy: string): Promise<Objective> {
+    if (obj.status === ObjectiveStatus.COMPLETED) {
+      return obj; // idempotent: side-effects already fired on the original transition
+    }
+
+    obj.status = ObjectiveStatus.COMPLETED;
+    if (obj.progress < 100) {
+      obj.progress = 100;
+    }
+    const saved = await this.objectiveRepo.save(obj);
+
+    this.auditService
+      .log(saved.tenantId, completedBy, 'objective.completed', 'objective', saved.id, {
+        title: saved.title,
+        type: saved.type,
+        completedBy,
+      })
+      .catch(() => {});
+
+    // G4: +10 puntos al completar un objetivo
+    this.recognitionService
+      .addPoints(
+        saved.tenantId,
+        saved.userId,
+        10,
+        PointsSource.OBJECTIVE_COMPLETED,
+        `Objetivo "${saved.title}" completado`,
+        saved.id,
+      )
+      .catch(() => {});
+
+    // Notificación de logro al colaborador
+    this.notificationsService
+      .create({
+        tenantId: saved.tenantId,
+        userId: saved.userId,
+        type: NotificationType.GENERAL,
+        title: '🏆 ¡Objetivo cumplido!',
+        message: `Completaste tu objetivo "${saved.title}". +10 puntos sumados a tu perfil. ¡Sigue así!`,
+        metadata: { objectiveId: saved.id, objectiveCompleted: true },
+      })
+      .catch(() => {});
+
+    // Auto-badge check (por si hay badges que requieran N objetivos completados)
+    this.recognitionService.checkAutoBadges(saved.tenantId, saved.userId).catch(() => {});
+
+    // Email al manager directo (best-effort)
+    try {
+      const employee = await this.userRepo.findOne({
+        where: { id: saved.userId },
+        select: ['id', 'firstName', 'lastName', 'managerId'],
+      });
+      if (employee?.managerId) {
+        const manager = await this.userRepo.findOne({
+          where: { id: employee.managerId },
+          select: ['id', 'email', 'firstName'],
+        });
+        if (manager?.email) {
+          this.emailService
+            .sendObjectiveCompleted(manager.email, {
+              managerName: manager.firstName,
+              employeeName: `${employee.firstName} ${employee.lastName}`,
+              objectiveTitle: saved.title,
+              objectiveType: saved.type || 'OKR',
+              tenantId: saved.tenantId,
+              userId: manager.id,
+            })
+            .catch(() => {});
+        }
+      }
+    } catch {
+      // best-effort: errores en lookups no propagan
+    }
+
+    return saved;
+  }
+
   // ─── Progress ───────────────────────────────────────────────────────────────
 
   async addProgressUpdate(
@@ -446,7 +549,10 @@ export class ObjectivesService {
       );
     }
 
+    const previousProgress = obj.progress;
     obj.progress = dto.progressValue;
+    let willComplete = false;
+
     if (dto.progressValue >= 100) {
       // OKR: must have KRs defined and all completed
       if (obj.type === 'OKR') {
@@ -460,11 +566,18 @@ export class ObjectivesService {
           );
         }
       }
-      obj.status = ObjectiveStatus.COMPLETED;
+      willComplete = true;
     } else if (obj.status === ObjectiveStatus.DRAFT) {
       obj.status = ObjectiveStatus.ACTIVE;
     }
-    await this.objectiveRepo.save(obj);
+
+    if (willComplete) {
+      // Helper sets status=COMPLETED, persists, and fires side-effects
+      // (audit, gamification, owner notification, manager email, auto-badges).
+      await this.completeObjective(obj, userId);
+    } else {
+      await this.objectiveRepo.save(obj);
+    }
 
     // B3.15: Propagate progress to parent objective
     await this.propagateProgressToParent(tenantId, objectiveId);
@@ -477,47 +590,7 @@ export class ObjectivesService {
       createdBy: userId,
     });
     const saved = await this.updateRepo.save(update);
-    this.auditService.log(tenantId, userId, 'objective.progress_updated', 'objective', objectiveId, { title: obj.title, previousProgress: obj.progress, newProgress: dto.progressValue, notes: dto.notes }).catch(() => {});
-
-    // ── Gamificación: puntos + notificación al completar objetivo ──
-    if (obj.status === ObjectiveStatus.COMPLETED) {
-      // G4: +10 puntos al completar un objetivo
-      this.recognitionService.addPoints(
-        tenantId, obj.userId, 10, PointsSource.OBJECTIVE_COMPLETED,
-        `Objetivo "${obj.title}" completado`, objectiveId,
-      ).catch(() => {});
-
-      // Notificación de logro al colaborador
-      this.notificationsService.create({
-        tenantId,
-        userId: obj.userId,
-        type: 'general' as any,
-        title: '🏆 ¡Objetivo cumplido!',
-        message: `Completaste tu objetivo "${obj.title}". +10 puntos sumados a tu perfil. ¡Sigue así!`,
-        metadata: { objectiveId, objectiveCompleted: true },
-      }).catch(() => {});
-
-      // Auto-badge check por si hay badges que requieran N objetivos completados
-      this.recognitionService.checkAutoBadges(tenantId, obj.userId).catch(() => {});
-    }
-
-    // Notify manager when objective is completed
-    if (dto.progressValue >= 100) {
-      const employee = await this.userRepo.findOne({ where: { id: obj.userId }, select: ['id', 'firstName', 'lastName', 'managerId'] });
-      if (employee?.managerId) {
-        const manager = await this.userRepo.findOne({ where: { id: employee.managerId }, select: ['id', 'email', 'firstName'] });
-        if (manager?.email) {
-          this.emailService.sendObjectiveCompleted(manager.email, {
-            managerName: manager.firstName,
-            employeeName: `${employee.firstName} ${employee.lastName}`,
-            objectiveTitle: obj.title,
-            objectiveType: obj.type || 'OKR',
-            tenantId,
-            userId: manager.id,
-          }).catch(() => {});
-        }
-      }
-    }
+    this.auditService.log(tenantId, userId, 'objective.progress_updated', 'objective', objectiveId, { title: obj.title, previousProgress, newProgress: dto.progressValue, notes: dto.notes }).catch(() => {});
 
     return saved;
   }
@@ -851,6 +924,7 @@ export class ObjectivesService {
     tenantId: string,
     krId: string,
     data: { currentValue?: number; description?: string; targetValue?: number; status?: KRStatus },
+    actorUserId?: string,
   ): Promise<KeyResult> {
     const kr = await this.keyResultRepo.findOne({ where: { id: krId, tenantId } });
     if (!kr) throw new NotFoundException('Key Result no encontrado');
@@ -866,21 +940,44 @@ export class ObjectivesService {
 
     const saved = await this.keyResultRepo.save(kr);
 
-    // Recalculate objective progress from KR completion
-    await this.recalculateProgressFromKRs(tenantId, kr.objectiveId);
+    // Recalculate objective progress from KR completion (and possibly auto-complete)
+    await this.recalculateProgressFromKRs(tenantId, kr.objectiveId, actorUserId);
 
     return saved;
   }
 
-  async deleteKeyResult(tenantId: string, krId: string): Promise<void> {
+  async deleteKeyResult(tenantId: string, krId: string, actorUserId?: string): Promise<void> {
     const kr = await this.keyResultRepo.findOne({ where: { id: krId, tenantId } });
     if (!kr) throw new NotFoundException('Key Result no encontrado');
     const objectiveId = kr.objectiveId;
     await this.keyResultRepo.remove(kr);
-    await this.recalculateProgressFromKRs(tenantId, objectiveId);
+    await this.recalculateProgressFromKRs(tenantId, objectiveId, actorUserId);
   }
 
-  private async recalculateProgressFromKRs(tenantId: string, objectiveId: string): Promise<void> {
+  /**
+   * Recalcula el progreso del objetivo a partir del estado actual de sus KRs.
+   *
+   * T1.2: además del cálculo de progress, dispara la auto-completion del
+   * objetivo cuando se cumplen TODAS estas condiciones simultáneamente:
+   *   1. avgProgress >= 100
+   *   2. Todos los KRs están en estado COMPLETED
+   *   3. El objetivo está en estado ACTIVE
+   *
+   * El doble check (progress + status de KRs) es defensivo: avgProgress
+   * podría llegar a 100 por redondeo aunque algún KR siga ACTIVE, y un KR
+   * podría tener `status=COMPLETED` con `currentValue>targetValue` (caso
+   * raro). Solo cuando ambas condiciones coinciden disparamos la
+   * transición — evita falsos positivos.
+   *
+   * `actorUserId` se usa como `completedBy` en el helper. Si no se pasa
+   * (callers internos como propagateProgressToParent — Tarea 3), cae al
+   * `userId` del owner del objetivo.
+   */
+  private async recalculateProgressFromKRs(
+    tenantId: string,
+    objectiveId: string,
+    actorUserId?: string,
+  ): Promise<void> {
     const krs = await this.keyResultRepo.find({ where: { tenantId, objectiveId } });
     if (krs.length === 0) return;
 
@@ -893,6 +990,17 @@ export class ObjectivesService {
 
     const avgProgress = Math.round(totalProgress / krs.length);
     await this.objectiveRepo.update({ id: objectiveId, tenantId }, { progress: avgProgress });
+
+    // T1.2: auto-complete objective when KRs reach 100% (fixes BUG-1)
+    const allCompleted = krs.every((kr) => kr.status === KRStatus.COMPLETED);
+    if (allCompleted && avgProgress >= 100) {
+      const obj = await this.objectiveRepo.findOne({ where: { id: objectiveId, tenantId } });
+      // Only complete from ACTIVE — don't auto-complete DRAFT/PENDING/ABANDONED.
+      // Helper is idempotent so re-entry on already-COMPLETED objectives is safe.
+      if (obj && obj.status === ObjectiveStatus.ACTIVE) {
+        await this.completeObjective(obj, actorUserId ?? obj.userId);
+      }
+    }
   }
 
   // ─── Export ────────────────────────────────────────────────────────────

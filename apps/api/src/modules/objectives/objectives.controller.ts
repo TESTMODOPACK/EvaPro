@@ -386,7 +386,12 @@ export class ObjectivesController {
     @Request() req: any,
     @Body() data: { currentValue?: number; description?: string; targetValue?: number; status?: string },
   ) {
-    return this.objectivesService.updateKeyResult(req.user.tenantId, krId, data as any);
+    return this.objectivesService.updateKeyResult(
+      req.user.tenantId,
+      krId,
+      data as any,
+      req.user.userId,
+    );
   }
 
   @Delete('key-results/:krId')
@@ -395,6 +400,10 @@ export class ObjectivesController {
     @Param('krId', ParseUUIDPipe) krId: string,
     @Request() req: any,
   ) {
-    return this.objectivesService.deleteKeyResult(req.user.tenantId, krId);
+    return this.objectivesService.deleteKeyResult(
+      req.user.tenantId,
+      krId,
+      req.user.userId,
+    );
   }
 }
