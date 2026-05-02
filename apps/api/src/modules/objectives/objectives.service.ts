@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { Objective, ObjectiveStatus } from './entities/objective.entity';
@@ -20,6 +20,8 @@ import { buildPushMessage } from '../notifications/push-messages';
 
 @Injectable()
 export class ObjectivesService {
+  private readonly logger = new Logger(ObjectivesService.name);
+
   constructor(
     @InjectRepository(Objective)
     private readonly objectiveRepo: Repository<Objective>,
@@ -674,8 +676,9 @@ export class ObjectivesService {
       await this.objectiveRepo.save(obj);
     }
 
-    // B3.15: Propagate progress to parent objective
-    await this.propagateProgressToParent(tenantId, objectiveId);
+    // B3.15: Propagate progress to parent objective (T3.1: pasa userId
+    // como actor para audit del completion del padre si llega a 100%)
+    await this.propagateProgressToParent(tenantId, objectiveId, userId);
 
     const update = this.updateRepo.create({
       tenantId,
@@ -941,11 +944,43 @@ export class ObjectivesService {
 
   /**
    * When a child objective updates its progress, recalculate the parent's
-   * progress as the weighted average of all its children.
+   * progress as the weighted average of all its children, recursively up
+   * the chain.
+   *
+   * T3.1 — BUG-9: además del recálculo de progress, dispara la auto-completion
+   * del padre cuando `parentProgress >= 100` y el padre está ACTIVE (helper
+   * compartido con Tarea 1). El completeObjective es idempotente: re-llamadas
+   * sobre un padre ya COMPLETED no re-disparan side-effects.
+   *
+   * T3.2 — Guard contra cadenas circulares latentes. validateParentObjective
+   * previene crear ciclos en runtime, pero data legacy (migraciones, fixes
+   * manuales) podrían tener A→B→A. El parámetro `visited` arranca vacío y
+   * acumula los IDs de padres visitados en la cadena; si reaparece uno,
+   * abortamos sin loop infinito.
+   *
+   * `actorUserId` se propaga a completeObjective como `completedBy`. Si no
+   * se pasa (paths internos sin contexto de usuario), cae al `userId` del
+   * owner del padre.
    */
-  async propagateProgressToParent(tenantId: string, objectiveId: string): Promise<void> {
-    const obj = await this.objectiveRepo.findOne({ where: { id: objectiveId, tenantId } });
+  async propagateProgressToParent(
+    tenantId: string,
+    objectiveId: string,
+    actorUserId?: string,
+    visited: Set<string> = new Set(),
+  ): Promise<void> {
+    const obj = await this.objectiveRepo.findOne({
+      where: { id: objectiveId, tenantId },
+    });
     if (!obj?.parentObjectiveId) return;
+
+    // T3.2: abortar si la cadena ya visitó este padre (ciclo legacy)
+    if (visited.has(obj.parentObjectiveId)) {
+      this.logger.warn(
+        `Circular parent chain detected at objective ${obj.parentObjectiveId} (tenant ${tenantId}); aborting propagation`,
+      );
+      return;
+    }
+    visited.add(obj.parentObjectiveId);
 
     const siblings = await this.objectiveRepo.find({
       where: { tenantId, parentObjectiveId: obj.parentObjectiveId },
@@ -953,13 +988,19 @@ export class ObjectivesService {
 
     if (siblings.length === 0) return;
 
-    const totalWeight = siblings.reduce((sum, s) => sum + Number(s.weight || 0), 0);
+    const totalWeight = siblings.reduce(
+      (sum, s) => sum + Number(s.weight || 0),
+      0,
+    );
 
     let parentProgress: number;
     if (totalWeight > 0) {
       // Weighted average
       parentProgress = Math.round(
-        siblings.reduce((sum, s) => sum + (s.progress * Number(s.weight || 0)), 0) / totalWeight,
+        siblings.reduce(
+          (sum, s) => sum + s.progress * Number(s.weight || 0),
+          0,
+        ) / totalWeight,
       );
     } else {
       // Simple average if no weights
@@ -967,14 +1008,30 @@ export class ObjectivesService {
         siblings.reduce((sum, s) => sum + s.progress, 0) / siblings.length,
       );
     }
+    parentProgress = Math.min(100, parentProgress);
 
     await this.objectiveRepo.update(
       { id: obj.parentObjectiveId, tenantId },
-      { progress: Math.min(100, parentProgress) },
+      { progress: parentProgress },
     );
 
-    // Recurse up the chain
-    await this.propagateProgressToParent(tenantId, obj.parentObjectiveId);
+    // T3.1: si el padre alcanza 100% y está ACTIVE, auto-completarlo
+    if (parentProgress >= 100) {
+      const parent = await this.objectiveRepo.findOne({
+        where: { id: obj.parentObjectiveId, tenantId },
+      });
+      if (parent && parent.status === ObjectiveStatus.ACTIVE) {
+        await this.completeObjective(parent, actorUserId ?? parent.userId);
+      }
+    }
+
+    // Recurse up the chain (con el mismo visited set y actorUserId)
+    await this.propagateProgressToParent(
+      tenantId,
+      obj.parentObjectiveId,
+      actorUserId,
+      visited,
+    );
   }
 
   // ─── Key Results (B2.10) ──────────────────────────────────────────────────
@@ -1096,6 +1153,12 @@ export class ObjectivesService {
         await this.completeObjective(obj, actorUserId ?? obj.userId);
       }
     }
+
+    // T3.2 — BUG-9 bridge: propagar al padre tras recalcular desde KRs.
+    // Antes de este fix, las completaciones via KR no actualizaban el
+    // progress del padre — el cascading OKR solo funcionaba para
+    // SMART/KPI vía addProgressUpdate.
+    await this.propagateProgressToParent(tenantId, objectiveId, actorUserId);
   }
 
   // ─── Export ────────────────────────────────────────────────────────────

@@ -543,8 +543,10 @@ describe('ObjectivesService — Tarea 1 (auto-completion)', () => {
       // BUT no completion side-effects
       expect(recognitionService.addPoints).not.toHaveBeenCalled();
       expect(objRepo.save).not.toHaveBeenCalled();
-      // No findOne for objective (the guard `allCompleted && avg>=100` short-circuits)
-      expect(objRepo.findOne).not.toHaveBeenCalled();
+      // Note: T3.2 bridge calls propagateProgressToParent which loads the obj
+      // via findOne to read its parentObjectiveId. The completion guard
+      // (`allCompleted && avg>=100`) still short-circuits — verified above by
+      // the absence of save/addPoints calls.
     });
 
     it('should NOT auto-complete when objective is in DRAFT (status guard)', async () => {
@@ -1077,6 +1079,494 @@ describe('ObjectivesService — Tarea 2 (weight validation by cycle bucket)', ()
 
       // getMany should NOT have been called (validation skipped)
       expect(qb.getMany).not.toHaveBeenCalled();
+    });
+  });
+});
+
+// ─── Tarea 3 — BUG-9: parent auto-completion + visited guard ───────────
+
+describe('ObjectivesService — Tarea 3 (parent auto-completion)', () => {
+  let service: ObjectivesService;
+  let objRepo: any;
+  let krRepo: any;
+  let userRepo: any;
+  let recognitionService: any;
+  let auditService: any;
+
+  const PARENT_ID = fakeUuid(400);
+  const CHILD_A = fakeUuid(401);
+  const CHILD_B = fakeUuid(402);
+  const GRANDPARENT_ID = fakeUuid(500);
+
+  beforeEach(async () => {
+    objRepo = createMockRepository();
+    krRepo = createMockRepository();
+    userRepo = createMockRepository();
+    recognitionService = {
+      addPoints: jest.fn().mockResolvedValue(undefined),
+      checkAutoBadges: jest.fn().mockResolvedValue(undefined),
+    };
+    auditService = createMockAuditService();
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        ObjectivesService,
+        { provide: getRepositoryToken(Objective), useValue: objRepo },
+        {
+          provide: getRepositoryToken(ObjectiveUpdate),
+          useValue: createMockRepository(),
+        },
+        {
+          provide: getRepositoryToken(ObjectiveComment),
+          useValue: createMockRepository(),
+        },
+        { provide: getRepositoryToken(KeyResult), useValue: krRepo },
+        { provide: getRepositoryToken(User), useValue: userRepo },
+        {
+          provide: getRepositoryToken(EvaluationCycle),
+          useValue: createMockRepository(),
+        },
+        { provide: AuditService, useValue: auditService },
+        {
+          provide: EmailService,
+          useValue: {
+            sendObjectiveAssigned: jest.fn().mockResolvedValue(undefined),
+            sendObjectiveCompleted: jest.fn().mockResolvedValue(undefined),
+          },
+        },
+        { provide: RecognitionService, useValue: recognitionService },
+        {
+          provide: NotificationsService,
+          useValue: createMockNotificationsService(),
+        },
+        {
+          provide: PushService,
+          useValue: { sendToUser: jest.fn().mockResolvedValue(undefined) },
+        },
+      ],
+    }).compile();
+
+    service = module.get<ObjectivesService>(ObjectivesService);
+  });
+
+  describe('propagateProgressToParent — auto-completion (T3.1)', () => {
+    it('should NOT auto-complete parent when children avg < 100', async () => {
+      const child = makeObj({
+        id: CHILD_A,
+        parentObjectiveId: PARENT_ID,
+        progress: 50,
+        status: ObjectiveStatus.ACTIVE,
+      });
+      const sibling = makeObj({
+        id: CHILD_B,
+        parentObjectiveId: PARENT_ID,
+        progress: 30,
+        status: ObjectiveStatus.ACTIVE,
+        weight: 0,
+      });
+
+      objRepo.findOne.mockResolvedValueOnce(child); // initial load of child
+      objRepo.find.mockResolvedValueOnce([child, sibling]); // siblings
+      // Recursion will try to load parent (PARENT_ID) — return null to stop
+      objRepo.findOne.mockResolvedValueOnce(null);
+
+      await service.propagateProgressToParent(TID, CHILD_A, ACTOR);
+
+      // Progress was updated on parent
+      expect(objRepo.update).toHaveBeenCalledWith(
+        { id: PARENT_ID, tenantId: TID },
+        { progress: 40 }, // (50 + 30) / 2
+      );
+      // No completion fired
+      expect(recognitionService.addPoints).not.toHaveBeenCalled();
+    });
+
+    it('should auto-complete ACTIVE parent when all children reach 100% (simple avg)', async () => {
+      const child = makeObj({
+        id: CHILD_A,
+        parentObjectiveId: PARENT_ID,
+        progress: 100,
+        status: ObjectiveStatus.COMPLETED,
+        weight: 0,
+      });
+      const sibling = makeObj({
+        id: CHILD_B,
+        parentObjectiveId: PARENT_ID,
+        progress: 100,
+        status: ObjectiveStatus.COMPLETED,
+        weight: 0,
+      });
+      const parent = makeObj({
+        id: PARENT_ID,
+        userId: UID,
+        progress: 50,
+        status: ObjectiveStatus.ACTIVE,
+        parentObjectiveId: null, // root parent
+      });
+
+      objRepo.findOne
+        .mockResolvedValueOnce(child) // initial child load
+        .mockResolvedValueOnce(parent) // parent load for completion check
+        .mockResolvedValueOnce(parent); // recursion: load parent again, parent.parentObjectiveId=null returns
+      objRepo.find.mockResolvedValueOnce([child, sibling]); // siblings
+      userRepo.findOne.mockResolvedValueOnce({
+        id: UID,
+        firstName: 'A',
+        lastName: 'B',
+        managerId: null,
+      });
+
+      await service.propagateProgressToParent(TID, CHILD_A, ACTOR);
+
+      expect(objRepo.update).toHaveBeenCalledWith(
+        { id: PARENT_ID, tenantId: TID },
+        { progress: 100 },
+      );
+      // completeObjective fired on parent
+      expect(objRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: PARENT_ID,
+          status: ObjectiveStatus.COMPLETED,
+        }),
+      );
+      expect(recognitionService.addPoints).toHaveBeenCalledWith(
+        TID, UID, 10, expect.any(String), expect.any(String), PARENT_ID,
+      );
+      expect(auditService.log).toHaveBeenCalledWith(
+        TID, ACTOR, 'objective.completed', 'objective', PARENT_ID, expect.any(Object),
+      );
+    });
+
+    it('should weighted-average parent progress when children have weights', async () => {
+      const child = makeObj({
+        id: CHILD_A,
+        parentObjectiveId: PARENT_ID,
+        progress: 50,
+        weight: 50,
+      });
+      const sibling = makeObj({
+        id: CHILD_B,
+        parentObjectiveId: PARENT_ID,
+        progress: 100,
+        weight: 50,
+      });
+
+      objRepo.findOne.mockResolvedValueOnce(child);
+      objRepo.find.mockResolvedValueOnce([child, sibling]);
+      objRepo.findOne.mockResolvedValueOnce(null); // stop recursion
+
+      await service.propagateProgressToParent(TID, CHILD_A, ACTOR);
+
+      // weighted avg: (50*50 + 100*50) / 100 = 75
+      expect(objRepo.update).toHaveBeenCalledWith(
+        { id: PARENT_ID, tenantId: TID },
+        { progress: 75 },
+      );
+      expect(recognitionService.addPoints).not.toHaveBeenCalled();
+    });
+
+    it('should NOT auto-complete parent in DRAFT (status guard)', async () => {
+      const child = makeObj({
+        id: CHILD_A,
+        parentObjectiveId: PARENT_ID,
+        progress: 100,
+        weight: 0,
+      });
+      const draftParent = makeObj({
+        id: PARENT_ID,
+        progress: 100,
+        status: ObjectiveStatus.DRAFT, // not yet approved
+        parentObjectiveId: null,
+      });
+
+      objRepo.findOne
+        .mockResolvedValueOnce(child)
+        .mockResolvedValueOnce(draftParent) // completion check — fails on status
+        .mockResolvedValueOnce(draftParent); // recursion stop
+      objRepo.find.mockResolvedValueOnce([child]);
+
+      await service.propagateProgressToParent(TID, CHILD_A, ACTOR);
+
+      expect(objRepo.update).toHaveBeenCalled();
+      // No completion side-effects
+      expect(objRepo.save).not.toHaveBeenCalled();
+      expect(recognitionService.addPoints).not.toHaveBeenCalled();
+    });
+
+    it('should be idempotent — already-COMPLETED parent does not re-fire side-effects', async () => {
+      const child = makeObj({
+        id: CHILD_A,
+        parentObjectiveId: PARENT_ID,
+        progress: 100,
+        weight: 0,
+      });
+      const completedParent = makeObj({
+        id: PARENT_ID,
+        progress: 100,
+        status: ObjectiveStatus.COMPLETED, // already done
+        parentObjectiveId: null,
+      });
+
+      objRepo.findOne
+        .mockResolvedValueOnce(child)
+        .mockResolvedValueOnce(completedParent)
+        .mockResolvedValueOnce(completedParent);
+      objRepo.find.mockResolvedValueOnce([child]);
+
+      await service.propagateProgressToParent(TID, CHILD_A, ACTOR);
+
+      // helper was invoked but short-circuited via idempotency
+      expect(objRepo.save).not.toHaveBeenCalled();
+      expect(recognitionService.addPoints).not.toHaveBeenCalled();
+    });
+
+    it('should cascade complete through 3-level chain when all leaves reach 100%', async () => {
+      // Chain: leaf C → middle B → root A
+      // C completes → propagate from C to B: B reaches 100, COMPLETED.
+      //   recursion: propagate from B to A: A reaches 100, COMPLETED.
+      const C = makeObj({
+        id: CHILD_A,
+        parentObjectiveId: CHILD_B, // C's parent is B
+        progress: 100,
+        weight: 0,
+      });
+      const B = makeObj({
+        id: CHILD_B,
+        parentObjectiveId: GRANDPARENT_ID, // B's parent is A
+        progress: 100,
+        status: ObjectiveStatus.ACTIVE,
+        weight: 0,
+        userId: UID,
+      });
+      const A = makeObj({
+        id: GRANDPARENT_ID,
+        progress: 100,
+        status: ObjectiveStatus.ACTIVE,
+        parentObjectiveId: null,
+        userId: UID,
+      });
+
+      // Sequence of findOne calls in recursion:
+      //   1) load C (initial)
+      //   2) load B (parent completion check, on first level)
+      //   3) load B again (recursion entry, to check B's parent)
+      //   4) load A (parent completion check, on second level)
+      //   5) load A again (recursion entry, A.parentObjectiveId=null returns)
+      objRepo.findOne
+        .mockResolvedValueOnce(C)
+        .mockResolvedValueOnce(B)
+        .mockResolvedValueOnce(B)
+        .mockResolvedValueOnce(A)
+        .mockResolvedValueOnce(A);
+      // siblings of B (C's siblings under B), then siblings of A (B's siblings under A)
+      objRepo.find
+        .mockResolvedValueOnce([C]) // C is B's only child
+        .mockResolvedValueOnce([B]); // B is A's only child
+      userRepo.findOne.mockResolvedValue({
+        id: UID,
+        firstName: 'A',
+        lastName: 'B',
+        managerId: null,
+      });
+
+      await service.propagateProgressToParent(TID, CHILD_A, ACTOR);
+
+      // Both B and A should have been updated with progress=100
+      expect(objRepo.update).toHaveBeenCalledWith(
+        { id: CHILD_B, tenantId: TID },
+        { progress: 100 },
+      );
+      expect(objRepo.update).toHaveBeenCalledWith(
+        { id: GRANDPARENT_ID, tenantId: TID },
+        { progress: 100 },
+      );
+      // Both saved as COMPLETED via helper
+      expect(objRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ id: CHILD_B, status: ObjectiveStatus.COMPLETED }),
+      );
+      expect(objRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ id: GRANDPARENT_ID, status: ObjectiveStatus.COMPLETED }),
+      );
+      // Audit + points fired twice (once per level)
+      expect(auditService.log).toHaveBeenCalledTimes(2);
+      expect(recognitionService.addPoints).toHaveBeenCalledTimes(2);
+    });
+
+    it('should detect circular legacy chain and abort recursion (T3.2 guard)', async () => {
+      // Legacy data: A.parentObjectiveId = B, B.parentObjectiveId = A.
+      // validateParentObjective should have prevented this in runtime, but we
+      // simulate corrupted data here.
+      const A_legacy = makeObj({
+        id: GRANDPARENT_ID,
+        parentObjectiveId: CHILD_B, // points to B
+        progress: 50,
+        status: ObjectiveStatus.ACTIVE,
+        weight: 0,
+      });
+      const B_legacy = makeObj({
+        id: CHILD_B,
+        parentObjectiveId: GRANDPARENT_ID, // points back to A
+        progress: 50,
+        status: ObjectiveStatus.ACTIVE,
+        weight: 0,
+      });
+
+      // Initial entry: load A_legacy
+      // Then recursion sees parent=B, loads siblings under B
+      // Then recurses to propagate(B), loads B → parent=A
+      // Now visited has [B, A] → on next recursion attempt to A's parent (B), guard hits
+      objRepo.findOne
+        .mockResolvedValueOnce(A_legacy) // initial
+        .mockResolvedValueOnce(A_legacy) // recursion: load A as child to find its parent (B)
+        .mockResolvedValueOnce(B_legacy); // recursion: load B as child to find its parent (A)
+      // siblings under B (= [A_legacy]) and siblings under A (= [B_legacy])
+      objRepo.find
+        .mockResolvedValueOnce([A_legacy])
+        .mockResolvedValueOnce([B_legacy]);
+
+      // Should resolve without infinite recursion
+      await expect(
+        service.propagateProgressToParent(TID, GRANDPARENT_ID, ACTOR),
+      ).resolves.toBeUndefined();
+
+      // No completion (none reached 100%); guard prevents the loop
+      expect(recognitionService.addPoints).not.toHaveBeenCalled();
+    });
+
+    it('should default actor to parent.userId when no actorUserId is passed', async () => {
+      const child = makeObj({
+        id: CHILD_A,
+        parentObjectiveId: PARENT_ID,
+        progress: 100,
+        weight: 0,
+      });
+      const parent = makeObj({
+        id: PARENT_ID,
+        userId: UID,
+        progress: 100,
+        status: ObjectiveStatus.ACTIVE,
+        parentObjectiveId: null,
+      });
+
+      objRepo.findOne
+        .mockResolvedValueOnce(child)
+        .mockResolvedValueOnce(parent)
+        .mockResolvedValueOnce(parent);
+      objRepo.find.mockResolvedValueOnce([child]);
+      userRepo.findOne.mockResolvedValueOnce({
+        id: UID,
+        firstName: 'A',
+        lastName: 'B',
+        managerId: null,
+      });
+
+      // No actorUserId passed
+      await service.propagateProgressToParent(TID, CHILD_A);
+
+      expect(auditService.log).toHaveBeenCalledWith(
+        TID,
+        UID, // fallback to parent.userId
+        'objective.completed',
+        'objective',
+        PARENT_ID,
+        expect.any(Object),
+      );
+    });
+  });
+
+  describe('recalculateProgressFromKRs → propagateProgressToParent bridge (T3.2)', () => {
+    it('should propagate to parent after KR-driven progress change', async () => {
+      // Setup: child OKR with 1 KR. KR updated. recalc runs. Parent should
+      // see updated progress via propagate.
+      const childWithParent = makeObj({
+        id: CHILD_A,
+        parentObjectiveId: PARENT_ID,
+        progress: 50,
+        status: ObjectiveStatus.ACTIVE,
+        type: ObjectiveType.OKR,
+      });
+
+      krRepo.findOne.mockResolvedValue(
+        makeKR({
+          id: fakeUuid(302),
+          objectiveId: CHILD_A,
+          currentValue: 0,
+          status: KRStatus.ACTIVE,
+        }),
+      );
+      // After save, recalc reads KRs — one KR at 80
+      krRepo.find.mockResolvedValue([
+        makeKR({
+          id: fakeUuid(302),
+          objectiveId: CHILD_A,
+          currentValue: 80,
+          status: KRStatus.ACTIVE,
+        }),
+      ]);
+      // Inside recalc, after objRepo.update of progress, allCompleted=false
+      // (KR is still ACTIVE), so completion branch is skipped. Then propagate
+      // runs — needs to load child to find its parentObjectiveId.
+      objRepo.findOne.mockResolvedValueOnce(childWithParent);
+      // siblings under PARENT_ID — just the child
+      objRepo.find.mockResolvedValueOnce([
+        makeObj({
+          id: CHILD_A,
+          parentObjectiveId: PARENT_ID,
+          progress: 80,
+          weight: 0,
+        }),
+      ]);
+      // Parent recursion: load parent → no further parent
+      objRepo.findOne.mockResolvedValueOnce(null);
+
+      await service.updateKeyResult(TID, fakeUuid(302), { currentValue: 80 }, ACTOR);
+
+      // Progress was recalculated AND propagated to parent
+      expect(objRepo.update).toHaveBeenCalledWith(
+        { id: CHILD_A, tenantId: TID },
+        expect.objectContaining({ progress: 80 }),
+      );
+      expect(objRepo.update).toHaveBeenCalledWith(
+        { id: PARENT_ID, tenantId: TID },
+        { progress: 80 }, // parent's avg = child's progress (only sibling)
+      );
+    });
+
+    it('should not propagate when child has no parent', async () => {
+      const orphanChild = makeObj({
+        id: CHILD_A,
+        parentObjectiveId: null, // no parent
+        progress: 50,
+        status: ObjectiveStatus.ACTIVE,
+      });
+
+      // KR points to CHILD_A (not the default OID) so recalc operates on it
+      krRepo.findOne.mockResolvedValue(
+        makeKR({
+          id: fakeUuid(302),
+          objectiveId: CHILD_A,
+          currentValue: 0,
+          status: KRStatus.ACTIVE,
+        }),
+      );
+      krRepo.find.mockResolvedValue([
+        makeKR({
+          id: fakeUuid(302),
+          objectiveId: CHILD_A,
+          currentValue: 50,
+          status: KRStatus.ACTIVE,
+        }),
+      ]);
+      objRepo.findOne.mockResolvedValueOnce(orphanChild);
+
+      await service.updateKeyResult(TID, fakeUuid(302), { currentValue: 50 }, ACTOR);
+
+      // Only the child was updated, no parent update
+      expect(objRepo.update).toHaveBeenCalledTimes(1);
+      expect(objRepo.update).toHaveBeenCalledWith(
+        { id: CHILD_A, tenantId: TID },
+        expect.objectContaining({ progress: 50 }),
+      );
     });
   });
 });
