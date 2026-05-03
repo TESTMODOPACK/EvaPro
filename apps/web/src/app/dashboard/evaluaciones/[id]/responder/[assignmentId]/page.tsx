@@ -487,6 +487,36 @@ export default function ResponderEvaluacionPage() {
           </div>
         </div>
 
+        {/* T5.5 — Audit P0 (Issue A): banner cuando los objetivos del evaluado
+            vienen de un snapshot inmutable. Avisa al usuario que los datos
+            mostrados en la sección de objetivos (cuando se renderice) son
+            la "foto" tomada al cierre del ciclo o al firmar — no el estado
+            actual en vivo. Aplica solo a evaluaciones de ciclos cerrados o
+            ya firmadas. */}
+        {detail.objectivesSource && detail.objectivesSource !== 'live' && (
+          <div
+            className="card animate-fade-up"
+            style={{
+              padding: '0.75rem 1rem',
+              marginBottom: '1rem',
+              borderLeft: '3px solid var(--accent)',
+              background: 'rgba(99,102,241,0.05)',
+              fontSize: '0.82rem',
+              color: 'var(--text-secondary)',
+              lineHeight: 1.5,
+            }}
+            role="note"
+            aria-label="Datos de objetivos congelados"
+          >
+            <strong style={{ color: 'var(--accent)' }}>
+              📌 Datos congelados:
+            </strong>{' '}
+            {detail.objectivesSource === 'snapshot_signature'
+              ? 'el estado de los objetivos del evaluado mostrado en esta evaluación corresponde a la foto tomada en el momento de la firma. Los avances posteriores no se reflejan aquí.'
+              : 'el estado de los objetivos del evaluado mostrado en esta evaluación corresponde a la foto tomada al cierre del ciclo. Los avances posteriores no se reflejan aquí.'}
+          </div>
+        )}
+
         {/* Scale legend — collapsible */}
         <div className="animate-fade-up" style={{ marginBottom: '1.25rem' }}>
           <button

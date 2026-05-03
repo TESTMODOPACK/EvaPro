@@ -12,6 +12,7 @@ import { DevelopmentAction } from '../development/entities/development-action.en
 import { Contract } from '../contracts/entities/contract.entity';
 import { EmailService } from '../notifications/email.service';
 import { AuditService } from '../audit/audit.service';
+import { EvaluationsService } from '../evaluations/evaluations.service';
 
 const OTP_EXPIRY_MINUTES = 10;
 
@@ -36,6 +37,7 @@ export class SignaturesService {
     private readonly contractRepo: Repository<Contract>,
     private readonly emailService: EmailService,
     private readonly auditService: AuditService,
+    private readonly evaluationsService: EvaluationsService,
   ) {}
 
   // ─── Request Signature (send OTP) ───────────────────────────────────
@@ -134,6 +136,24 @@ export class SignaturesService {
       if (contract && contract.status === 'pending_signature') {
         contract.status = 'active';
         await this.contractRepo.save(contract);
+      }
+    }
+
+    // T5.3 — Audit P0 (Issue A): al firmar una evaluación, freezar el estado
+    // de los objetivos del evaluado en un snapshot per-signature. Esto evita
+    // que el documento firmado mute retroactivamente cuando los objetivos
+    // siguen progresando después de la firma. Best-effort: si el snapshot
+    // falla, la firma igual se persiste — la integridad del evaluation
+    // signature no depende de este snapshot (es defensa en profundidad).
+    if (documentType === 'evaluation_response') {
+      const response = await this.responseRepo.findOne({
+        where: { id: documentId, tenantId },
+        select: ['id', 'assignmentId'],
+      });
+      if (response?.assignmentId) {
+        this.evaluationsService
+          .captureAssignmentObjectiveSnapshot(response.assignmentId, userId)
+          .catch(() => undefined);
       }
     }
 

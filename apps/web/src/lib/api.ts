@@ -1021,7 +1021,16 @@ export const api = {
     receivedByUser: (token: string, userId: string) =>
       request<any[]>(`/users/${userId}/received-evaluations`, {}, token),
     getDetail: (token: string, assignmentId: string) =>
-      request<{ assignment: AssignmentData; template: TemplateData | null; response: ResponseData | null }>(
+      request<{
+        assignment: AssignmentData;
+        template: TemplateData | null;
+        response: ResponseData | null;
+        evaluateeObjectives?: any[];
+        evaluateeObjectivesSummary?: any;
+        // T5.4 — Audit P0 (Issue A): indica si los objetivos vienen de un
+        // snapshot inmutable (per-firma o cycle-wide) o del estado live.
+        objectivesSource?: 'snapshot_signature' | 'snapshot_cycle' | 'live';
+      }>(
         `/evaluations/${assignmentId}`, {}, token,
       ),
     saveResponse: (token: string, assignmentId: string, answers: any) =>

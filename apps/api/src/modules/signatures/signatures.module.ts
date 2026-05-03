@@ -12,6 +12,7 @@ import { SignaturesService } from './signatures.service';
 import { SignaturesController } from './signatures.controller';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { AuditModule } from '../audit/audit.module';
+import { EvaluationsModule } from '../evaluations/evaluations.module';
 
 @Module({
   imports: [
@@ -22,6 +23,10 @@ import { AuditModule } from '../audit/audit.module';
     ]),
     NotificationsModule,
     AuditModule,
+    // T5.3 — para invocar captureAssignmentObjectiveSnapshot al firmar
+    // un evaluation_response, freezando el estado de los objetivos del
+    // evaluado en el momento exacto de la firma.
+    EvaluationsModule,
   ],
   controllers: [SignaturesController],
   providers: [SignaturesService],
