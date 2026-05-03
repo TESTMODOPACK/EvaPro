@@ -36,7 +36,7 @@ import { getRoleLabel } from '@/lib/roles';
 import { useDepartments } from '@/hooks/useDepartments';
 import { FirstVisitTip } from '@/components/FirstVisitTip';
 
-type FilterStatus = 'all' | 'draft' | 'pending_approval' | 'active' | 'completed' | 'abandoned' | 'at_risk';
+type FilterStatus = 'all' | 'draft' | 'pending_approval' | 'active' | 'overdue' | 'completed' | 'abandoned' | 'at_risk';
 type ObjType = 'OKR' | 'KPI' | 'SMART';
 type CommentType = 'seguimiento' | 'felicitacion' | 'bloqueo' | 'decision' | 'comentario' | 'adjunto';
 
@@ -52,6 +52,9 @@ const statusBadge: Record<string, string> = {
   draft: 'badge-warning',
   pending_approval: 'badge-ghost',
   active: 'badge-success',
+  // T6: vencido — rojo, mismo color que abandoned para reflejar la
+  // urgencia visual sin confundir (el texto del badge sí distingue).
+  overdue: 'badge-danger',
   completed: 'badge-accent',
   abandoned: 'badge-danger',
 };
@@ -650,6 +653,8 @@ const STATUS_COLORS: Record<string, string> = {
   draft: '#f59e0b',
   pending_approval: '#94a3b8',
   active: '#10b981',
+  // T6: vencido — rojo intenso (mismo tono que abandoned)
+  overdue: '#dc2626',
   completed: '#6366f1',
   abandoned: '#ef4444',
 };
@@ -789,6 +794,7 @@ function ObjectiveTreeView({ data, loading }: { data: any[]; loading: boolean })
           <option value="draft">Borrador</option>
           <option value="pending_approval">Pendiente</option>
           <option value="active">Activo</option>
+          <option value="overdue">Vencido</option>
           <option value="completed">Completado</option>
           <option value="abandoned">Abandonado</option>
         </select>
@@ -868,6 +874,8 @@ function ObjetivosPageContent() {
     draft: t('objetivos.objStatus.draft'),
     pending_approval: t('objetivos.objStatus.pending_approval'),
     active: t('objetivos.objStatus.in_progress'),
+    // T6 — Audit P1: estado vencido. Sin clave de i18n por ahora; texto literal.
+    overdue: 'Vencido',
     completed: t('objetivos.objStatus.completed'),
     abandoned: t('objetivos.objStatus.cancelled'),
   };
@@ -877,6 +885,7 @@ function ObjetivosPageContent() {
     { key: 'draft', label: t('objetivos.objStatus.draft') },
     { key: 'pending_approval', label: t('objetivos.objStatus.pending_approval') },
     { key: 'active', label: t('objetivos.objStatus.in_progress') },
+    { key: 'overdue', label: '⏰ Vencidos' },
     { key: 'completed', label: t('objetivos.objStatus.completed') },
     { key: 'abandoned', label: t('objetivos.objStatus.cancelled') },
     { key: 'at_risk', label: '⚠️ En riesgo' },
@@ -1064,6 +1073,7 @@ function ObjetivosPageContent() {
     draft: baseFiltered.filter((o: any) => o.status === 'draft').length,
     pending_approval: baseFiltered.filter((o: any) => o.status === 'pending_approval').length,
     active: baseFiltered.filter((o: any) => o.status === 'active').length,
+    overdue: baseFiltered.filter((o: any) => o.status === 'overdue').length,
     completed: baseFiltered.filter((o: any) => o.status === 'completed').length,
     abandoned: baseFiltered.filter((o: any) => o.status === 'abandoned').length,
     at_risk: baseFiltered.filter((o: any) => atRiskIds.has(o.id)).length,

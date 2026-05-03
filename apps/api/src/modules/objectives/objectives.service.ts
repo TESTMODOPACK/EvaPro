@@ -370,7 +370,21 @@ export class ObjectivesService {
     if (dto.description !== undefined) obj.description = dto.description;
     if (dto.type !== undefined) obj.type = dto.type;
     if (dto.status !== undefined) obj.status = dto.status;
-    if (dto.targetDate !== undefined) obj.targetDate = new Date(dto.targetDate);
+    if (dto.targetDate !== undefined) {
+      const newTargetDate = new Date(dto.targetDate);
+      // T6.3 — Audit P1: si el objetivo está OVERDUE y se extiende la fecha
+      // a hoy o futuro, vuelve a ACTIVE automáticamente. La validación
+      // validateTargetDate (B7.1) ya garantiza que dto.targetDate no es
+      // pasada, así que cualquier valor llegado aquí es ≥ hoy.
+      // Si dto.status también se setea explícitamente arriba, ese gana
+      // (admin override). El check `obj.status === OVERDUE` aplica al
+      // estado tras el assign de dto.status, así que solo dispara cuando
+      // el caller no forzó otro status.
+      obj.targetDate = newTargetDate;
+      if (obj.status === ObjectiveStatus.OVERDUE) {
+        obj.status = ObjectiveStatus.ACTIVE;
+      }
+    }
     if (dto.progress !== undefined) obj.progress = dto.progress;
     if (dto.weight !== undefined) obj.weight = dto.weight;
     // T2.3 incidental fix: cycleId estaba en el DTO y se validaba, pero nunca
@@ -1073,12 +1087,16 @@ export class ObjectivesService {
       { progress: parentProgress },
     );
 
-    // T3.1: si el padre alcanza 100% y está ACTIVE, auto-completarlo
+    // T3.1: si el padre alcanza 100% y está ACTIVE u OVERDUE, auto-completarlo
     if (parentProgress >= 100) {
       const parent = await this.objectiveRepo.findOne({
         where: { id: obj.parentObjectiveId, tenantId },
       });
-      if (parent && parent.status === ObjectiveStatus.ACTIVE) {
+      if (
+        parent &&
+        (parent.status === ObjectiveStatus.ACTIVE ||
+          parent.status === ObjectiveStatus.OVERDUE)
+      ) {
         await this.completeObjective(parent, actorUserId ?? parent.userId);
       }
     }
@@ -1205,9 +1223,14 @@ export class ObjectivesService {
     const allCompleted = krs.every((kr) => kr.status === KRStatus.COMPLETED);
     if (allCompleted && avgProgress >= 100) {
       const obj = await this.objectiveRepo.findOne({ where: { id: objectiveId, tenantId } });
-      // Only complete from ACTIVE — don't auto-complete DRAFT/PENDING/ABANDONED.
-      // Helper is idempotent so re-entry on already-COMPLETED objectives is safe.
-      if (obj && obj.status === ObjectiveStatus.ACTIVE) {
+      // Complete from ACTIVE u OVERDUE (T6: vencido también puede cerrar
+      // con KRs completados). DRAFT/PENDING/ABANDONED no auto-completan.
+      // Helper es idempotente sobre objetivos ya COMPLETED.
+      if (
+        obj &&
+        (obj.status === ObjectiveStatus.ACTIVE ||
+          obj.status === ObjectiveStatus.OVERDUE)
+      ) {
         await this.completeObjective(obj, actorUserId ?? obj.userId);
       }
     }
@@ -1240,7 +1263,7 @@ export class ObjectivesService {
     const objectives = await this.getExportData(tenantId, userId, role);
     const rows: string[] = [];
     rows.push('Título,Tipo,Estado,Progreso %,Peso,Fecha Meta,Responsable,Departamento');
-    const statusLabels: Record<string, string> = { draft: 'Borrador', pending_approval: 'Pendiente', active: 'Activo', completed: 'Completado', abandoned: 'Abandonado' };
+    const statusLabels: Record<string, string> = { draft: 'Borrador', pending_approval: 'Pendiente', active: 'Activo', overdue: 'Vencido', completed: 'Completado', abandoned: 'Abandonado' };
     for (const obj of objectives) {
       const userName = obj.user ? `${obj.user.firstName || ''} ${obj.user.lastName || ''}`.trim() : '';
       const dept = obj.user?.department || '';
@@ -1256,7 +1279,7 @@ export class ObjectivesService {
 
   async exportObjectivesXlsx(tenantId: string, userId?: string, role?: string): Promise<Buffer> {
     const objectives = await this.getExportData(tenantId, userId, role);
-    const statusLabels: Record<string, string> = { draft: 'Borrador', pending_approval: 'Pendiente', active: 'Activo', completed: 'Completado', abandoned: 'Abandonado' };
+    const statusLabels: Record<string, string> = { draft: 'Borrador', pending_approval: 'Pendiente', active: 'Activo', overdue: 'Vencido', completed: 'Completado', abandoned: 'Abandonado' };
 
     const ExcelJS = (await import('exceljs')).default;
     const wb = new ExcelJS.Workbook();
@@ -1304,7 +1327,7 @@ export class ObjectivesService {
 
   async exportObjectivesPdf(tenantId: string, userId?: string, role?: string): Promise<Buffer> {
     const objectives = await this.getExportData(tenantId, userId, role);
-    const statusLabels: Record<string, string> = { draft: 'Borrador', pending_approval: 'Pendiente', active: 'Activo', completed: 'Completado', abandoned: 'Abandonado' };
+    const statusLabels: Record<string, string> = { draft: 'Borrador', pending_approval: 'Pendiente', active: 'Activo', overdue: 'Vencido', completed: 'Completado', abandoned: 'Abandonado' };
 
     const { jsPDF } = await import('jspdf');
     const autoTable = (await import('jspdf-autotable')).default;
@@ -1397,7 +1420,7 @@ export class ObjectivesService {
   async exportObjectivesTreeXlsx(tenantId: string, role?: string, userId?: string): Promise<Buffer> {
     const tree = await this.getObjectiveTree(tenantId, role, userId);
     const flat = this.flattenTree(tree);
-    const statusLabels: Record<string, string> = { draft: 'Borrador', pending_approval: 'Pendiente', active: 'Activo', completed: 'Completado', abandoned: 'Abandonado' };
+    const statusLabels: Record<string, string> = { draft: 'Borrador', pending_approval: 'Pendiente', active: 'Activo', overdue: 'Vencido', completed: 'Completado', abandoned: 'Abandonado' };
 
     const ExcelJS = (await import('exceljs')).default;
     const wb = new ExcelJS.Workbook();
@@ -1449,7 +1472,7 @@ export class ObjectivesService {
   async exportObjectivesTreePdf(tenantId: string, role?: string, userId?: string): Promise<Buffer> {
     const tree = await this.getObjectiveTree(tenantId, role, userId);
     const flat = this.flattenTree(tree);
-    const statusLabels: Record<string, string> = { draft: 'Borrador', pending_approval: 'Pendiente', active: 'Activo', completed: 'Completado', abandoned: 'Abandonado' };
+    const statusLabels: Record<string, string> = { draft: 'Borrador', pending_approval: 'Pendiente', active: 'Activo', overdue: 'Vencido', completed: 'Completado', abandoned: 'Abandonado' };
 
     const { jsPDF } = await import('jspdf');
     const autoTable = (await import('jspdf-autotable')).default;

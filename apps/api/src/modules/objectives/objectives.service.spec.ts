@@ -1809,3 +1809,207 @@ describe('ObjectivesService — Tarea 4 (bulkApprove)', () => {
     );
   });
 });
+
+// ─── Tarea 6 — OVERDUE state ───────────────────────────────────────────
+
+describe('ObjectivesService — Tarea 6 (OVERDUE state)', () => {
+  let service: ObjectivesService;
+  let objRepo: any;
+  let krRepo: any;
+  let userRepo: any;
+  let cycleRepo: any;
+  let recognitionService: any;
+  let auditService: any;
+
+  beforeEach(async () => {
+    objRepo = createMockRepository();
+    krRepo = createMockRepository();
+    userRepo = createMockRepository();
+    cycleRepo = createMockRepository();
+    cycleRepo.findOne.mockImplementation((args: any) =>
+      Promise.resolve({
+        id: args?.where?.id ?? 'mock-cycle',
+        tenantId: TID,
+        status: 'active',
+      }),
+    );
+    recognitionService = {
+      addPoints: jest.fn().mockResolvedValue(undefined),
+      checkAutoBadges: jest.fn().mockResolvedValue(undefined),
+    };
+    auditService = createMockAuditService();
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        ObjectivesService,
+        { provide: getRepositoryToken(Objective), useValue: objRepo },
+        {
+          provide: getRepositoryToken(ObjectiveUpdate),
+          useValue: createMockRepository(),
+        },
+        {
+          provide: getRepositoryToken(ObjectiveComment),
+          useValue: createMockRepository(),
+        },
+        { provide: getRepositoryToken(KeyResult), useValue: krRepo },
+        { provide: getRepositoryToken(User), useValue: userRepo },
+        { provide: getRepositoryToken(EvaluationCycle), useValue: cycleRepo },
+        { provide: AuditService, useValue: auditService },
+        {
+          provide: EmailService,
+          useValue: {
+            sendObjectiveAssigned: jest.fn().mockResolvedValue(undefined),
+            sendObjectiveCompleted: jest.fn().mockResolvedValue(undefined),
+          },
+        },
+        { provide: RecognitionService, useValue: recognitionService },
+        {
+          provide: NotificationsService,
+          useValue: createMockNotificationsService(),
+        },
+        {
+          provide: PushService,
+          useValue: { sendToUser: jest.fn().mockResolvedValue(undefined) },
+        },
+      ],
+    }).compile();
+
+    service = module.get<ObjectivesService>(ObjectivesService);
+  });
+
+  describe('update() — extending targetDate from OVERDUE', () => {
+    it('should transition OVERDUE back to ACTIVE when targetDate is extended', async () => {
+      const overdueObj = makeObj({
+        status: ObjectiveStatus.OVERDUE,
+        progress: 60,
+      });
+      const qb = objRepo.createQueryBuilder();
+      qb.getOne.mockResolvedValueOnce(overdueObj);
+      objRepo.save.mockImplementation((entity: any) => Promise.resolve(entity));
+
+      // Pick a clearly future date to avoid validateTargetDate edge-of-day issues
+      const future = new Date();
+      future.setDate(future.getDate() + 30);
+      const futureStr = future.toISOString().slice(0, 10);
+
+      await service.update(TID, OID, { targetDate: futureStr });
+
+      const saved = objRepo.save.mock.calls[0][0];
+      expect(saved.status).toBe(ObjectiveStatus.ACTIVE);
+    });
+
+    it('should NOT transition when status is being explicitly set in the same update', async () => {
+      const overdueObj = makeObj({
+        status: ObjectiveStatus.OVERDUE,
+        progress: 60,
+      });
+      const qb = objRepo.createQueryBuilder();
+      qb.getOne.mockResolvedValueOnce(overdueObj);
+      objRepo.save.mockImplementation((entity: any) => Promise.resolve(entity));
+
+      const future = new Date();
+      future.setDate(future.getDate() + 30);
+      const futureStr = future.toISOString().slice(0, 10);
+
+      // Admin explicitly sets a different status — should win over auto-transition
+      await service.update(TID, OID, {
+        targetDate: futureStr,
+        status: ObjectiveStatus.ABANDONED,
+      });
+
+      const saved = objRepo.save.mock.calls[0][0];
+      // dto.status was applied BEFORE the targetDate logic, but the
+      // targetDate handler only auto-transitions if obj.status is still
+      // OVERDUE — admin set ABANDONED so transition should NOT fire.
+      expect(saved.status).toBe(ObjectiveStatus.ABANDONED);
+    });
+
+    it('should NOT touch ACTIVE objectives when targetDate is extended', async () => {
+      const activeObj = makeObj({
+        status: ObjectiveStatus.ACTIVE,
+        progress: 60,
+      });
+      const qb = objRepo.createQueryBuilder();
+      qb.getOne.mockResolvedValueOnce(activeObj);
+      objRepo.save.mockImplementation((entity: any) => Promise.resolve(entity));
+
+      const future = new Date();
+      future.setDate(future.getDate() + 30);
+
+      await service.update(TID, OID, {
+        targetDate: future.toISOString().slice(0, 10),
+      });
+
+      const saved = objRepo.save.mock.calls[0][0];
+      expect(saved.status).toBe(ObjectiveStatus.ACTIVE);
+    });
+  });
+
+  describe('auto-completion guards include OVERDUE', () => {
+    it('recalculateProgressFromKRs should auto-complete OVERDUE OKR when all KRs done', async () => {
+      const kr = makeKR({ currentValue: 100, status: KRStatus.COMPLETED });
+      krRepo.findOne.mockResolvedValue(
+        makeKR({ currentValue: 0, status: KRStatus.ACTIVE }),
+      );
+      krRepo.find.mockResolvedValue([kr]);
+      objRepo.findOne.mockResolvedValue(
+        makeObj({ status: ObjectiveStatus.OVERDUE, parentObjectiveId: null }),
+      );
+      userRepo.findOne.mockResolvedValueOnce({
+        id: UID,
+        firstName: 'A',
+        lastName: 'B',
+        managerId: null,
+      });
+
+      await service.updateKeyResult(
+        TID,
+        fakeUuid(302),
+        { currentValue: 100 },
+        ACTOR,
+      );
+
+      expect(objRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ status: ObjectiveStatus.COMPLETED }),
+      );
+      expect(recognitionService.addPoints).toHaveBeenCalled();
+    });
+
+    it('propagateProgressToParent should auto-complete OVERDUE parent when children reach 100%', async () => {
+      const child = makeObj({
+        id: fakeUuid(601),
+        parentObjectiveId: fakeUuid(700),
+        progress: 100,
+        weight: 0,
+      });
+      const overdueParent = makeObj({
+        id: fakeUuid(700),
+        userId: UID,
+        progress: 100,
+        status: ObjectiveStatus.OVERDUE,
+        parentObjectiveId: null,
+      });
+
+      objRepo.findOne
+        .mockResolvedValueOnce(child)
+        .mockResolvedValueOnce(overdueParent)
+        .mockResolvedValueOnce(overdueParent);
+      objRepo.find.mockResolvedValueOnce([child]);
+      userRepo.findOne.mockResolvedValueOnce({
+        id: UID,
+        firstName: 'A',
+        lastName: 'B',
+        managerId: null,
+      });
+
+      await service.propagateProgressToParent(TID, fakeUuid(601), ACTOR);
+
+      expect(objRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: fakeUuid(700),
+          status: ObjectiveStatus.COMPLETED,
+        }),
+      );
+    });
+  });
+});

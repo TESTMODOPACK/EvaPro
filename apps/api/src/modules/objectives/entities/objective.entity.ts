@@ -24,6 +24,12 @@ export enum ObjectiveStatus {
   ACTIVE = 'active',
   COMPLETED = 'completed',
   ABANDONED = 'abandoned',
+  // T6 (Audit P1): vencido por fecha. Marcado por cron diario cuando
+  // status=ACTIVE && targetDate < today. Es estado intermedio (no terminal):
+  // si el owner extiende targetDate, vuelve a ACTIVE; si lo completa, a
+  // COMPLETED; si lo abandona, a ABANDONED. NO se cuenta como completado
+  // en el avg-progress, pero sí queda visible y filtrable como "vencido".
+  OVERDUE = 'overdue',
 }
 
 @Entity('objectives')
@@ -62,16 +68,34 @@ export class Objective {
   @Column({ type: 'date', name: 'target_date', nullable: true })
   targetDate: Date;
 
-  @Column({ type: 'enum', enum: ObjectiveStatus, default: ObjectiveStatus.DRAFT })
+  @Column({
+    type: 'enum',
+    enum: ObjectiveStatus,
+    default: ObjectiveStatus.DRAFT,
+  })
   status: ObjectiveStatus;
 
-  @Column({ type: 'decimal', precision: 5, scale: 2, default: 0, comment: 'Peso relativo del objetivo (0-100%)' })
+  @Column({
+    type: 'decimal',
+    precision: 5,
+    scale: 2,
+    default: 0,
+    comment: 'Peso relativo del objetivo (0-100%)',
+  })
   weight: number;
 
-  @Column({ type: 'uuid', name: 'parent_objective_id', nullable: true, comment: 'Objetivo padre para alineación jerárquica (cascading OKR)' })
+  @Column({
+    type: 'uuid',
+    name: 'parent_objective_id',
+    nullable: true,
+    comment: 'Objetivo padre para alineación jerárquica (cascading OKR)',
+  })
   parentObjectiveId: string | null;
 
-  @ManyToOne(() => Objective, (obj) => obj.children, { nullable: true, onDelete: 'SET NULL' })
+  @ManyToOne(() => Objective, (obj) => obj.children, {
+    nullable: true,
+    onDelete: 'SET NULL',
+  })
   @JoinColumn({ name: 'parent_objective_id' })
   parent: Objective;
 
