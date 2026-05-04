@@ -1462,6 +1462,39 @@ export const api = {
         rejectedAt: string;
         rejector?: { id: string; firstName?: string; lastName?: string; email?: string } | null;
       }>>(`/objectives/${id}/rejection-history`, {}, token),
+    /**
+     * T9 — Audit P1 (Issue B): historial de objetivos por período.
+     * Si includeActive=true, incluye también ACTIVE/OVERDUE con
+     * snapshot-fallback (preferido) o flag inProgress.
+     */
+    historyByPeriod: (
+      token: string,
+      opts?: { userId?: string; cycleId?: string; includeActive?: boolean },
+    ) => {
+      const params = new URLSearchParams();
+      if (opts?.userId) params.set('userId', opts.userId);
+      if (opts?.cycleId) params.set('cycleId', opts.cycleId);
+      if (opts?.includeActive) params.set('includeActive', 'true');
+      const qs = params.toString();
+      return request<{
+        periods: Array<{
+          cycleId: string | null;
+          cycleName: string;
+          startDate: string | null;
+          endDate: string | null;
+          cycleType: string | null;
+          cycleStatus: string | null;
+          totalObjectives: number;
+          completedCount: number;
+          abandonedCount: number;
+          cancelledCount: number;
+          inProgressCount: number;
+          avgProgress: number;
+          objectives: any[];
+        }>;
+        totalObjectives: number;
+      }>(`/objectives/history-by-period${qs ? `?${qs}` : ''}`, {}, token);
+    },
     atRisk: (token: string, userId?: string) =>
       request<ObjectiveData[]>(`/objectives/at-risk${userId ? `?userId=${userId}` : ""}`, {}, token),
     teamSummary: (token: string) =>

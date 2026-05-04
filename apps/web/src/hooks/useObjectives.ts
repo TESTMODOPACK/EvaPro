@@ -106,6 +106,30 @@ export function useObjectiveRejectionHistory(objectiveId: string | null) {
   });
 }
 
+/**
+ * T9 — Audit P1 (Issue B): histórico de objetivos por período. Si
+ * includeActive=true, incluye también ACTIVE/OVERDUE con snapshot
+ * fallback. Útil para reportes de cierre / vista por ciclo.
+ */
+export function useObjectivesHistoryByPeriod(opts?: {
+  userId?: string;
+  cycleId?: string;
+  includeActive?: boolean;
+}) {
+  const token = useAuthStore((s) => s.token);
+  return useQuery({
+    queryKey: [
+      'objectives',
+      'history-by-period',
+      opts?.userId ?? null,
+      opts?.cycleId ?? null,
+      opts?.includeActive ?? false,
+    ],
+    queryFn: () => api.objectives.historyByPeriod(token!, opts),
+    enabled: !!token,
+  });
+}
+
 export function useObjectiveHistory(id: string) {
   const token = useAuthStore((s) => s.token);
   return useQuery({

@@ -6,6 +6,7 @@ import { ObjectiveUpdate } from './entities/objective-update.entity';
 import { ObjectiveComment } from './entities/objective-comment.entity';
 import { KeyResult, KRStatus } from './entities/key-result.entity';
 import { ObjectiveRejection } from './entities/objective-rejection.entity';
+import { EvaluationObjectiveSnapshot } from '../evaluations/entities/evaluation-objective-snapshot.entity';
 import { User } from '../users/entities/user.entity';
 import { EvaluationCycle, CycleStatus } from '../evaluations/entities/evaluation-cycle.entity';
 import { CreateObjectiveDto } from './dto/create-objective.dto';
@@ -35,6 +36,8 @@ export class ObjectivesService {
     private readonly keyResultRepo: Repository<KeyResult>,
     @InjectRepository(ObjectiveRejection)
     private readonly rejectionRepo: Repository<ObjectiveRejection>,
+    @InjectRepository(EvaluationObjectiveSnapshot)
+    private readonly objSnapshotRepo: Repository<EvaluationObjectiveSnapshot>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     @InjectRepository(EvaluationCycle)
@@ -242,23 +245,40 @@ export class ObjectivesService {
 
   /**
    * B1.3: OKR history grouped by evaluation cycle / period.
-   * Returns closed/completed objectives with their Key Results, grouped by cycle.
+   *
+   * T9 — Audit P1 (Issue B): el reporte por período antes solo incluía
+   * objetivos terminales (COMPLETED, ABANDONED, CANCELLED). Esto dejaba
+   * fuera del histórico de Q1 a los objetivos que estaban en curso al
+   * cerrar Q1 y siguen activos hoy — la pregunta "¿qué objetivos tenía
+   * la organización en Q1?" no podía responderse correctamente.
+   *
+   * Con `includeActive=true` el reporte trae también ACTIVE / OVERDUE.
+   * Para esos:
+   *   - Si existe un cycle-wide snapshot del cierre del ciclo (Tarea 5),
+   *     prefiere los valores del snapshot (progress, status del cierre)
+   *     y marca `fromSnapshot: true`.
+   *   - Si no hay snapshot (ciclo abierto, o legacy sin snapshot),
+   *     muestra los valores live + `inProgress: true`.
+   * Los terminales siempre usan los valores live (ya son finales).
    */
   async getObjectiveHistory(
     tenantId: string,
     userId?: string,
     cycleId?: string,
+    includeActive: boolean = false,
   ) {
+    const baseStatuses = [
+      ObjectiveStatus.COMPLETED,
+      ObjectiveStatus.ABANDONED,
+      ObjectiveStatus.CANCELLED,
+    ];
+    const statuses = includeActive
+      ? [...baseStatuses, ObjectiveStatus.ACTIVE, ObjectiveStatus.OVERDUE]
+      : baseStatuses;
+
     const qb = this.objectiveRepo.createQueryBuilder('o')
       .where('o.tenantId = :tenantId', { tenantId })
-      .andWhere('o.status IN (:...statuses)', {
-        // T7: cancelados también son terminales, deben aparecer en el histórico
-        statuses: [
-          ObjectiveStatus.COMPLETED,
-          ObjectiveStatus.ABANDONED,
-          ObjectiveStatus.CANCELLED,
-        ],
-      });
+      .andWhere('o.status IN (:...statuses)', { statuses });
 
     if (userId) {
       qb.andWhere('o.userId = :userId', { userId });
@@ -302,27 +322,105 @@ export class ObjectivesService {
     // Load cycle names
     const cycleIds = [...groups.keys()].filter((k) => k !== 'sin_ciclo');
     const cycles = cycleIds.length > 0
-      ? await this.cycleRepo.find({ where: { id: In(cycleIds) }, select: ['id', 'name', 'startDate', 'endDate', 'type', 'period'] })
+      ? await this.cycleRepo.find({ where: { id: In(cycleIds) }, select: ['id', 'name', 'startDate', 'endDate', 'type', 'period', 'status'] })
       : [];
     const cycleMap = new Map(cycles.map((c) => [c.id, c]));
 
+    // T9.2 — cargar snapshots cycle-wide de los ciclos cerrados, indexados
+    // por (cycleId, objectiveId). Para objetivos no terminales (ACTIVE/
+    // OVERDUE) preferiremos el snapshot del cierre si existe.
+    const closedCycleIds = cycles
+      .filter((c) => c.status === CycleStatus.CLOSED)
+      .map((c) => c.id);
+    const snapshotByObjective = new Map<
+      string,
+      EvaluationObjectiveSnapshot
+    >();
+    if (closedCycleIds.length > 0) {
+      const snapshots = await this.objSnapshotRepo
+        .createQueryBuilder('s')
+        .where('s.tenantId = :tenantId', { tenantId })
+        .andWhere('s.cycleId IN (:...ids)', { ids: closedCycleIds })
+        .andWhere('s.assignmentId IS NULL')
+        .orderBy('s.capturedAt', 'DESC')
+        .getMany();
+      // Si hay duplicados, queda el más reciente (orden DESC)
+      for (const snap of snapshots) {
+        const key = `${snap.cycleId}::${snap.objectiveId}`;
+        if (!snapshotByObjective.has(key)) {
+          snapshotByObjective.set(key, snap);
+        }
+      }
+    }
+
     const periods = [...groups.entries()].map(([key, objs]) => {
       const cycle = cycleMap.get(key);
-      const totalProgress = objs.reduce((sum, o) => sum + (o.progress || 0), 0);
+      const cycleIsClosed = cycle?.status === CycleStatus.CLOSED;
+
+      // T9.2 — Para cada objetivo, decidir source: terminal usa live;
+      // active/overdue usa snapshot si el ciclo está cerrado y existe,
+      // sino live + inProgress flag.
+      const enrichedObjs = objs.map((o) => {
+        const snapKey = cycle ? `${cycle.id}::${o.id}` : null;
+        const snap = snapKey ? snapshotByObjective.get(snapKey) : undefined;
+        const isTerminal =
+          o.status === ObjectiveStatus.COMPLETED ||
+          o.status === ObjectiveStatus.ABANDONED ||
+          o.status === ObjectiveStatus.CANCELLED;
+        const isActiveAtCycleClose =
+          !isTerminal &&
+          (o.status === ObjectiveStatus.ACTIVE ||
+            o.status === ObjectiveStatus.OVERDUE);
+
+        if (snap && isActiveAtCycleClose && cycleIsClosed) {
+          // Foto al cierre del ciclo — preferida para in-progress en
+          // ciclos cerrados.
+          return {
+            ...o,
+            progress: snap.progress,
+            status: snap.objectiveStatus as ObjectiveStatus,
+            keyResults: snap.keyResultsJson ?? [],
+            fromSnapshot: true,
+            inProgress: true,
+            currentLiveStatus: o.status,
+            currentLiveProgress: o.progress,
+          };
+        }
+        return {
+          ...o,
+          keyResults: krByObjective.get(o.id) || [],
+          fromSnapshot: false,
+          inProgress: !isTerminal,
+        };
+      });
+
+      const totalProgress = enrichedObjs.reduce(
+        (sum, o) => sum + (o.progress || 0),
+        0,
+      );
       return {
         cycleId: key === 'sin_ciclo' ? null : key,
         cycleName: cycle?.name || 'Sin ciclo asignado',
         startDate: cycle?.startDate || null,
         endDate: cycle?.endDate || null,
         cycleType: cycle?.type || null,
-        totalObjectives: objs.length,
-        completedCount: objs.filter((o) => o.status === ObjectiveStatus.COMPLETED).length,
-        abandonedCount: objs.filter((o) => o.status === ObjectiveStatus.ABANDONED).length,
-        avgProgress: objs.length > 0 ? Math.round(totalProgress / objs.length) : 0,
-        objectives: objs.map((o) => ({
-          ...o,
-          keyResults: krByObjective.get(o.id) || [],
-        })),
+        cycleStatus: cycle?.status || null,
+        totalObjectives: enrichedObjs.length,
+        completedCount: enrichedObjs.filter(
+          (o) => o.status === ObjectiveStatus.COMPLETED,
+        ).length,
+        abandonedCount: enrichedObjs.filter(
+          (o) => o.status === ObjectiveStatus.ABANDONED,
+        ).length,
+        cancelledCount: enrichedObjs.filter(
+          (o) => o.status === ObjectiveStatus.CANCELLED,
+        ).length,
+        inProgressCount: enrichedObjs.filter((o) => o.inProgress).length,
+        avgProgress:
+          enrichedObjs.length > 0
+            ? Math.round(totalProgress / enrichedObjs.length)
+            : 0,
+        objectives: enrichedObjs,
       };
     });
 

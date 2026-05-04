@@ -156,13 +156,26 @@ export class ObjectivesController {
     @Request() req: any,
     @Query('userId') userId?: string,
     @Query('cycleId') cycleId?: string,
+    /**
+     * T9 — Audit P1 (Issue B): si `includeActive=true`, el reporte
+     * incluye también ACTIVE/OVERDUE. Para esos, usa el cycle-wide
+     * snapshot del cierre si existe (ciclos cerrados); sino marca
+     * inProgress para que la UI muestre etiqueta "aún en curso".
+     */
+    @Query('includeActive') includeActive?: string,
   ) {
     const role = req.user.role;
     // Employees can only see their own history
     const effectiveUserId = (role === 'employee' || role === 'external')
       ? req.user.userId
       : userId;
-    return this.objectivesService.getObjectiveHistory(req.user.tenantId, effectiveUserId, cycleId);
+    const includeActiveFlag = includeActive === 'true' || includeActive === '1';
+    return this.objectivesService.getObjectiveHistory(
+      req.user.tenantId,
+      effectiveUserId,
+      cycleId,
+      includeActiveFlag,
+    );
   }
 
   @Get(':id')

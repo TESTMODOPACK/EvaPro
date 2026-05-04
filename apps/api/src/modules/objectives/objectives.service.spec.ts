@@ -30,6 +30,7 @@ import { ObjectiveUpdate } from './entities/objective-update.entity';
 import { ObjectiveComment } from './entities/objective-comment.entity';
 import { KeyResult, KRStatus } from './entities/key-result.entity';
 import { ObjectiveRejection } from './entities/objective-rejection.entity';
+import { EvaluationObjectiveSnapshot } from '../evaluations/entities/evaluation-objective-snapshot.entity';
 import { User } from '../users/entities/user.entity';
 import { EvaluationCycle } from '../evaluations/entities/evaluation-cycle.entity';
 import { AuditService } from '../audit/audit.service';
@@ -137,6 +138,10 @@ describe('ObjectivesService — Tarea 1 (auto-completion)', () => {
         { provide: getRepositoryToken(KeyResult), useValue: krRepo },
         {
           provide: getRepositoryToken(ObjectiveRejection),
+          useValue: createMockRepository(),
+        },
+        {
+          provide: getRepositoryToken(EvaluationObjectiveSnapshot),
           useValue: createMockRepository(),
         },
         { provide: getRepositoryToken(User), useValue: userRepo },
@@ -740,6 +745,10 @@ describe('ObjectivesService — Tarea 2 (weight validation by cycle bucket)', ()
           provide: getRepositoryToken(ObjectiveRejection),
           useValue: createMockRepository(),
         },
+        {
+          provide: getRepositoryToken(EvaluationObjectiveSnapshot),
+          useValue: createMockRepository(),
+        },
         { provide: getRepositoryToken(User), useValue: userRepo },
         {
           provide: getRepositoryToken(EvaluationCycle),
@@ -1132,6 +1141,10 @@ describe('ObjectivesService — Tarea 3 (parent auto-completion)', () => {
         { provide: getRepositoryToken(KeyResult), useValue: krRepo },
         {
           provide: getRepositoryToken(ObjectiveRejection),
+          useValue: createMockRepository(),
+        },
+        {
+          provide: getRepositoryToken(EvaluationObjectiveSnapshot),
           useValue: createMockRepository(),
         },
         { provide: getRepositoryToken(User), useValue: userRepo },
@@ -1619,6 +1632,10 @@ describe('ObjectivesService — Tarea 4 (bulkApprove)', () => {
           provide: getRepositoryToken(ObjectiveRejection),
           useValue: createMockRepository(),
         },
+        {
+          provide: getRepositoryToken(EvaluationObjectiveSnapshot),
+          useValue: createMockRepository(),
+        },
         { provide: getRepositoryToken(User), useValue: userRepo },
         {
           provide: getRepositoryToken(EvaluationCycle),
@@ -1873,6 +1890,10 @@ describe('ObjectivesService — Tarea 6 (OVERDUE state)', () => {
           provide: getRepositoryToken(ObjectiveRejection),
           useValue: createMockRepository(),
         },
+        {
+          provide: getRepositoryToken(EvaluationObjectiveSnapshot),
+          useValue: createMockRepository(),
+        },
         { provide: getRepositoryToken(User), useValue: userRepo },
         { provide: getRepositoryToken(EvaluationCycle), useValue: cycleRepo },
         { provide: AuditService, useValue: auditService },
@@ -2068,6 +2089,10 @@ describe('ObjectivesService — Tarea 7 (CANCELLED state)', () => {
           provide: getRepositoryToken(ObjectiveRejection),
           useValue: createMockRepository(),
         },
+        {
+          provide: getRepositoryToken(EvaluationObjectiveSnapshot),
+          useValue: createMockRepository(),
+        },
         { provide: getRepositoryToken(User), useValue: userRepo },
         {
           provide: getRepositoryToken(EvaluationCycle),
@@ -2254,6 +2279,10 @@ describe('ObjectivesService — Tarea 8 (rejection history)', () => {
           provide: getRepositoryToken(ObjectiveRejection),
           useValue: rejectionRepo,
         },
+        {
+          provide: getRepositoryToken(EvaluationObjectiveSnapshot),
+          useValue: createMockRepository(),
+        },
         { provide: getRepositoryToken(User), useValue: userRepo },
         {
           provide: getRepositoryToken(EvaluationCycle),
@@ -2395,5 +2424,257 @@ describe('ObjectivesService — Tarea 8 (rejection history)', () => {
       const result = await service.listRejectionHistory(TID, OID);
       expect(result).toEqual([]);
     });
+  });
+});
+
+// ─── Tarea 9 — getObjectiveHistory con includeActive + snapshot ────────
+
+describe('ObjectivesService — Tarea 9 (history-by-period with includeActive)', () => {
+  let service: ObjectivesService;
+  let objRepo: any;
+  let krRepo: any;
+  let cycleRepo: any;
+  let snapshotRepo: any;
+
+  beforeEach(async () => {
+    objRepo = createMockRepository();
+    krRepo = createMockRepository();
+    cycleRepo = createMockRepository();
+    snapshotRepo = createMockRepository();
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        ObjectivesService,
+        { provide: getRepositoryToken(Objective), useValue: objRepo },
+        {
+          provide: getRepositoryToken(ObjectiveUpdate),
+          useValue: createMockRepository(),
+        },
+        {
+          provide: getRepositoryToken(ObjectiveComment),
+          useValue: createMockRepository(),
+        },
+        { provide: getRepositoryToken(KeyResult), useValue: krRepo },
+        {
+          provide: getRepositoryToken(ObjectiveRejection),
+          useValue: createMockRepository(),
+        },
+        {
+          provide: getRepositoryToken(EvaluationObjectiveSnapshot),
+          useValue: snapshotRepo,
+        },
+        { provide: getRepositoryToken(User), useValue: createMockRepository() },
+        { provide: getRepositoryToken(EvaluationCycle), useValue: cycleRepo },
+        { provide: AuditService, useValue: createMockAuditService() },
+        {
+          provide: EmailService,
+          useValue: {
+            sendObjectiveAssigned: jest.fn().mockResolvedValue(undefined),
+            sendObjectiveCompleted: jest.fn().mockResolvedValue(undefined),
+          },
+        },
+        {
+          provide: RecognitionService,
+          useValue: {
+            addPoints: jest.fn().mockResolvedValue(undefined),
+            checkAutoBadges: jest.fn().mockResolvedValue(undefined),
+          },
+        },
+        {
+          provide: NotificationsService,
+          useValue: createMockNotificationsService(),
+        },
+        {
+          provide: PushService,
+          useValue: { sendToUser: jest.fn().mockResolvedValue(undefined) },
+        },
+      ],
+    }).compile();
+
+    service = module.get<ObjectivesService>(ObjectivesService);
+  });
+
+  it('default (includeActive=false) only returns terminal objectives', async () => {
+    const objQb = objRepo.createQueryBuilder();
+    // Verificamos que el WHERE armado solo incluye terminales
+    objQb.getMany.mockResolvedValueOnce([
+      makeObj({ id: fakeUuid(900), status: ObjectiveStatus.COMPLETED, cycleId: null as any }),
+    ]);
+    krRepo.createQueryBuilder().getMany.mockResolvedValueOnce([]);
+    cycleRepo.find.mockResolvedValue([]);
+
+    await service.getObjectiveHistory(TID);
+
+    // Captura el último IN (...)
+    const inCalls = objQb.andWhere.mock.calls.filter((c: any[]) =>
+      String(c[0]).includes('o.status IN'),
+    );
+    const lastIn = inCalls[inCalls.length - 1];
+    expect(lastIn[1].statuses).toEqual([
+      ObjectiveStatus.COMPLETED,
+      ObjectiveStatus.ABANDONED,
+      ObjectiveStatus.CANCELLED,
+    ]);
+  });
+
+  it('includeActive=true expands to ACTIVE/OVERDUE in the WHERE clause', async () => {
+    const objQb = objRepo.createQueryBuilder();
+    objQb.getMany.mockResolvedValueOnce([]);
+
+    await service.getObjectiveHistory(TID, undefined, undefined, true);
+
+    const inCalls = objQb.andWhere.mock.calls.filter((c: any[]) =>
+      String(c[0]).includes('o.status IN'),
+    );
+    const lastIn = inCalls[inCalls.length - 1];
+    expect(lastIn[1].statuses).toContain(ObjectiveStatus.ACTIVE);
+    expect(lastIn[1].statuses).toContain(ObjectiveStatus.OVERDUE);
+    expect(lastIn[1].statuses).toContain(ObjectiveStatus.COMPLETED);
+  });
+
+  it('uses cycle-wide snapshot for in-progress objective in CLOSED cycle', async () => {
+    const cycleId = fakeUuid(950);
+    const objId = fakeUuid(951);
+    const liveObj = makeObj({
+      id: objId,
+      status: ObjectiveStatus.ACTIVE,
+      progress: 80, // valor live actual
+      cycleId,
+    });
+    // Snapshot freezo el progreso al cierre en 35
+    const snap = {
+      id: fakeUuid(960),
+      tenantId: TID,
+      cycleId,
+      objectiveId: objId,
+      assignmentId: null,
+      objectiveStatus: 'active',
+      progress: 35,
+      keyResultsJson: [],
+    };
+
+    objRepo.createQueryBuilder().getMany.mockResolvedValueOnce([liveObj]);
+    krRepo.createQueryBuilder().getMany.mockResolvedValueOnce([]);
+    cycleRepo.find.mockResolvedValueOnce([
+      {
+        id: cycleId,
+        name: 'Q1 2026',
+        status: 'closed',
+        startDate: null,
+        endDate: null,
+        type: '360',
+      },
+    ]);
+    snapshotRepo.createQueryBuilder().getMany.mockResolvedValueOnce([snap]);
+
+    const result = await service.getObjectiveHistory(
+      TID,
+      undefined,
+      undefined,
+      true,
+    );
+
+    const period = result.periods[0];
+    expect(period.cycleStatus).toBe('closed');
+    const enrichedObj: any = period.objectives[0];
+    // Progreso usado = del snapshot, NO el live 80
+    expect(enrichedObj.progress).toBe(35);
+    expect(enrichedObj.fromSnapshot).toBe(true);
+    expect(enrichedObj.inProgress).toBe(true);
+    expect(enrichedObj.currentLiveProgress).toBe(80);
+  });
+
+  it('uses live values for in-progress objective when cycle is OPEN (no snapshot)', async () => {
+    const cycleId = fakeUuid(952);
+    const liveObj = makeObj({
+      id: fakeUuid(953),
+      status: ObjectiveStatus.ACTIVE,
+      progress: 60,
+      cycleId,
+    });
+
+    objRepo.createQueryBuilder().getMany.mockResolvedValueOnce([liveObj]);
+    krRepo.createQueryBuilder().getMany.mockResolvedValueOnce([]);
+    cycleRepo.find.mockResolvedValueOnce([
+      {
+        id: cycleId,
+        name: 'Q2 2026',
+        status: 'active', // ciclo abierto
+        startDate: null,
+        endDate: null,
+        type: '180',
+      },
+    ]);
+    // No se cargan snapshots (cycle no closed)
+    snapshotRepo.createQueryBuilder().getMany.mockResolvedValueOnce([]);
+
+    const result = await service.getObjectiveHistory(
+      TID,
+      undefined,
+      undefined,
+      true,
+    );
+
+    const enrichedObj: any = result.periods[0].objectives[0];
+    expect(enrichedObj.progress).toBe(60);
+    expect(enrichedObj.fromSnapshot).toBe(false);
+    expect(enrichedObj.inProgress).toBe(true);
+  });
+
+  it('terminal objectives always use live (no snapshot rewriting)', async () => {
+    const cycleId = fakeUuid(954);
+    const completedObj = makeObj({
+      id: fakeUuid(955),
+      status: ObjectiveStatus.COMPLETED,
+      progress: 100,
+      cycleId,
+    });
+
+    objRepo.createQueryBuilder().getMany.mockResolvedValueOnce([completedObj]);
+    krRepo.createQueryBuilder().getMany.mockResolvedValueOnce([]);
+    cycleRepo.find.mockResolvedValueOnce([
+      { id: cycleId, name: 'Q3', status: 'closed', startDate: null, endDate: null, type: '90' },
+    ]);
+    snapshotRepo.createQueryBuilder().getMany.mockResolvedValueOnce([]);
+
+    const result = await service.getObjectiveHistory(
+      TID,
+      undefined,
+      undefined,
+      true,
+    );
+
+    const enrichedObj: any = result.periods[0].objectives[0];
+    expect(enrichedObj.progress).toBe(100);
+    expect(enrichedObj.fromSnapshot).toBe(false);
+    expect(enrichedObj.inProgress).toBe(false);
+  });
+
+  it('includes inProgressCount and cancelledCount in period summary', async () => {
+    const cycleId = fakeUuid(956);
+    const objs = [
+      makeObj({ id: fakeUuid(961), status: ObjectiveStatus.ACTIVE, cycleId }),
+      makeObj({ id: fakeUuid(962), status: ObjectiveStatus.OVERDUE, cycleId }),
+      makeObj({ id: fakeUuid(963), status: ObjectiveStatus.COMPLETED, cycleId }),
+      makeObj({ id: fakeUuid(964), status: ObjectiveStatus.CANCELLED, cycleId }),
+    ];
+    objRepo.createQueryBuilder().getMany.mockResolvedValueOnce(objs);
+    krRepo.createQueryBuilder().getMany.mockResolvedValueOnce([]);
+    cycleRepo.find.mockResolvedValueOnce([
+      { id: cycleId, name: 'Q4', status: 'active', startDate: null, endDate: null, type: '90' },
+    ]);
+    snapshotRepo.createQueryBuilder().getMany.mockResolvedValueOnce([]);
+
+    const result = await service.getObjectiveHistory(
+      TID,
+      undefined,
+      undefined,
+      true,
+    );
+
+    expect(result.periods[0].inProgressCount).toBe(2); // active + overdue
+    expect(result.periods[0].completedCount).toBe(1);
+    expect(result.periods[0].cancelledCount).toBe(1);
+    expect(result.periods[0].totalObjectives).toBe(4);
   });
 });
