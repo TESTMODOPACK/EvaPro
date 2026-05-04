@@ -1010,7 +1010,7 @@ describe('ObjectivesService — Tarea 2 (weight validation by cycle bucket)', ()
 
       await expect(
         service.update(TID, OID, { weight: 50 }),
-      ).rejects.toThrow(/completados o abandonados/);
+      ).rejects.toThrow(/completados.*cancelados.*abandonados/);
     });
   });
 
@@ -2010,6 +2010,188 @@ describe('ObjectivesService — Tarea 6 (OVERDUE state)', () => {
           status: ObjectiveStatus.COMPLETED,
         }),
       );
+    });
+  });
+});
+
+// ─── Tarea 7 — CANCELLED separado de ABANDONED ─────────────────────────
+
+describe('ObjectivesService — Tarea 7 (CANCELLED state)', () => {
+  let service: ObjectivesService;
+  let objRepo: any;
+  let userRepo: any;
+  let auditService: any;
+
+  beforeEach(async () => {
+    objRepo = createMockRepository();
+    userRepo = createMockRepository();
+    auditService = createMockAuditService();
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        ObjectivesService,
+        { provide: getRepositoryToken(Objective), useValue: objRepo },
+        {
+          provide: getRepositoryToken(ObjectiveUpdate),
+          useValue: createMockRepository(),
+        },
+        {
+          provide: getRepositoryToken(ObjectiveComment),
+          useValue: createMockRepository(),
+        },
+        {
+          provide: getRepositoryToken(KeyResult),
+          useValue: createMockRepository(),
+        },
+        { provide: getRepositoryToken(User), useValue: userRepo },
+        {
+          provide: getRepositoryToken(EvaluationCycle),
+          useValue: createMockRepository(),
+        },
+        { provide: AuditService, useValue: auditService },
+        {
+          provide: EmailService,
+          useValue: {
+            sendObjectiveAssigned: jest.fn().mockResolvedValue(undefined),
+            sendObjectiveCompleted: jest.fn().mockResolvedValue(undefined),
+          },
+        },
+        {
+          provide: RecognitionService,
+          useValue: {
+            addPoints: jest.fn().mockResolvedValue(undefined),
+            checkAutoBadges: jest.fn().mockResolvedValue(undefined),
+          },
+        },
+        {
+          provide: NotificationsService,
+          useValue: createMockNotificationsService(),
+        },
+        {
+          provide: PushService,
+          useValue: { sendToUser: jest.fn().mockResolvedValue(undefined) },
+        },
+      ],
+    }).compile();
+
+    service = module.get<ObjectivesService>(ObjectivesService);
+  });
+
+  describe('cancel()', () => {
+    function setupFindByIdReturn(obj: Objective) {
+      const qb = objRepo.createQueryBuilder();
+      qb.getOne.mockResolvedValueOnce(obj);
+    }
+
+    it('should transition ACTIVE objective to CANCELLED with reason+by+at populated', async () => {
+      const obj = makeObj({ status: ObjectiveStatus.ACTIVE });
+      setupFindByIdReturn(obj);
+      objRepo.save.mockImplementation((entity: any) => Promise.resolve(entity));
+
+      const result = await service.cancel(
+        TID,
+        OID,
+        'Cambio de prioridades del trimestre',
+        ACTOR,
+      );
+
+      expect(result.status).toBe(ObjectiveStatus.CANCELLED);
+      expect(result.cancellationReason).toBe('Cambio de prioridades del trimestre');
+      expect(result.cancelledBy).toBe(ACTOR);
+      expect(result.cancelledAt).toBeInstanceOf(Date);
+      expect(auditService.log).toHaveBeenCalledWith(
+        TID,
+        ACTOR,
+        'objective.cancelled_by_business',
+        'objective',
+        OID,
+        expect.objectContaining({
+          reason: 'Cambio de prioridades del trimestre',
+          cancelledBy: ACTOR,
+        }),
+      );
+    });
+
+    it('should also accept DRAFT, PENDING_APPROVAL, OVERDUE as source states', async () => {
+      const sources = [
+        ObjectiveStatus.DRAFT,
+        ObjectiveStatus.PENDING_APPROVAL,
+        ObjectiveStatus.OVERDUE,
+      ];
+      for (const status of sources) {
+        const obj = makeObj({ status });
+        setupFindByIdReturn(obj);
+        objRepo.save.mockImplementation((entity: any) =>
+          Promise.resolve(entity),
+        );
+
+        const result = await service.cancel(TID, OID, 'razon valida', ACTOR);
+        expect(result.status).toBe(ObjectiveStatus.CANCELLED);
+      }
+    });
+
+    it('should reject cancellation of already COMPLETED', async () => {
+      setupFindByIdReturn(makeObj({ status: ObjectiveStatus.COMPLETED }));
+
+      await expect(
+        service.cancel(TID, OID, 'razon valida', ACTOR),
+      ).rejects.toThrow(/completado/);
+    });
+
+    it('should reject cancellation of already CANCELLED (idempotency by error)', async () => {
+      setupFindByIdReturn(makeObj({ status: ObjectiveStatus.CANCELLED }));
+
+      await expect(
+        service.cancel(TID, OID, 'razon valida', ACTOR),
+      ).rejects.toThrow(/cancelado/);
+    });
+
+    it('should reject cancellation of already ABANDONED', async () => {
+      setupFindByIdReturn(makeObj({ status: ObjectiveStatus.ABANDONED }));
+
+      await expect(
+        service.cancel(TID, OID, 'razon valida', ACTOR),
+      ).rejects.toThrow(/abandonado/);
+    });
+  });
+
+  describe('CANCELLED guards in other paths', () => {
+    it('update() should reject modification of CANCELLED objective', async () => {
+      const obj = makeObj({ status: ObjectiveStatus.CANCELLED });
+      const qb = objRepo.createQueryBuilder();
+      qb.getOne.mockResolvedValueOnce(obj);
+
+      await expect(
+        service.update(TID, OID, { weight: 50 }),
+      ).rejects.toThrow(/completados.*cancelados.*abandonados/);
+    });
+
+    it('addProgressUpdate() should reject progress on CANCELLED objective', async () => {
+      const obj = makeObj({ status: ObjectiveStatus.CANCELLED });
+      const qb = objRepo.createQueryBuilder();
+      qb.getOne.mockResolvedValueOnce(obj);
+
+      await expect(
+        service.addProgressUpdate(TID, ACTOR, OID, {
+          progressValue: 50,
+          notes: 'sigo intentando',
+        }),
+      ).rejects.toThrow(/cancelado/);
+    });
+
+    it('validateWeightSum should NOT count CANCELLED siblings against new weight', async () => {
+      // Sibling cancelado con peso 80, nuevo objetivo con peso 50 → debe permitir
+      const qb = objRepo.createQueryBuilder();
+      qb.getMany.mockResolvedValueOnce([]); // helper QB filters out cancelled at SQL level
+
+      await expect(
+        (service as any).validateWeightSum({
+          tenantId: TID,
+          userId: UID,
+          cycleId: fakeUuid(500),
+          candidateWeight: 50,
+        }),
+      ).resolves.toBeUndefined();
     });
   });
 });

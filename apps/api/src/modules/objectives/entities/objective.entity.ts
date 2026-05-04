@@ -30,6 +30,12 @@ export enum ObjectiveStatus {
   // COMPLETED; si lo abandona, a ABANDONED. NO se cuenta como completado
   // en el avg-progress, pero sí queda visible y filtrable como "vencido".
   OVERDUE = 'overdue',
+  // T7 (Audit P1): cancelado por decisión de negocio (cambio de estrategia,
+  // re-organización, scope-change). Reemplaza el uso anterior de ABANDONED
+  // como cubo semántico. Tiene cancellationReason / cancelledBy /
+  // cancelledAt obligatorios para trazabilidad.
+  // ABANDONED queda reservado para soft-delete técnico admin.
+  CANCELLED = 'cancelled',
 }
 
 @Entity('objectives')
@@ -107,6 +113,18 @@ export class Objective {
 
   @Column({ type: 'text', name: 'rejection_reason', nullable: true })
   rejectionReason: string | null;
+
+  // T7 (Audit P1): trazabilidad de cancelación por negocio. NULL si el
+  // objetivo no fue cancelado vía POST /:id/cancel. Si status=CANCELLED,
+  // todos estos campos están seteados.
+  @Column({ type: 'text', name: 'cancellation_reason', nullable: true })
+  cancellationReason: string | null;
+
+  @Column({ type: 'uuid', name: 'cancelled_by', nullable: true })
+  cancelledBy: string | null;
+
+  @Column({ type: 'timestamptz', name: 'cancelled_at', nullable: true })
+  cancelledAt: Date | null;
 
   @Column({ type: 'uuid', name: 'approved_by', nullable: true })
   approvedBy: string | null;

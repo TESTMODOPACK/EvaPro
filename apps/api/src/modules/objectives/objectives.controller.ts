@@ -26,6 +26,7 @@ import { ObjectivesService } from './objectives.service';
 import { CreateObjectiveDto } from './dto/create-objective.dto';
 import { UpdateObjectiveDto, CreateObjectiveUpdateDto } from './dto/update-objective.dto';
 import { BulkApproveDto } from './dto/bulk-approve.dto';
+import { CancelObjectiveDto } from './dto/cancel-objective.dto';
 import { FeatureGuard } from '../../common/guards/feature.guard';
 import { Feature } from '../../common/decorators/feature.decorator';
 import { PlanFeature } from '../../common/constants/plan-features';
@@ -301,6 +302,59 @@ export class ObjectivesController {
   ) {
     const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
     return this.objectivesService.remove(tenantId, id);
+  }
+
+  /**
+   * T7.2 — Audit P1: cancela un objetivo por decisión de negocio.
+   * Reemplaza el delete-style flow para casos en que el objetivo deja
+   * de ser relevante (cambio de estrategia, scope-change). Razón
+   * obligatoria — queda registrada en cancellation_reason.
+   *
+   * Permisos:
+   *   - tenant_admin / super_admin: cualquier objetivo
+   *   - manager: propios o de reportes directos (P10 audit manager scope)
+   *   - employee: solo propios
+   *   - external: bloqueado
+   */
+  @Post(':id/cancel')
+  @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
+  async cancel(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+    @Body() dto: CancelObjectiveDto,
+  ) {
+    const { role, userId, tenantId } = req.user;
+    if (role === 'external') {
+      throw new ForbiddenException(
+        'Los asesores externos no pueden cancelar objetivos',
+      );
+    }
+
+    // Owner/scope check
+    if (role === 'employee' || role === 'manager') {
+      const objective = await this.objectivesService.findById(tenantId, id);
+      if (role === 'employee' && objective.userId !== userId) {
+        throw new ForbiddenException('Solo puedes cancelar tus propios objetivos');
+      }
+      if (role === 'manager' && objective.userId !== userId) {
+        await assertManagerCanAccessUser(
+          this.userRepo,
+          userId,
+          role,
+          objective.userId,
+          tenantId,
+        );
+      }
+    }
+
+    const effectiveTenantId =
+      role === 'super_admin' ? undefined : tenantId;
+    return this.objectivesService.cancel(
+      effectiveTenantId,
+      id,
+      dto.reason,
+      userId,
+    );
   }
 
   @Post(':id/progress')

@@ -99,8 +99,13 @@ export class ObjectivesService {
       .createQueryBuilder('o')
       .where('o.tenantId = :tenantId', { tenantId })
       .andWhere('o.userId = :userId', { userId })
-      .andWhere('o.status != :abandoned', {
-        abandoned: ObjectiveStatus.ABANDONED,
+      // T7: ABANDONED y CANCELLED no consumen capacidad — el evaluado ya
+      // no compromete avance en ellos.
+      .andWhere('o.status NOT IN (:...excludedStatuses)', {
+        excludedStatuses: [
+          ObjectiveStatus.ABANDONED,
+          ObjectiveStatus.CANCELLED,
+        ],
       });
 
     if (cycleId) {
@@ -244,7 +249,12 @@ export class ObjectivesService {
     const qb = this.objectiveRepo.createQueryBuilder('o')
       .where('o.tenantId = :tenantId', { tenantId })
       .andWhere('o.status IN (:...statuses)', {
-        statuses: [ObjectiveStatus.COMPLETED, ObjectiveStatus.ABANDONED],
+        // T7: cancelados también son terminales, deben aparecer en el histórico
+        statuses: [
+          ObjectiveStatus.COMPLETED,
+          ObjectiveStatus.ABANDONED,
+          ObjectiveStatus.CANCELLED,
+        ],
       });
 
     if (userId) {
@@ -339,8 +349,14 @@ export class ObjectivesService {
   async update(tenantId: string, id: string, dto: UpdateObjectiveDto): Promise<Objective> {
     const obj = await this.findById(tenantId, id);
     // B7.3: Cannot modify completed or abandoned objectives
-    if (obj.status === ObjectiveStatus.COMPLETED || obj.status === ObjectiveStatus.ABANDONED) {
-      throw new BadRequestException('No se pueden modificar objetivos completados o abandonados');
+    if (
+      obj.status === ObjectiveStatus.COMPLETED ||
+      obj.status === ObjectiveStatus.ABANDONED ||
+      obj.status === ObjectiveStatus.CANCELLED
+    ) {
+      throw new BadRequestException(
+        'No se pueden modificar objetivos completados, cancelados o abandonados',
+      );
     }
     // B7.1: targetDate must not be in the past (only when field is being changed)
     if (dto.targetDate !== undefined) this.validateTargetDate(dto.targetDate);
@@ -579,12 +595,80 @@ export class ObjectivesService {
     return saved;
   }
 
+  /**
+   * T7.3 — Audit P1: ABANDONED queda reservado para soft-delete técnico
+   * admin (este endpoint), no para cancelaciones de negocio. Para
+   * cancelar por scope-change usar POST /:id/cancel (estado CANCELLED
+   * con razón obligatoria + cancelledBy + cancelledAt).
+   *
+   * El controller restringe este endpoint a `super_admin` y `tenant_admin`
+   * solamente — owner/manager no pueden disparar ABANDONED.
+   *
+   * El audit action 'objective.cancelled' se mantiene por compatibilidad
+   * con histórico, pero el evento real es un soft-delete admin.
+   */
   async remove(tenantId: string | undefined, id: string): Promise<void> {
     const obj = await this.findById(tenantId, id);
     const effectiveTenantId = obj.tenantId;
     obj.status = ObjectiveStatus.ABANDONED;
     await this.objectiveRepo.save(obj);
     this.auditService.log(effectiveTenantId, obj.userId, 'objective.cancelled', 'objective', id, { title: obj.title }).catch(() => {});
+  }
+
+  /**
+   * T7.2 — Audit P1: cancela un objetivo por decisión de negocio (cambio
+   * de estrategia, scope-change, re-org). Reemplaza el uso anterior de
+   * ABANDONED como cubo semántico — ahora ABANDONED queda solo para el
+   * soft-delete técnico admin (DELETE).
+   *
+   * Estado terminal: una vez CANCELLED, el objetivo no se puede
+   * reactivar (igual que COMPLETED). El owner debe crear uno nuevo si
+   * cambian de opinión.
+   *
+   * Reglas:
+   *   - Solo se puede cancelar desde DRAFT, PENDING_APPROVAL, ACTIVE u
+   *     OVERDUE. Bloqueado desde COMPLETED/ABANDONED/CANCELLED.
+   *   - Reason es obligatoria (validada por el DTO con MinLength=5).
+   *   - Trazabilidad: cancelledBy, cancelledAt, cancellationReason
+   *     quedan registrados en columnas dedicadas + audit log.
+   */
+  async cancel(
+    tenantId: string | undefined,
+    id: string,
+    reason: string,
+    cancelledBy: string,
+  ): Promise<Objective> {
+    const obj = await this.findById(tenantId, id);
+    const effectiveTenantId = obj.tenantId;
+
+    if (
+      obj.status === ObjectiveStatus.COMPLETED ||
+      obj.status === ObjectiveStatus.ABANDONED ||
+      obj.status === ObjectiveStatus.CANCELLED
+    ) {
+      throw new BadRequestException(
+        'No se puede cancelar un objetivo que ya está completado, abandonado o cancelado',
+      );
+    }
+
+    obj.status = ObjectiveStatus.CANCELLED;
+    obj.cancellationReason = reason;
+    obj.cancelledBy = cancelledBy;
+    obj.cancelledAt = new Date();
+    const saved = await this.objectiveRepo.save(obj);
+
+    this.auditService
+      .log(
+        effectiveTenantId,
+        cancelledBy,
+        'objective.cancelled_by_business',
+        'objective',
+        id,
+        { title: obj.title, reason, cancelledBy },
+      )
+      .catch(() => {});
+
+    return saved;
   }
 
   // ─── Completion (shared helper) ─────────────────────────────────────────────
@@ -708,6 +792,9 @@ export class ObjectivesService {
     }
     if (obj.status === ObjectiveStatus.ABANDONED) {
       throw new BadRequestException('No se puede actualizar el progreso de un objetivo abandonado');
+    }
+    if (obj.status === ObjectiveStatus.CANCELLED) {
+      throw new BadRequestException('No se puede actualizar el progreso de un objetivo cancelado');
     }
 
     // OKR with Key Results: progress is calculated automatically from KRs
@@ -1263,7 +1350,7 @@ export class ObjectivesService {
     const objectives = await this.getExportData(tenantId, userId, role);
     const rows: string[] = [];
     rows.push('Título,Tipo,Estado,Progreso %,Peso,Fecha Meta,Responsable,Departamento');
-    const statusLabels: Record<string, string> = { draft: 'Borrador', pending_approval: 'Pendiente', active: 'Activo', overdue: 'Vencido', completed: 'Completado', abandoned: 'Abandonado' };
+    const statusLabels: Record<string, string> = { draft: 'Borrador', pending_approval: 'Pendiente', active: 'Activo', overdue: 'Vencido', completed: 'Completado', cancelled: 'Cancelado', abandoned: 'Abandonado' };
     for (const obj of objectives) {
       const userName = obj.user ? `${obj.user.firstName || ''} ${obj.user.lastName || ''}`.trim() : '';
       const dept = obj.user?.department || '';
@@ -1279,7 +1366,7 @@ export class ObjectivesService {
 
   async exportObjectivesXlsx(tenantId: string, userId?: string, role?: string): Promise<Buffer> {
     const objectives = await this.getExportData(tenantId, userId, role);
-    const statusLabels: Record<string, string> = { draft: 'Borrador', pending_approval: 'Pendiente', active: 'Activo', overdue: 'Vencido', completed: 'Completado', abandoned: 'Abandonado' };
+    const statusLabels: Record<string, string> = { draft: 'Borrador', pending_approval: 'Pendiente', active: 'Activo', overdue: 'Vencido', completed: 'Completado', cancelled: 'Cancelado', abandoned: 'Abandonado' };
 
     const ExcelJS = (await import('exceljs')).default;
     const wb = new ExcelJS.Workbook();
@@ -1327,7 +1414,7 @@ export class ObjectivesService {
 
   async exportObjectivesPdf(tenantId: string, userId?: string, role?: string): Promise<Buffer> {
     const objectives = await this.getExportData(tenantId, userId, role);
-    const statusLabels: Record<string, string> = { draft: 'Borrador', pending_approval: 'Pendiente', active: 'Activo', overdue: 'Vencido', completed: 'Completado', abandoned: 'Abandonado' };
+    const statusLabels: Record<string, string> = { draft: 'Borrador', pending_approval: 'Pendiente', active: 'Activo', overdue: 'Vencido', completed: 'Completado', cancelled: 'Cancelado', abandoned: 'Abandonado' };
 
     const { jsPDF } = await import('jspdf');
     const autoTable = (await import('jspdf-autotable')).default;
@@ -1420,7 +1507,7 @@ export class ObjectivesService {
   async exportObjectivesTreeXlsx(tenantId: string, role?: string, userId?: string): Promise<Buffer> {
     const tree = await this.getObjectiveTree(tenantId, role, userId);
     const flat = this.flattenTree(tree);
-    const statusLabels: Record<string, string> = { draft: 'Borrador', pending_approval: 'Pendiente', active: 'Activo', overdue: 'Vencido', completed: 'Completado', abandoned: 'Abandonado' };
+    const statusLabels: Record<string, string> = { draft: 'Borrador', pending_approval: 'Pendiente', active: 'Activo', overdue: 'Vencido', completed: 'Completado', cancelled: 'Cancelado', abandoned: 'Abandonado' };
 
     const ExcelJS = (await import('exceljs')).default;
     const wb = new ExcelJS.Workbook();
@@ -1472,7 +1559,7 @@ export class ObjectivesService {
   async exportObjectivesTreePdf(tenantId: string, role?: string, userId?: string): Promise<Buffer> {
     const tree = await this.getObjectiveTree(tenantId, role, userId);
     const flat = this.flattenTree(tree);
-    const statusLabels: Record<string, string> = { draft: 'Borrador', pending_approval: 'Pendiente', active: 'Activo', overdue: 'Vencido', completed: 'Completado', abandoned: 'Abandonado' };
+    const statusLabels: Record<string, string> = { draft: 'Borrador', pending_approval: 'Pendiente', active: 'Activo', overdue: 'Vencido', completed: 'Completado', cancelled: 'Cancelado', abandoned: 'Abandonado' };
 
     const { jsPDF } = await import('jspdf');
     const autoTable = (await import('jspdf-autotable')).default;

@@ -14,6 +14,7 @@ import {
   useCreateObjective,
   useUpdateObjective,
   useDeleteObjective,
+  useCancelObjective,
   useAddObjectiveProgress,
   useObjectiveComments,
   useCreateObjectiveComment,
@@ -36,7 +37,7 @@ import { getRoleLabel } from '@/lib/roles';
 import { useDepartments } from '@/hooks/useDepartments';
 import { FirstVisitTip } from '@/components/FirstVisitTip';
 
-type FilterStatus = 'all' | 'draft' | 'pending_approval' | 'active' | 'overdue' | 'completed' | 'abandoned' | 'at_risk';
+type FilterStatus = 'all' | 'draft' | 'pending_approval' | 'active' | 'overdue' | 'completed' | 'cancelled' | 'abandoned' | 'at_risk';
 type ObjType = 'OKR' | 'KPI' | 'SMART';
 type CommentType = 'seguimiento' | 'felicitacion' | 'bloqueo' | 'decision' | 'comentario' | 'adjunto';
 
@@ -56,6 +57,8 @@ const statusBadge: Record<string, string> = {
   // urgencia visual sin confundir (el texto del badge sí distingue).
   overdue: 'badge-danger',
   completed: 'badge-accent',
+  // T7: cancelado por decisión de negocio (≠ abandonado técnico)
+  cancelled: 'badge-ghost',
   abandoned: 'badge-danger',
 };
 
@@ -656,6 +659,8 @@ const STATUS_COLORS: Record<string, string> = {
   // T6: vencido — rojo intenso (mismo tono que abandoned)
   overdue: '#dc2626',
   completed: '#6366f1',
+  // T7: cancelado — gris (decisión de negocio, no falla)
+  cancelled: '#6b7280',
   abandoned: '#ef4444',
 };
 
@@ -796,6 +801,7 @@ function ObjectiveTreeView({ data, loading }: { data: any[]; loading: boolean })
           <option value="active">Activo</option>
           <option value="overdue">Vencido</option>
           <option value="completed">Completado</option>
+          <option value="cancelled">Cancelado</option>
           <option value="abandoned">Abandonado</option>
         </select>
         {(treeSearch || treeType || treeStatus) && (
@@ -877,6 +883,8 @@ function ObjetivosPageContent() {
     // T6 — Audit P1: estado vencido. Sin clave de i18n por ahora; texto literal.
     overdue: 'Vencido',
     completed: t('objetivos.objStatus.completed'),
+    // T7 — Audit P1: cancelado por decisión de negocio (con razón)
+    cancelled: 'Cancelado',
     abandoned: t('objetivos.objStatus.cancelled'),
   };
 
@@ -887,6 +895,7 @@ function ObjetivosPageContent() {
     { key: 'active', label: t('objetivos.objStatus.in_progress') },
     { key: 'overdue', label: '⏰ Vencidos' },
     { key: 'completed', label: t('objetivos.objStatus.completed') },
+    { key: 'cancelled', label: '🚫 Cancelados' },
     { key: 'abandoned', label: t('objetivos.objStatus.cancelled') },
     { key: 'at_risk', label: '⚠️ En riesgo' },
   ];
@@ -903,6 +912,7 @@ function ObjetivosPageContent() {
   const createObjective = useCreateObjective();
   const updateObjective = useUpdateObjective();
   const deleteObjective = useDeleteObjective();
+  const cancelObjective = useCancelObjective();
   const addProgress = useAddObjectiveProgress();
   const submitForApproval = useSubmitForApproval();
   const approveObjective = useApproveObjective();
@@ -1075,6 +1085,7 @@ function ObjetivosPageContent() {
     active: baseFiltered.filter((o: any) => o.status === 'active').length,
     overdue: baseFiltered.filter((o: any) => o.status === 'overdue').length,
     completed: baseFiltered.filter((o: any) => o.status === 'completed').length,
+    cancelled: baseFiltered.filter((o: any) => o.status === 'cancelled').length,
     abandoned: baseFiltered.filter((o: any) => o.status === 'abandoned').length,
     at_risk: baseFiltered.filter((o: any) => atRiskIds.has(o.id)).length,
   };
@@ -1188,6 +1199,9 @@ function ObjetivosPageContent() {
   // Rejection modal state
   const [rejectModal, setRejectModal] = useState<{ id: string; title: string } | null>(null);
   const [rejectReason, setRejectReason] = useState('');
+  // T7.5: modal para cancelación por decisión de negocio (razón obligatoria)
+  const [cancelModal, setCancelModal] = useState<{ id: string; title: string } | null>(null);
+  const [cancelReason, setCancelReason] = useState('');
 
   function handleReject(id: string) {
     const obj = (objectives || []).find((o: any) => o.id === id);
@@ -2304,28 +2318,27 @@ function ObjetivosPageContent() {
                       </button>
                     </>
                   )}
-                  {canCancel && obj.status !== 'abandoned' && obj.status !== 'completed' && (
-                    <button
-                      className="btn-ghost"
-                      style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem', color: 'var(--warning)' }}
-                      onClick={() => setConfirmState({
-                        message: '¿Cancelar este objetivo? El objetivo quedará en estado "Cancelado" y no se eliminará.',
-                        danger: true,
-                        onConfirm: () => {
-                          setConfirmState(null);
-                          updateObjective.mutate(
-                            { id: obj.id, data: { status: 'abandoned' } },
-                            {
-                              onSuccess: () => toast.success('Objetivo cancelado'),
-                              onError: (err: any) => toast.error(err?.message || 'Error al cancelar el objetivo'),
-                            },
-                          );
-                        },
-                      })}
-                    >
-                      Cancelar objetivo
-                    </button>
-                  )}
+                  {/* T7.5 — Audit P1: cancelar por decisión de negocio. Razón
+                      obligatoria, va al endpoint POST /:id/cancel que persiste
+                      cancellationReason/cancelledBy/cancelledAt. */}
+                  {canCancel &&
+                    obj.status !== 'abandoned' &&
+                    obj.status !== 'cancelled' &&
+                    obj.status !== 'completed' && (
+                      <button
+                        className="btn-ghost"
+                        style={{
+                          fontSize: '0.75rem',
+                          padding: '0.3rem 0.6rem',
+                          color: 'var(--warning)',
+                        }}
+                        onClick={() =>
+                          setCancelModal({ id: obj.id, title: obj.title })
+                        }
+                      >
+                        Cancelar objetivo
+                      </button>
+                    )}
                 </div>
 
                 {/* Expanded section: progress update + comments */}
@@ -2461,6 +2474,90 @@ function ObjetivosPageContent() {
       )}
       </>
       )}
+      {/* T7.5 — Cancelación por decisión de negocio. Razón obligatoria
+          (mínimo 5 chars validado en el DTO backend). */}
+      {cancelModal && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: '1rem',
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setCancelModal(null);
+              setCancelReason('');
+            }
+          }}
+        >
+          <div className="card" style={{ padding: '2rem', width: '100%', maxWidth: '450px' }}>
+            <h3 style={{ fontWeight: 700, fontSize: '1.05rem', marginBottom: '0.5rem' }}>
+              Cancelar objetivo
+            </h3>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>
+              {cancelModal.title}
+            </p>
+            <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '1rem', lineHeight: 1.4 }}>
+              El objetivo quedará en estado <strong>Cancelado</strong> con la razón registrada para auditoría. Esta acción es irreversible.
+            </p>
+            <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.35rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Razón de cancelación <span style={{ color: 'var(--danger)' }}>*</span>
+            </label>
+            <textarea
+              className="input"
+              rows={3}
+              placeholder="Ej: Cambio de prioridades del trimestre, scope reducido, depende de proyecto X que se postergó..."
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value)}
+              style={{ width: '100%', resize: 'vertical', marginBottom: '1rem' }}
+              minLength={5}
+            />
+            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+              <button
+                className="btn-ghost"
+                onClick={() => {
+                  setCancelModal(null);
+                  setCancelReason('');
+                }}
+              >
+                Volver
+              </button>
+              <button
+                className="btn-primary"
+                disabled={
+                  cancelObjective.isPending || cancelReason.trim().length < 5
+                }
+                onClick={() => {
+                  if (cancelReason.trim().length < 5) return;
+                  cancelObjective.mutate(
+                    { id: cancelModal.id, reason: cancelReason.trim() },
+                    {
+                      onSuccess: () => {
+                        toast.success('Objetivo cancelado');
+                        setCancelModal(null);
+                        setCancelReason('');
+                      },
+                      onError: (err: any) =>
+                        toast.error(
+                          err?.message || 'Error al cancelar el objetivo',
+                        ),
+                    },
+                  );
+                }}
+                style={{ background: 'var(--danger)', boxShadow: 'none' }}
+              >
+                {cancelObjective.isPending ? 'Cancelando...' : 'Confirmar cancelación'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Rejection modal */}
       {rejectModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem' }}

@@ -85,6 +85,17 @@ export function useRejectObjective() {
   });
 }
 
+/** T7.5 — Audit P1: cancela un objetivo por decisión de negocio. Razón obligatoria. */
+export function useCancelObjective() {
+  const token = useAuthStore((s) => s.token);
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+      api.objectives.cancel(token!, id, reason),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['objectives'] }),
+  });
+}
+
 export function useObjectiveHistory(id: string) {
   const token = useAuthStore((s) => s.token);
   return useQuery({

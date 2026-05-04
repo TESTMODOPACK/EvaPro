@@ -1444,6 +1444,13 @@ export const api = {
       ),
     reject: (token: string, id: string, reason?: string) =>
       request<ObjectiveData>(`/objectives/${id}/reject`, { method: "POST", body: JSON.stringify({ reason }) }, token),
+    /** T7.5 — Audit P1: cancela un objetivo por decisión de negocio. Razón obligatoria (>=5 chars). */
+    cancel: (token: string, id: string, reason: string) =>
+      request<ObjectiveData>(
+        `/objectives/${id}/cancel`,
+        { method: "POST", body: JSON.stringify({ reason }) },
+        token,
+      ),
     atRisk: (token: string, userId?: string) =>
       request<ObjectiveData[]>(`/objectives/at-risk${userId ? `?userId=${userId}` : ""}`, {}, token),
     teamSummary: (token: string) =>
