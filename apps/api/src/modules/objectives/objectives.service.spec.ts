@@ -29,6 +29,7 @@ import {
 import { ObjectiveUpdate } from './entities/objective-update.entity';
 import { ObjectiveComment } from './entities/objective-comment.entity';
 import { KeyResult, KRStatus } from './entities/key-result.entity';
+import { ObjectiveRejection } from './entities/objective-rejection.entity';
 import { User } from '../users/entities/user.entity';
 import { EvaluationCycle } from '../evaluations/entities/evaluation-cycle.entity';
 import { AuditService } from '../audit/audit.service';
@@ -134,6 +135,10 @@ describe('ObjectivesService — Tarea 1 (auto-completion)', () => {
           useValue: createMockRepository(),
         },
         { provide: getRepositoryToken(KeyResult), useValue: krRepo },
+        {
+          provide: getRepositoryToken(ObjectiveRejection),
+          useValue: createMockRepository(),
+        },
         { provide: getRepositoryToken(User), useValue: userRepo },
         {
           provide: getRepositoryToken(EvaluationCycle),
@@ -731,6 +736,10 @@ describe('ObjectivesService — Tarea 2 (weight validation by cycle bucket)', ()
           provide: getRepositoryToken(KeyResult),
           useValue: createMockRepository(),
         },
+        {
+          provide: getRepositoryToken(ObjectiveRejection),
+          useValue: createMockRepository(),
+        },
         { provide: getRepositoryToken(User), useValue: userRepo },
         {
           provide: getRepositoryToken(EvaluationCycle),
@@ -1121,6 +1130,10 @@ describe('ObjectivesService — Tarea 3 (parent auto-completion)', () => {
           useValue: createMockRepository(),
         },
         { provide: getRepositoryToken(KeyResult), useValue: krRepo },
+        {
+          provide: getRepositoryToken(ObjectiveRejection),
+          useValue: createMockRepository(),
+        },
         { provide: getRepositoryToken(User), useValue: userRepo },
         {
           provide: getRepositoryToken(EvaluationCycle),
@@ -1602,6 +1615,10 @@ describe('ObjectivesService — Tarea 4 (bulkApprove)', () => {
           provide: getRepositoryToken(KeyResult),
           useValue: createMockRepository(),
         },
+        {
+          provide: getRepositoryToken(ObjectiveRejection),
+          useValue: createMockRepository(),
+        },
         { provide: getRepositoryToken(User), useValue: userRepo },
         {
           provide: getRepositoryToken(EvaluationCycle),
@@ -1852,6 +1869,10 @@ describe('ObjectivesService — Tarea 6 (OVERDUE state)', () => {
           useValue: createMockRepository(),
         },
         { provide: getRepositoryToken(KeyResult), useValue: krRepo },
+        {
+          provide: getRepositoryToken(ObjectiveRejection),
+          useValue: createMockRepository(),
+        },
         { provide: getRepositoryToken(User), useValue: userRepo },
         { provide: getRepositoryToken(EvaluationCycle), useValue: cycleRepo },
         { provide: AuditService, useValue: auditService },
@@ -2043,6 +2064,10 @@ describe('ObjectivesService — Tarea 7 (CANCELLED state)', () => {
           provide: getRepositoryToken(KeyResult),
           useValue: createMockRepository(),
         },
+        {
+          provide: getRepositoryToken(ObjectiveRejection),
+          useValue: createMockRepository(),
+        },
         { provide: getRepositoryToken(User), useValue: userRepo },
         {
           provide: getRepositoryToken(EvaluationCycle),
@@ -2192,6 +2217,183 @@ describe('ObjectivesService — Tarea 7 (CANCELLED state)', () => {
           candidateWeight: 50,
         }),
       ).resolves.toBeUndefined();
+    });
+  });
+});
+
+// ─── Tarea 8 — Historial de rechazos persistente ───────────────────────
+
+describe('ObjectivesService — Tarea 8 (rejection history)', () => {
+  let service: ObjectivesService;
+  let objRepo: any;
+  let userRepo: any;
+  let rejectionRepo: any;
+
+  beforeEach(async () => {
+    objRepo = createMockRepository();
+    userRepo = createMockRepository();
+    rejectionRepo = createMockRepository();
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        ObjectivesService,
+        { provide: getRepositoryToken(Objective), useValue: objRepo },
+        {
+          provide: getRepositoryToken(ObjectiveUpdate),
+          useValue: createMockRepository(),
+        },
+        {
+          provide: getRepositoryToken(ObjectiveComment),
+          useValue: createMockRepository(),
+        },
+        {
+          provide: getRepositoryToken(KeyResult),
+          useValue: createMockRepository(),
+        },
+        {
+          provide: getRepositoryToken(ObjectiveRejection),
+          useValue: rejectionRepo,
+        },
+        { provide: getRepositoryToken(User), useValue: userRepo },
+        {
+          provide: getRepositoryToken(EvaluationCycle),
+          useValue: createMockRepository(),
+        },
+        { provide: AuditService, useValue: createMockAuditService() },
+        {
+          provide: EmailService,
+          useValue: {
+            sendObjectiveAssigned: jest.fn().mockResolvedValue(undefined),
+            sendObjectiveCompleted: jest.fn().mockResolvedValue(undefined),
+          },
+        },
+        {
+          provide: RecognitionService,
+          useValue: {
+            addPoints: jest.fn().mockResolvedValue(undefined),
+            checkAutoBadges: jest.fn().mockResolvedValue(undefined),
+          },
+        },
+        {
+          provide: NotificationsService,
+          useValue: createMockNotificationsService(),
+        },
+        {
+          provide: PushService,
+          useValue: { sendToUser: jest.fn().mockResolvedValue(undefined) },
+        },
+      ],
+    }).compile();
+
+    service = module.get<ObjectivesService>(ObjectivesService);
+  });
+
+  describe('reject() — persists rejection row', () => {
+    function setupReject(obj: Objective) {
+      const qb = objRepo.createQueryBuilder();
+      qb.getOne.mockResolvedValueOnce(obj);
+      objRepo.save.mockImplementation((entity: any) => Promise.resolve(entity));
+    }
+
+    it('should insert an ObjectiveRejection row when rejectedBy is provided', async () => {
+      const obj = makeObj({
+        status: ObjectiveStatus.PENDING_APPROVAL,
+        title: 'Mi OKR Q1',
+      });
+      setupReject(obj);
+      rejectionRepo.create.mockImplementation((dto: any) => dto);
+      rejectionRepo.save.mockImplementation((entity: any) =>
+        Promise.resolve(entity),
+      );
+
+      await service.reject(TID, OID, ACTOR, 'Falta especificar resultados clave');
+
+      // Esperamos a que el .catch() del fire-and-forget no quede colgando
+      await new Promise((r) => setImmediate(r));
+
+      expect(rejectionRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: TID,
+          objectiveId: OID,
+          rejectedBy: ACTOR,
+          reason: 'Falta especificar resultados clave',
+          objectiveTitleSnapshot: 'Mi OKR Q1',
+        }),
+      );
+    });
+
+    it('should NOT insert row when rejectedBy is missing (legacy path)', async () => {
+      const obj = makeObj({ status: ObjectiveStatus.PENDING_APPROVAL });
+      setupReject(obj);
+
+      await service.reject(TID, OID, undefined, 'sin actor');
+      await new Promise((r) => setImmediate(r));
+
+      expect(rejectionRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('should still update objective.rejectionReason as denormalized last reason', async () => {
+      const obj = makeObj({ status: ObjectiveStatus.PENDING_APPROVAL });
+      setupReject(obj);
+      rejectionRepo.create.mockImplementation((dto: any) => dto);
+      rejectionRepo.save.mockImplementation((entity: any) =>
+        Promise.resolve(entity),
+      );
+
+      await service.reject(TID, OID, ACTOR, 'razon X');
+
+      const saved = objRepo.save.mock.calls[0][0];
+      expect(saved.rejectionReason).toBe('razon X');
+      expect(saved.status).toBe(ObjectiveStatus.DRAFT);
+    });
+
+    it('should not abort reject when rejection-row save fails', async () => {
+      const obj = makeObj({ status: ObjectiveStatus.PENDING_APPROVAL });
+      setupReject(obj);
+      rejectionRepo.create.mockImplementation((dto: any) => dto);
+      rejectionRepo.save.mockRejectedValue(new Error('DB down'));
+
+      // No debe propagar el error
+      const result = await service.reject(TID, OID, ACTOR, 'razon');
+      expect(result.status).toBe(ObjectiveStatus.DRAFT);
+    });
+  });
+
+  describe('listRejectionHistory()', () => {
+    it('should return rows ordered by rejectedAt DESC with rejector relation', async () => {
+      const rows = [
+        {
+          id: fakeUuid(801),
+          objectiveId: OID,
+          rejectedBy: ACTOR,
+          reason: 'segundo',
+          rejectedAt: new Date('2026-03-15'),
+        },
+        {
+          id: fakeUuid(800),
+          objectiveId: OID,
+          rejectedBy: ACTOR,
+          reason: 'primero',
+          rejectedAt: new Date('2026-02-10'),
+        },
+      ];
+      rejectionRepo.find.mockResolvedValue(rows);
+
+      const result = await service.listRejectionHistory(TID, OID);
+
+      expect(result).toEqual(rows);
+      expect(rejectionRepo.find).toHaveBeenCalledWith({
+        where: { tenantId: TID, objectiveId: OID },
+        relations: ['rejector'],
+        order: { rejectedAt: 'DESC' },
+      });
+    });
+
+    it('should return empty array when no rejections exist', async () => {
+      rejectionRepo.find.mockResolvedValue([]);
+
+      const result = await service.listRejectionHistory(TID, OID);
+      expect(result).toEqual([]);
     });
   });
 });

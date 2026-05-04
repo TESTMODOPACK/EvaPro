@@ -15,6 +15,7 @@ import {
   useUpdateObjective,
   useDeleteObjective,
   useCancelObjective,
+  useObjectiveRejectionHistory,
   useAddObjectiveProgress,
   useObjectiveComments,
   useCreateObjectiveComment,
@@ -864,6 +865,93 @@ function ObjectiveTreeView({ data, loading }: { data: any[]; loading: boolean })
           );
         })}
       </div>
+    </div>
+  );
+}
+
+/* ─── Rejection History Toggle (T8.3) ────────────────────────────────────── */
+
+/**
+ * Toggle inline que muestra el historial completo de rechazos del objetivo.
+ * Lazy fetch: solo dispara la query cuando el usuario expande el bloque.
+ * Se renderiza junto al `rejectionReason` (último motivo) en draft con
+ * rechazos previos.
+ */
+function RejectionHistoryToggle({ objectiveId }: { objectiveId: string }) {
+  const [open, setOpen] = useState(false);
+  const { data, isLoading } = useObjectiveRejectionHistory(open ? objectiveId : null);
+
+  return (
+    <div style={{ marginTop: '0.4rem' }}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        style={{
+          fontSize: '0.7rem',
+          background: 'none',
+          border: 'none',
+          color: 'var(--accent)',
+          cursor: 'pointer',
+          padding: 0,
+          textDecoration: 'underline',
+        }}
+      >
+        {open ? 'Ocultar historial de rechazos' : 'Ver historial completo de rechazos'}
+      </button>
+      {open && (
+        <div style={{ marginTop: '0.4rem' }}>
+          {isLoading ? (
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+              Cargando…
+            </div>
+          ) : data && data.length > 0 ? (
+            <ul
+              style={{
+                listStyle: 'none',
+                padding: 0,
+                margin: 0,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.4rem',
+              }}
+            >
+              {data.map((r) => (
+                <li
+                  key={r.id}
+                  style={{
+                    padding: '0.4rem 0.6rem',
+                    background: 'var(--bg-surface)',
+                    borderLeft: '2px solid var(--danger)',
+                    borderRadius: 'var(--radius-sm, 4px)',
+                    fontSize: '0.72rem',
+                    color: 'var(--text-secondary)',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '0.4rem' }}>
+                    <strong style={{ color: 'var(--text-primary)' }}>
+                      {formatDate(r.rejectedAt) || r.rejectedAt}
+                    </strong>
+                    <span style={{ color: 'var(--text-muted)' }}>
+                      {r.rejector
+                        ? `${r.rejector.firstName ?? ''} ${r.rejector.lastName ?? ''}`.trim() ||
+                          r.rejector.email ||
+                          'Encargado'
+                        : 'Encargado'}
+                    </span>
+                  </div>
+                  <div style={{ marginTop: '0.2rem', whiteSpace: 'pre-wrap' }}>
+                    {r.reason || <em style={{ color: 'var(--text-muted)' }}>Sin motivo registrado</em>}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+              Sin rechazos previos registrados.
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -2257,7 +2345,9 @@ function ObjetivosPageContent() {
                 )}
                 {obj.status === 'draft' && obj.rejectionReason && (
                   <div style={{ padding: '0.5rem 0.75rem', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 'var(--radius-sm, 6px)', fontSize: '0.78rem', color: 'var(--danger)', marginBottom: '0.35rem' }}>
-                    <strong>Rechazado:</strong> {obj.rejectionReason}
+                    <strong>Último rechazo:</strong> {obj.rejectionReason}
+                    {/* T8.3 — Audit P1: toggle al historial completo de rechazos */}
+                    <RejectionHistoryToggle objectiveId={obj.id} />
                   </div>
                 )}
 

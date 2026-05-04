@@ -5,6 +5,7 @@ import { Objective, ObjectiveStatus } from './entities/objective.entity';
 import { ObjectiveUpdate } from './entities/objective-update.entity';
 import { ObjectiveComment } from './entities/objective-comment.entity';
 import { KeyResult, KRStatus } from './entities/key-result.entity';
+import { ObjectiveRejection } from './entities/objective-rejection.entity';
 import { User } from '../users/entities/user.entity';
 import { EvaluationCycle, CycleStatus } from '../evaluations/entities/evaluation-cycle.entity';
 import { CreateObjectiveDto } from './dto/create-objective.dto';
@@ -32,6 +33,8 @@ export class ObjectivesService {
     private readonly commentRepo: Repository<ObjectiveComment>,
     @InjectRepository(KeyResult)
     private readonly keyResultRepo: Repository<KeyResult>,
+    @InjectRepository(ObjectiveRejection)
+    private readonly rejectionRepo: Repository<ObjectiveRejection>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     @InjectRepository(EvaluationCycle)
@@ -578,6 +581,31 @@ export class ObjectivesService {
     obj.approvedBy = null;
     obj.approvedAt = null;
     const saved = await this.objectiveRepo.save(obj);
+
+    // T8.2 — Audit P1: persistir el rechazo como fila en
+    // objective_rejections para preservar el historial completo. La
+    // columna `rejection_reason` en `objectives` queda como
+    // denormalización del último rechazo (compat con UI legacy y
+    // listados rápidos).
+    if (rejectedBy) {
+      this.rejectionRepo
+        .save(
+          this.rejectionRepo.create({
+            tenantId: effectiveTenantId,
+            objectiveId: id,
+            rejectedBy,
+            reason: reason || null,
+            objectiveTitleSnapshot: obj.title,
+          }),
+        )
+        .catch((err: unknown) => {
+          const msg = err instanceof Error ? err.message : String(err);
+          this.logger.warn(
+            `Failed to persist objective rejection for ${id}: ${msg}`,
+          );
+        });
+    }
+
     this.auditService.log(effectiveTenantId, rejectedBy || obj.userId, 'objective.rejected', 'objective', id, { title: obj.title, rejectedBy, reason }).catch(() => {});
 
     // Notify objective owner that it was rejected
@@ -593,6 +621,23 @@ export class ObjectivesService {
     }
 
     return saved;
+  }
+
+  /**
+   * T8.2 — Audit P1: lista el historial completo de rechazos de un
+   * objetivo, ordenado del más reciente al más antiguo. Cada fila
+   * incluye razón, autor (con datos básicos del user) y timestamp.
+   * Si el objetivo nunca fue rechazado, devuelve [].
+   */
+  async listRejectionHistory(
+    tenantId: string,
+    objectiveId: string,
+  ): Promise<ObjectiveRejection[]> {
+    return this.rejectionRepo.find({
+      where: { tenantId, objectiveId },
+      relations: ['rejector'],
+      order: { rejectedAt: 'DESC' },
+    });
   }
 
   /**

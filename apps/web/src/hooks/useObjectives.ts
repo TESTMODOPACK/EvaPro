@@ -96,6 +96,16 @@ export function useCancelObjective() {
   });
 }
 
+/** T8.2 — Audit P1: historial de rechazos del objetivo. Habilitado solo cuando hay objectiveId. */
+export function useObjectiveRejectionHistory(objectiveId: string | null) {
+  const token = useAuthStore((s) => s.token);
+  return useQuery({
+    queryKey: ['objectives', objectiveId, 'rejection-history'],
+    queryFn: () => api.objectives.rejectionHistory(token!, objectiveId!),
+    enabled: !!token && !!objectiveId,
+  });
+}
+
 export function useObjectiveHistory(id: string) {
   const token = useAuthStore((s) => s.token);
   return useQuery({

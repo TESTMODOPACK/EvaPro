@@ -401,6 +401,19 @@ export class ObjectivesController {
     return this.objectivesService.getProgressHistory(req.user.tenantId, id);
   }
 
+  /**
+   * T8.2 — Audit P1: historial completo de rechazos del objetivo. Útil
+   * para que el owner vea cuántas veces fue rechazado y qué corregir
+   * (la columna rejection_reason solo guarda el último).
+   */
+  @Get(':id/rejection-history')
+  getRejectionHistory(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+  ) {
+    return this.objectivesService.listRejectionHistory(req.user.tenantId, id);
+  }
+
   // ─── Comments ────────────────────────────────────────────────────────────
 
   @Get(':id/comments')

@@ -1451,6 +1451,17 @@ export const api = {
         { method: "POST", body: JSON.stringify({ reason }) },
         token,
       ),
+    /** T8.2 — Audit P1: historial completo de rechazos del objetivo. */
+    rejectionHistory: (token: string, id: string) =>
+      request<Array<{
+        id: string;
+        objectiveId: string;
+        rejectedBy: string;
+        reason: string | null;
+        objectiveTitleSnapshot: string;
+        rejectedAt: string;
+        rejector?: { id: string; firstName?: string; lastName?: string; email?: string } | null;
+      }>>(`/objectives/${id}/rejection-history`, {}, token),
     atRisk: (token: string, userId?: string) =>
       request<ObjectiveData[]>(`/objectives/at-risk${userId ? `?userId=${userId}` : ""}`, {}, token),
     teamSummary: (token: string) =>
