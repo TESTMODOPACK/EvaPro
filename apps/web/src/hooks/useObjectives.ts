@@ -13,6 +13,45 @@ export function useObjectives(userId?: string) {
   });
 }
 
+/**
+ * T12 — Audit P2: hook paginado con filtros server-side. Reemplaza
+ * `useObjectives()` cuando se necesita el total real (sin cap silente)
+ * y filtros aplicados por el backend.
+ *
+ * Ejemplo:
+ *   const { data, isLoading } = useObjectivesPaginated({ page: 1, pageSize: 50 });
+ *   const items = data?.data ?? [];
+ *   const total = data?.total ?? 0;
+ */
+export function useObjectivesPaginated(opts?: {
+  page?: number;
+  pageSize?: number;
+  userId?: string;
+  status?: string;
+  type?: string;
+  cycleId?: string;
+  search?: string;
+  department?: string;
+}) {
+  const token = useAuthStore((s) => s.token);
+  return useQuery({
+    queryKey: [
+      'objectives',
+      'paginated',
+      opts?.page ?? 1,
+      opts?.pageSize ?? 50,
+      opts?.userId ?? null,
+      opts?.status ?? null,
+      opts?.type ?? null,
+      opts?.cycleId ?? null,
+      opts?.search ?? null,
+      opts?.department ?? null,
+    ],
+    queryFn: () => api.objectives.listPaginated(token!, opts),
+    enabled: !!token,
+  });
+}
+
 export function useObjectiveById(id: string) {
   const token = useAuthStore((s) => s.token);
   return useQuery({

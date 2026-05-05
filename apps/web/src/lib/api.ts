@@ -1413,6 +1413,43 @@ export const api = {
   objectives: {
     list: (token: string, userId?: string) =>
       request<ObjectiveData[]>(`/objectives${userId ? `?userId=${userId}` : ""}`, {}, token),
+    /**
+     * T12 — Audit P2: listado paginado con filtros server-side.
+     * Reemplaza el patrón legacy de `list()` que devolvía un array
+     * capado a 200 sin reportar el total. La UI puede consumir esto
+     * para garantizar consistencia "Mostrando X de Y".
+     */
+    listPaginated: (
+      token: string,
+      opts?: {
+        page?: number;
+        pageSize?: number;
+        userId?: string;
+        status?: string;
+        type?: string;
+        cycleId?: string;
+        search?: string;
+        department?: string;
+      },
+    ) => {
+      const params = new URLSearchParams();
+      if (opts?.page) params.set('page', String(opts.page));
+      if (opts?.pageSize) params.set('pageSize', String(opts.pageSize));
+      if (opts?.userId) params.set('userId', opts.userId);
+      if (opts?.status) params.set('status', opts.status);
+      if (opts?.type) params.set('type', opts.type);
+      if (opts?.cycleId) params.set('cycleId', opts.cycleId);
+      if (opts?.search) params.set('search', opts.search);
+      if (opts?.department) params.set('department', opts.department);
+      const qs = params.toString();
+      return request<{
+        data: ObjectiveData[];
+        total: number;
+        page: number;
+        pageSize: number;
+        totalPages: number;
+      }>(`/objectives/list${qs ? `?${qs}` : ''}`, {}, token);
+    },
     getById: (token: string, id: string) =>
       request<ObjectiveData>(`/objectives/${id}`, {}, token),
     create: (token: string, data: any) =>

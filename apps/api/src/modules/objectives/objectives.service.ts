@@ -1,4 +1,10 @@
-import { Injectable, Logger, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  ForbiddenException,
+  BadRequestException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { Objective, ObjectiveStatus } from './entities/objective.entity';
@@ -8,9 +14,15 @@ import { KeyResult, KRStatus } from './entities/key-result.entity';
 import { ObjectiveRejection } from './entities/objective-rejection.entity';
 import { EvaluationObjectiveSnapshot } from '../evaluations/entities/evaluation-objective-snapshot.entity';
 import { User } from '../users/entities/user.entity';
-import { EvaluationCycle, CycleStatus } from '../evaluations/entities/evaluation-cycle.entity';
+import {
+  EvaluationCycle,
+  CycleStatus,
+} from '../evaluations/entities/evaluation-cycle.entity';
 import { CreateObjectiveDto } from './dto/create-objective.dto';
-import { UpdateObjectiveDto, CreateObjectiveUpdateDto } from './dto/update-objective.dto';
+import {
+  UpdateObjectiveDto,
+  CreateObjectiveUpdateDto,
+} from './dto/update-objective.dto';
 import { AuditService } from '../audit/audit.service';
 import { EmailService } from '../notifications/email.service';
 import { RecognitionService } from '../recognition/recognition.service';
@@ -57,16 +69,26 @@ export class ObjectivesService {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     if (new Date(dateStr) < today) {
-      throw new BadRequestException('La fecha objetivo no puede ser una fecha pasada');
+      throw new BadRequestException(
+        'La fecha objetivo no puede ser una fecha pasada',
+      );
     }
   }
 
   /** B7.2: Cycle must exist and not be closed */
-  private async validateCycleOpen(cycleId: string, tenantId: string): Promise<void> {
-    const cycle = await this.cycleRepo.findOne({ where: { id: cycleId, tenantId } });
-    if (!cycle) throw new BadRequestException('El ciclo de evaluación no existe');
+  private async validateCycleOpen(
+    cycleId: string,
+    tenantId: string,
+  ): Promise<void> {
+    const cycle = await this.cycleRepo.findOne({
+      where: { id: cycleId, tenantId },
+    });
+    if (!cycle)
+      throw new BadRequestException('El ciclo de evaluación no existe');
     if (cycle.status === CycleStatus.CLOSED) {
-      throw new BadRequestException('No se puede asignar un objetivo a un ciclo de evaluación cerrado');
+      throw new BadRequestException(
+        'No se puede asignar un objetivo a un ciclo de evaluación cerrado',
+      );
     }
   }
 
@@ -141,7 +163,11 @@ export class ObjectivesService {
 
   // ─── CRUD ───────────────────────────────────────────────────────────────────
 
-  async create(tenantId: string, userId: string, dto: CreateObjectiveDto): Promise<Objective> {
+  async create(
+    tenantId: string,
+    userId: string,
+    dto: CreateObjectiveDto,
+  ): Promise<Objective> {
     // B7.1: targetDate must not be in the past
     this.validateTargetDate(dto.targetDate);
     // B7.2: cycleId must be an open cycle
@@ -174,19 +200,32 @@ export class ObjectivesService {
       progress: 0,
     });
     const saved = await this.objectiveRepo.save(obj);
-    this.auditService.log(tenantId, userId, 'objective.created', 'objective', saved.id, { title: dto.title, type: dto.type, assignedTo: userId }).catch(() => {});
+    this.auditService
+      .log(tenantId, userId, 'objective.created', 'objective', saved.id, {
+        title: dto.title,
+        type: dto.type,
+        assignedTo: userId,
+      })
+      .catch(() => {});
 
     // Send email to the objective owner
-    const owner = await this.userRepo.findOne({ where: { id: userId }, select: ['id', 'email', 'firstName'] });
+    const owner = await this.userRepo.findOne({
+      where: { id: userId },
+      select: ['id', 'email', 'firstName'],
+    });
     if (owner?.email) {
-      this.emailService.sendObjectiveAssigned(owner.email, {
-        firstName: owner.firstName,
-        objectiveTitle: dto.title,
-        objectiveType: dto.type || 'OKR',
-        targetDate: dto.targetDate ? new Date(dto.targetDate).toLocaleDateString('es-CL') : undefined,
-        tenantId,
-        userId: owner.id,
-      }).catch(() => {});
+      this.emailService
+        .sendObjectiveAssigned(owner.email, {
+          firstName: owner.firstName,
+          objectiveTitle: dto.title,
+          objectiveType: dto.type || 'OKR',
+          targetDate: dto.targetDate
+            ? new Date(dto.targetDate).toLocaleDateString('es-CL')
+            : undefined,
+          tenantId,
+          userId: owner.id,
+        })
+        .catch(() => {});
     }
 
     return saved;
@@ -204,8 +243,16 @@ export class ObjectivesService {
     return this.objectiveRepo
       .createQueryBuilder('o')
       .leftJoinAndSelect('o.user', 'user', 'user.tenant_id = o.tenant_id')
-      .leftJoinAndSelect('o.updates', 'updates', 'updates.tenant_id = o.tenant_id')
-      .leftJoinAndSelect('updates.creator', 'creator', 'creator.tenant_id = o.tenant_id')
+      .leftJoinAndSelect(
+        'o.updates',
+        'updates',
+        'updates.tenant_id = o.tenant_id',
+      )
+      .leftJoinAndSelect(
+        'updates.creator',
+        'creator',
+        'creator.tenant_id = o.tenant_id',
+      )
       .leftJoinAndSelect('o.keyResults', 'kr', 'kr.tenant_id = o.tenant_id')
       .where('o.tenantId = :tenantId', { tenantId })
       .orderBy('o.createdAt', 'DESC');
@@ -221,13 +268,19 @@ export class ObjectivesService {
   }
 
   /** Objectives of manager's direct reports + own (for manager) */
-  async findByManager(tenantId: string, managerId: string): Promise<Objective[]> {
+  async findByManager(
+    tenantId: string,
+    managerId: string,
+  ): Promise<Objective[]> {
     const subordinates = await this.userRepo.find({
       where: { tenantId, managerId, isActive: true },
       select: ['id', 'role'],
     });
     // Exclude tenant_admin from manager's team view — they are system admins, not operational subordinates
-    const userIds = [managerId, ...subordinates.filter((u) => u.role !== 'tenant_admin').map((u) => u.id)];
+    const userIds = [
+      managerId,
+      ...subordinates.filter((u) => u.role !== 'tenant_admin').map((u) => u.id),
+    ];
 
     return this.objectivesWithRelationsQb(tenantId)
       .andWhere('o.userId IN (:...userIds)', { userIds })
@@ -241,6 +294,107 @@ export class ObjectivesService {
       .andWhere('o.userId = :userId', { userId })
       .take(200)
       .getMany();
+  }
+
+  /**
+   * T12 — Audit P2: listado paginado con filtros server-side.
+   *
+   * Reemplaza el patrón legacy `findAll(...).take(200)` + filtrado JS.
+   * Soporta paginación real (page + pageSize), búsqueda case-insensitive
+   * sobre title/owner, y filtros por status/type/cycleId/department.
+   *
+   * Scope por rol:
+   *   - super_admin / tenant_admin: todos los objetivos del tenant.
+   *     `opts.userId` filtra por owner si se pasa.
+   *   - manager: propios + reportes directos. `opts.userId` se ignora
+   *     (manager no puede ver objetivos de otros equipos via este filtro).
+   *   - employee / external: solo propios. `opts.userId` se ignora.
+   *
+   * Devuelve { data, total, page, pageSize, totalPages }. La cuenta es
+   * post-filtros pero pre-paginación (cuántos hay en total que matchean).
+   */
+  async listObjectives(
+    tenantId: string,
+    role: string,
+    currentUserId: string,
+    opts: {
+      page?: number;
+      pageSize?: number;
+      userId?: string;
+      status?: ObjectiveStatus;
+      type?: string;
+      cycleId?: string;
+      search?: string;
+      department?: string;
+    },
+  ): Promise<{
+    data: Objective[];
+    total: number;
+    page: number;
+    pageSize: number;
+    totalPages: number;
+  }> {
+    const page = Math.max(1, opts.page ?? 1);
+    const pageSize = Math.min(200, Math.max(1, opts.pageSize ?? 50));
+
+    const qb = this.objectivesWithRelationsQb(tenantId);
+
+    // ─── Role scope ────────────────────────────────────────────────────
+    if (role === 'employee' || role === 'external') {
+      qb.andWhere('o.userId = :selfUid', { selfUid: currentUserId });
+    } else if (role === 'manager') {
+      const subordinates = await this.userRepo.find({
+        where: { tenantId, managerId: currentUserId, isActive: true },
+        select: ['id', 'role'],
+      });
+      const userIds = [
+        currentUserId,
+        ...subordinates
+          .filter((u) => u.role !== 'tenant_admin')
+          .map((u) => u.id),
+      ];
+      qb.andWhere('o.userId IN (:...mgrScope)', { mgrScope: userIds });
+    } else if (opts.userId) {
+      qb.andWhere('o.userId = :filterUid', { filterUid: opts.userId });
+    }
+
+    // ─── Filters ──────────────────────────────────────────────────────
+    if (opts.status) {
+      qb.andWhere('o.status = :fStatus', { fStatus: opts.status });
+    }
+    if (opts.type) {
+      qb.andWhere('o.type = :fType', { fType: opts.type });
+    }
+    if (opts.cycleId) {
+      qb.andWhere('o.cycleId = :fCycle', { fCycle: opts.cycleId });
+    }
+    if (opts.department) {
+      qb.andWhere('user.department = :fDept', { fDept: opts.department });
+    }
+    if (opts.search) {
+      qb.andWhere(
+        `(LOWER(o.title) LIKE LOWER(:fSearch)
+          OR LOWER(COALESCE(user.firstName, '')) LIKE LOWER(:fSearch)
+          OR LOWER(COALESCE(user.lastName, '')) LIKE LOWER(:fSearch))`,
+        { fSearch: `%${opts.search}%` },
+      );
+    }
+
+    // ─── Total post-filtros, pre-paginación ────────────────────────────
+    // getCount() respeta WHERE pero ignora skip/take; nos da el total
+    // de matches independiente de la página actual.
+    const total = await qb.getCount();
+
+    qb.skip((page - 1) * pageSize).take(pageSize);
+    const data = await qb.getMany();
+
+    return {
+      data,
+      total,
+      page,
+      pageSize,
+      totalPages: Math.max(1, Math.ceil(total / pageSize)),
+    };
   }
 
   /**
@@ -276,7 +430,8 @@ export class ObjectivesService {
       ? [...baseStatuses, ObjectiveStatus.ACTIVE, ObjectiveStatus.OVERDUE]
       : baseStatuses;
 
-    const qb = this.objectiveRepo.createQueryBuilder('o')
+    const qb = this.objectiveRepo
+      .createQueryBuilder('o')
       .where('o.tenantId = :tenantId', { tenantId })
       .andWhere('o.status IN (:...statuses)', { statuses });
 
@@ -287,8 +442,11 @@ export class ObjectivesService {
       qb.andWhere('o.cycleId = :cycleId', { cycleId });
     }
 
-    qb.leftJoinAndSelect('o.user', 'user', 'user.tenant_id = o.tenant_id')
-      .orderBy('o.updatedAt', 'DESC');
+    qb.leftJoinAndSelect(
+      'o.user',
+      'user',
+      'user.tenant_id = o.tenant_id',
+    ).orderBy('o.updatedAt', 'DESC');
 
     const objectives = await qb.getMany();
 
@@ -321,9 +479,21 @@ export class ObjectivesService {
 
     // Load cycle names
     const cycleIds = [...groups.keys()].filter((k) => k !== 'sin_ciclo');
-    const cycles = cycleIds.length > 0
-      ? await this.cycleRepo.find({ where: { id: In(cycleIds) }, select: ['id', 'name', 'startDate', 'endDate', 'type', 'period', 'status'] })
-      : [];
+    const cycles =
+      cycleIds.length > 0
+        ? await this.cycleRepo.find({
+            where: { id: In(cycleIds) },
+            select: [
+              'id',
+              'name',
+              'startDate',
+              'endDate',
+              'type',
+              'period',
+              'status',
+            ],
+          })
+        : [];
     const cycleMap = new Map(cycles.map((c) => [c.id, c]));
 
     // T9.2 — cargar snapshots cycle-wide de los ciclos cerrados, indexados
@@ -332,10 +502,7 @@ export class ObjectivesService {
     const closedCycleIds = cycles
       .filter((c) => c.status === CycleStatus.CLOSED)
       .map((c) => c.id);
-    const snapshotByObjective = new Map<
-      string,
-      EvaluationObjectiveSnapshot
-    >();
+    const snapshotByObjective = new Map<string, EvaluationObjectiveSnapshot>();
     if (closedCycleIds.length > 0) {
       const snapshots = await this.objSnapshotRepo
         .createQueryBuilder('s')
@@ -447,7 +614,11 @@ export class ObjectivesService {
     return obj;
   }
 
-  async update(tenantId: string, id: string, dto: UpdateObjectiveDto): Promise<Objective> {
+  async update(
+    tenantId: string,
+    id: string,
+    dto: UpdateObjectiveDto,
+  ): Promise<Objective> {
     const obj = await this.findById(tenantId, id);
     // B7.3: Cannot modify completed or abandoned objectives
     if (
@@ -462,7 +633,8 @@ export class ObjectivesService {
     // B7.1: targetDate must not be in the past (only when field is being changed)
     if (dto.targetDate !== undefined) this.validateTargetDate(dto.targetDate);
     // B7.2: cycleId must be an open cycle (only when field is being changed)
-    if (dto.cycleId !== undefined && dto.cycleId) await this.validateCycleOpen(dto.cycleId, tenantId);
+    if (dto.cycleId !== undefined && dto.cycleId)
+      await this.validateCycleOpen(dto.cycleId, tenantId);
     // T2.3 — BUG-3: si cambia weight o cycleId, validar contra el bucket
     // resultante. Usa el cycleId nuevo si se está cambiando, y el peso nuevo
     // si se está cambiando. excludeId=id para no contar el mismo objetivo.
@@ -511,7 +683,9 @@ export class ObjectivesService {
     if (dto.parentObjectiveId !== undefined) {
       if (dto.parentObjectiveId) {
         if (dto.parentObjectiveId === id) {
-          throw new BadRequestException('Un objetivo no puede ser padre de sí mismo');
+          throw new BadRequestException(
+            'Un objetivo no puede ser padre de sí mismo',
+          );
         }
         await this.validateParentObjective(tenantId, dto.parentObjectiveId, id);
       }
@@ -523,7 +697,9 @@ export class ObjectivesService {
   async submitForApproval(tenantId: string, id: string): Promise<Objective> {
     const obj = await this.findById(tenantId, id);
     if (obj.status !== ObjectiveStatus.DRAFT) {
-      throw new BadRequestException('Solo objetivos en estado borrador pueden enviarse a aprobación');
+      throw new BadRequestException(
+        'Solo objetivos en estado borrador pueden enviarse a aprobación',
+      );
     }
 
     // T2.4 — BUG-3: usa el helper compartido. Reemplaza la validación inline
@@ -542,28 +718,49 @@ export class ObjectivesService {
     obj.status = ObjectiveStatus.PENDING_APPROVAL;
     obj.rejectionReason = null; // Clear previous rejection reason
     const saved = await this.objectiveRepo.save(obj);
-    this.auditService.log(tenantId, obj.userId, 'objective.submitted_for_approval', 'objective', id, { title: obj.title }).catch(() => {});
+    this.auditService
+      .log(
+        tenantId,
+        obj.userId,
+        'objective.submitted_for_approval',
+        'objective',
+        id,
+        { title: obj.title },
+      )
+      .catch(() => {});
 
     // Notify manager that an objective needs approval
-    const employee = await this.userRepo.findOne({ where: { id: obj.userId }, select: ['id', 'firstName', 'lastName', 'managerId'] });
+    const employee = await this.userRepo.findOne({
+      where: { id: obj.userId },
+      select: ['id', 'firstName', 'lastName', 'managerId'],
+    });
     if (employee?.managerId) {
-      const manager = await this.userRepo.findOne({ where: { id: employee.managerId }, select: ['id', 'email', 'firstName', 'language'] });
+      const manager = await this.userRepo.findOne({
+        where: { id: employee.managerId },
+        select: ['id', 'email', 'firstName', 'language'],
+      });
       if (manager?.email) {
-        this.emailService.sendObjectiveAssigned(manager.email, {
-          firstName: manager.firstName,
-          objectiveTitle: `[Pendiente de aprobación] ${obj.title}`,
-          objectiveType: obj.type || 'OKR',
-          assignedBy: `${employee.firstName} ${employee.lastName}`,
-          tenantId,
-          userId: manager.id,
-        }).catch(() => {});
+        this.emailService
+          .sendObjectiveAssigned(manager.email, {
+            firstName: manager.firstName,
+            objectiveTitle: `[Pendiente de aprobación] ${obj.title}`,
+            objectiveType: obj.type || 'OKR',
+            assignedBy: `${employee.firstName} ${employee.lastName}`,
+            tenantId,
+            userId: manager.id,
+          })
+          .catch(() => {});
       }
       // v3.0 Push al manager con el objetivo pendiente.
       if (manager) {
-        const pushMsg = buildPushMessage('objectivePendingApproval', manager.language ?? 'es', {
-          employee: `${employee.firstName} ${employee.lastName}`,
-          title: obj.title,
-        });
+        const pushMsg = buildPushMessage(
+          'objectivePendingApproval',
+          manager.language ?? 'es',
+          {
+            employee: `${employee.firstName} ${employee.lastName}`,
+            title: obj.title,
+          },
+        );
         this.pushService
           .sendToUser(
             manager.id,
@@ -639,40 +836,69 @@ export class ObjectivesService {
     return { approved, failed };
   }
 
-  async approve(tenantId: string | undefined, id: string, approvedBy?: string): Promise<Objective> {
+  async approve(
+    tenantId: string | undefined,
+    id: string,
+    approvedBy?: string,
+  ): Promise<Objective> {
     const obj = await this.findById(tenantId, id);
     const effectiveTenantId = obj.tenantId;
     if (obj.status !== ObjectiveStatus.PENDING_APPROVAL) {
-      throw new BadRequestException('Solo objetivos pendientes de aprobación pueden ser aprobados');
+      throw new BadRequestException(
+        'Solo objetivos pendientes de aprobación pueden ser aprobados',
+      );
     }
     obj.status = ObjectiveStatus.ACTIVE;
     obj.approvedBy = approvedBy || null;
     obj.approvedAt = new Date();
     obj.rejectionReason = null;
     const saved = await this.objectiveRepo.save(obj);
-    this.auditService.log(effectiveTenantId, approvedBy || obj.userId, 'objective.approved', 'objective', id, { title: obj.title, approvedBy }).catch(() => {});
+    this.auditService
+      .log(
+        effectiveTenantId,
+        approvedBy || obj.userId,
+        'objective.approved',
+        'objective',
+        id,
+        { title: obj.title, approvedBy },
+      )
+      .catch(() => {});
 
     // Notify objective owner that it was approved
-    const owner = await this.userRepo.findOne({ where: { id: obj.userId }, select: ['id', 'email', 'firstName'] });
+    const owner = await this.userRepo.findOne({
+      where: { id: obj.userId },
+      select: ['id', 'email', 'firstName'],
+    });
     if (owner?.email) {
-      this.emailService.sendObjectiveAssigned(owner.email, {
-        firstName: owner.firstName,
-        objectiveTitle: `[Aprobado] ${obj.title}`,
-        objectiveType: obj.type || 'OKR',
-        targetDate: obj.targetDate ? new Date(obj.targetDate).toLocaleDateString('es-CL') : undefined,
-        tenantId: effectiveTenantId,
-        userId: owner.id,
-      }).catch(() => {});
+      this.emailService
+        .sendObjectiveAssigned(owner.email, {
+          firstName: owner.firstName,
+          objectiveTitle: `[Aprobado] ${obj.title}`,
+          objectiveType: obj.type || 'OKR',
+          targetDate: obj.targetDate
+            ? new Date(obj.targetDate).toLocaleDateString('es-CL')
+            : undefined,
+          tenantId: effectiveTenantId,
+          userId: owner.id,
+        })
+        .catch(() => {});
     }
 
     return saved;
   }
 
-  async reject(tenantId: string | undefined, id: string, rejectedBy?: string, reason?: string): Promise<Objective> {
+  async reject(
+    tenantId: string | undefined,
+    id: string,
+    rejectedBy?: string,
+    reason?: string,
+  ): Promise<Objective> {
     const obj = await this.findById(tenantId, id);
     const effectiveTenantId = obj.tenantId;
     if (obj.status !== ObjectiveStatus.PENDING_APPROVAL) {
-      throw new BadRequestException('Solo objetivos pendientes de aprobación pueden ser rechazados');
+      throw new BadRequestException(
+        'Solo objetivos pendientes de aprobación pueden ser rechazados',
+      );
     }
     obj.status = ObjectiveStatus.DRAFT;
     obj.rejectionReason = reason || null;
@@ -704,18 +930,34 @@ export class ObjectivesService {
         });
     }
 
-    this.auditService.log(effectiveTenantId, rejectedBy || obj.userId, 'objective.rejected', 'objective', id, { title: obj.title, rejectedBy, reason }).catch(() => {});
+    this.auditService
+      .log(
+        effectiveTenantId,
+        rejectedBy || obj.userId,
+        'objective.rejected',
+        'objective',
+        id,
+        { title: obj.title, rejectedBy, reason },
+      )
+      .catch(() => {});
 
     // Notify objective owner that it was rejected
-    const owner = await this.userRepo.findOne({ where: { id: obj.userId }, select: ['id', 'email', 'firstName'] });
+    const owner = await this.userRepo.findOne({
+      where: { id: obj.userId },
+      select: ['id', 'email', 'firstName'],
+    });
     if (owner?.email) {
-      this.emailService.sendObjectiveAssigned(owner.email, {
-        firstName: owner.firstName,
-        objectiveTitle: `[Rechazado] ${obj.title}`,
-        objectiveType: reason ? `Motivo: ${reason}` : 'Sin motivo especificado',
-        tenantId: effectiveTenantId,
-        userId: owner.id,
-      }).catch(() => {});
+      this.emailService
+        .sendObjectiveAssigned(owner.email, {
+          firstName: owner.firstName,
+          objectiveTitle: `[Rechazado] ${obj.title}`,
+          objectiveType: reason
+            ? `Motivo: ${reason}`
+            : 'Sin motivo especificado',
+          tenantId: effectiveTenantId,
+          userId: owner.id,
+        })
+        .catch(() => {});
     }
 
     return saved;
@@ -755,7 +997,16 @@ export class ObjectivesService {
     const effectiveTenantId = obj.tenantId;
     obj.status = ObjectiveStatus.ABANDONED;
     await this.objectiveRepo.save(obj);
-    this.auditService.log(effectiveTenantId, obj.userId, 'objective.cancelled', 'objective', id, { title: obj.title }).catch(() => {});
+    this.auditService
+      .log(
+        effectiveTenantId,
+        obj.userId,
+        'objective.cancelled',
+        'objective',
+        id,
+        { title: obj.title },
+      )
+      .catch(() => {});
   }
 
   /**
@@ -839,7 +1090,10 @@ export class ObjectivesService {
    * propagateProgressToParent (parent auto-completion when all children
    * complete, Task 3).
    */
-  private async completeObjective(obj: Objective, completedBy: string): Promise<Objective> {
+  private async completeObjective(
+    obj: Objective,
+    completedBy: string,
+  ): Promise<Objective> {
     if (obj.status === ObjectiveStatus.COMPLETED) {
       return obj; // idempotent: side-effects already fired on the original transition
     }
@@ -851,11 +1105,18 @@ export class ObjectivesService {
     const saved = await this.objectiveRepo.save(obj);
 
     this.auditService
-      .log(saved.tenantId, completedBy, 'objective.completed', 'objective', saved.id, {
-        title: saved.title,
-        type: saved.type,
+      .log(
+        saved.tenantId,
         completedBy,
-      })
+        'objective.completed',
+        'objective',
+        saved.id,
+        {
+          title: saved.title,
+          type: saved.type,
+          completedBy,
+        },
+      )
       .catch(() => {});
 
     // G4: +10 puntos al completar un objetivo
@@ -883,7 +1144,9 @@ export class ObjectivesService {
       .catch(() => {});
 
     // Auto-badge check (por si hay badges que requieran N objetivos completados)
-    this.recognitionService.checkAutoBadges(saved.tenantId, saved.userId).catch(() => {});
+    this.recognitionService
+      .checkAutoBadges(saved.tenantId, saved.userId)
+      .catch(() => {});
 
     // Email al manager directo (best-effort)
     try {
@@ -926,18 +1189,26 @@ export class ObjectivesService {
   ): Promise<ObjectiveUpdate> {
     // Validate notes FIRST (no DB operation needed)
     if (!dto.notes || dto.notes.trim().length === 0) {
-      throw new BadRequestException('Debe indicar qué avance realizó para actualizar el progreso.');
+      throw new BadRequestException(
+        'Debe indicar qué avance realizó para actualizar el progreso.',
+      );
     }
 
     const obj = await this.findById(tenantId, objectiveId);
     if (obj.status === ObjectiveStatus.COMPLETED) {
-      throw new BadRequestException('Este objetivo ya está completado. No se puede actualizar el progreso');
+      throw new BadRequestException(
+        'Este objetivo ya está completado. No se puede actualizar el progreso',
+      );
     }
     if (obj.status === ObjectiveStatus.ABANDONED) {
-      throw new BadRequestException('No se puede actualizar el progreso de un objetivo abandonado');
+      throw new BadRequestException(
+        'No se puede actualizar el progreso de un objetivo abandonado',
+      );
     }
     if (obj.status === ObjectiveStatus.CANCELLED) {
-      throw new BadRequestException('No se puede actualizar el progreso de un objetivo cancelado');
+      throw new BadRequestException(
+        'No se puede actualizar el progreso de un objetivo cancelado',
+      );
     }
 
     // OKR with Key Results: progress is calculated automatically from KRs
@@ -956,9 +1227,13 @@ export class ObjectivesService {
       // OKR: must have KRs defined and all completed
       if (obj.type === 'OKR') {
         if (krs.length === 0) {
-          throw new BadRequestException('No se puede completar un OKR sin Resultados Clave definidos. Agregue al menos un KR.');
+          throw new BadRequestException(
+            'No se puede completar un OKR sin Resultados Clave definidos. Agregue al menos un KR.',
+          );
         }
-        const incompleteKrs = krs.filter((kr: any) => kr.status !== 'completed');
+        const incompleteKrs = krs.filter(
+          (kr: any) => kr.status !== 'completed',
+        );
         if (incompleteKrs.length > 0) {
           throw new BadRequestException(
             `No se puede completar: tiene ${incompleteKrs.length} Resultado(s) Clave pendiente(s). Complete los KRs primero.`,
@@ -990,12 +1265,29 @@ export class ObjectivesService {
       createdBy: userId,
     });
     const saved = await this.updateRepo.save(update);
-    this.auditService.log(tenantId, userId, 'objective.progress_updated', 'objective', objectiveId, { title: obj.title, previousProgress, newProgress: dto.progressValue, notes: dto.notes }).catch(() => {});
+    this.auditService
+      .log(
+        tenantId,
+        userId,
+        'objective.progress_updated',
+        'objective',
+        objectiveId,
+        {
+          title: obj.title,
+          previousProgress,
+          newProgress: dto.progressValue,
+          notes: dto.notes,
+        },
+      )
+      .catch(() => {});
 
     return saved;
   }
 
-  async getProgressHistory(tenantId: string, objectiveId: string): Promise<ObjectiveUpdate[]> {
+  async getProgressHistory(
+    tenantId: string,
+    objectiveId: string,
+  ): Promise<ObjectiveUpdate[]> {
     return this.updateRepo.find({
       where: { tenantId, objectiveId },
       relations: ['creator'],
@@ -1017,7 +1309,12 @@ export class ObjectivesService {
   //   - target_date <= created_at::date  → progress < 100 (totalDuration <= 0 edge case)
   //   - default                          → progress < pace * 0.6
   //     donde pace = (elapsed / total_duration, capped to 1) * 100
-  async getAtRiskObjectives(tenantId: string, filterUserId?: string, role?: string, currentUserId?: string): Promise<Objective[]> {
+  async getAtRiskObjectives(
+    tenantId: string,
+    filterUserId?: string,
+    role?: string,
+    currentUserId?: string,
+  ): Promise<Objective[]> {
     const qb = this.objectiveRepo
       .createQueryBuilder('o')
       .leftJoinAndSelect('o.user', 'u', 'u.tenant_id = o.tenant_id')
@@ -1042,7 +1339,9 @@ export class ObjectivesService {
 
     if (role === 'manager' && currentUserId) {
       // Manager: only see at-risk objectives for their direct reports + own
-      qb.andWhere('(o.userId = :mgr OR u.manager_id = :mgr)', { mgr: currentUserId });
+      qb.andWhere('(o.userId = :mgr OR u.manager_id = :mgr)', {
+        mgr: currentUserId,
+      });
     } else if (filterUserId) {
       qb.andWhere('o.userId = :filterUserId', { filterUserId });
     }
@@ -1051,7 +1350,9 @@ export class ObjectivesService {
   }
 
   async getCompletionStats(tenantId: string, userId: string) {
-    const total = await this.objectiveRepo.count({ where: { tenantId, userId } });
+    const total = await this.objectiveRepo.count({
+      where: { tenantId, userId },
+    });
     const completed = await this.objectiveRepo.count({
       where: { tenantId, userId, status: ObjectiveStatus.COMPLETED },
     });
@@ -1070,7 +1371,15 @@ export class ObjectivesService {
     });
 
     if (subordinates.length === 0) {
-      return { members: [], totals: { totalMembers: 0, totalObjectives: 0, totalAtRisk: 0, avgProgress: 0 } };
+      return {
+        members: [],
+        totals: {
+          totalMembers: 0,
+          totalObjectives: 0,
+          totalAtRisk: 0,
+          avgProgress: 0,
+        },
+      };
     }
 
     const userIds = subordinates.map((u) => u.id);
@@ -1090,13 +1399,23 @@ export class ObjectivesService {
 
     const summary = subordinates.map((user) => {
       const objectives = byUser.get(user.id) || [];
-      const active = objectives.filter((o) => o.status === ObjectiveStatus.ACTIVE);
-      const completed = objectives.filter((o) => o.status === ObjectiveStatus.COMPLETED);
+      const active = objectives.filter(
+        (o) => o.status === ObjectiveStatus.ACTIVE,
+      );
+      const completed = objectives.filter(
+        (o) => o.status === ObjectiveStatus.COMPLETED,
+      );
       const atRisk = active.filter((o) => o.progress < 40);
-      const totalWeight = active.reduce((sum, o) => sum + Number(o.weight || 0), 0);
-      const avgProgress = active.length > 0
-        ? Math.round(active.reduce((sum, o) => sum + o.progress, 0) / active.length)
-        : 0;
+      const totalWeight = active.reduce(
+        (sum, o) => sum + Number(o.weight || 0),
+        0,
+      );
+      const avgProgress =
+        active.length > 0
+          ? Math.round(
+              active.reduce((sum, o) => sum + o.progress, 0) / active.length,
+            )
+          : 0;
 
       return {
         userId: user.id,
@@ -1116,9 +1435,12 @@ export class ObjectivesService {
       totalMembers: subordinates.length,
       totalObjectives: summary.reduce((s, m) => s + m.totalObjectives, 0),
       totalAtRisk: summary.reduce((s, m) => s + m.atRiskCount, 0),
-      avgProgress: summary.length > 0
-        ? Math.round(summary.reduce((s, m) => s + m.avgProgress, 0) / summary.length)
-        : 0,
+      avgProgress:
+        summary.length > 0
+          ? Math.round(
+              summary.reduce((s, m) => s + m.avgProgress, 0) / summary.length,
+            )
+          : 0,
     };
 
     return { members: summary, totals: teamTotals };
@@ -1126,7 +1448,10 @@ export class ObjectivesService {
 
   // ─── Comments ───────────────────────────────────────────────────────────────
 
-  async listComments(tenantId: string, objectiveId: string): Promise<ObjectiveComment[]> {
+  async listComments(
+    tenantId: string,
+    objectiveId: string,
+  ): Promise<ObjectiveComment[]> {
     return this.commentRepo.find({
       where: { tenantId, objectiveId },
       relations: ['author'],
@@ -1138,7 +1463,12 @@ export class ObjectivesService {
     tenantId: string,
     objectiveId: string,
     authorId: string,
-    data: { content: string; type?: string; attachmentUrl?: string; attachmentName?: string },
+    data: {
+      content: string;
+      type?: string;
+      attachmentUrl?: string;
+      attachmentName?: string;
+    },
   ): Promise<ObjectiveComment> {
     // Verify objective exists
     await this.findById(tenantId, objectiveId);
@@ -1159,13 +1489,22 @@ export class ObjectivesService {
     }) as Promise<ObjectiveComment>;
   }
 
-  async deleteComment(tenantId: string, commentId: string, requesterId: string, requesterRole: string): Promise<void> {
-    const comment = await this.commentRepo.findOne({ where: { id: commentId, tenantId } });
+  async deleteComment(
+    tenantId: string,
+    commentId: string,
+    requesterId: string,
+    requesterRole: string,
+  ): Promise<void> {
+    const comment = await this.commentRepo.findOne({
+      where: { id: commentId, tenantId },
+    });
     if (!comment) throw new NotFoundException('Comentario no encontrado');
 
     // Only the author or tenant_admin can delete
     if (comment.authorId !== requesterId && requesterRole !== 'tenant_admin') {
-      throw new ForbiddenException('Solo el autor o el administrador puede eliminar este comentario');
+      throw new ForbiddenException(
+        'Solo el autor o el administrador puede eliminar este comentario',
+      );
     }
 
     await this.commentRepo.remove(comment);
@@ -1178,15 +1517,22 @@ export class ObjectivesService {
    * Root objectives (parentObjectiveId = null) are at the top,
    * with children nested recursively.
    */
-  async getObjectiveTree(tenantId: string, role?: string, currentUserId?: string): Promise<any[]> {
-    const qb = this.objectiveRepo.createQueryBuilder('o')
+  async getObjectiveTree(
+    tenantId: string,
+    role?: string,
+    currentUserId?: string,
+  ): Promise<any[]> {
+    const qb = this.objectiveRepo
+      .createQueryBuilder('o')
       .leftJoinAndSelect('o.user', 'u')
       .where('o.tenantId = :tenantId', { tenantId })
       .orderBy('o.createdAt', 'ASC');
 
     // Manager: only see objectives from their team + own
     if (role === 'manager' && currentUserId) {
-      qb.andWhere('(o.userId = :mgr OR u.manager_id = :mgr)', { mgr: currentUserId });
+      qb.andWhere('(o.userId = :mgr OR u.manager_id = :mgr)', {
+        mgr: currentUserId,
+      });
     }
 
     const all = await qb.getMany();
@@ -1204,7 +1550,9 @@ export class ObjectivesService {
         targetDate: obj.targetDate,
         parentObjectiveId: obj.parentObjectiveId,
         userId: obj.userId,
-        userName: obj.user ? `${obj.user.firstName} ${obj.user.lastName}` : null,
+        userName: obj.user
+          ? `${obj.user.firstName} ${obj.user.lastName}`
+          : null,
         userPosition: obj.user?.position || null,
         children: [],
       });
@@ -1225,10 +1573,18 @@ export class ObjectivesService {
    * Validates that a parent objective exists, belongs to same tenant,
    * and doesn't create a circular reference.
    */
-  private async validateParentObjective(tenantId: string, parentId: string, currentId?: string): Promise<void> {
-    const parent = await this.objectiveRepo.findOne({ where: { id: parentId, tenantId } });
+  private async validateParentObjective(
+    tenantId: string,
+    parentId: string,
+    currentId?: string,
+  ): Promise<void> {
+    const parent = await this.objectiveRepo.findOne({
+      where: { id: parentId, tenantId },
+    });
     if (!parent) {
-      throw new BadRequestException('El objetivo padre no existe en esta organización');
+      throw new BadRequestException(
+        'El objetivo padre no existe en esta organización',
+      );
     }
 
     // Check for circular reference: walk up the chain
@@ -1237,10 +1593,14 @@ export class ObjectivesService {
       const visited = new Set<string>([currentId]);
       while (checkId) {
         if (visited.has(checkId)) {
-          throw new BadRequestException('No se puede crear una referencia circular entre objetivos');
+          throw new BadRequestException(
+            'No se puede crear una referencia circular entre objetivos',
+          );
         }
         visited.add(checkId);
-        const ancestor = await this.objectiveRepo.findOne({ where: { id: checkId, tenantId } });
+        const ancestor = await this.objectiveRepo.findOne({
+          where: { id: checkId, tenantId },
+        });
         checkId = ancestor?.parentObjectiveId || null;
       }
     }
@@ -1344,7 +1704,10 @@ export class ObjectivesService {
 
   // ─── Key Results (B2.10) ──────────────────────────────────────────────────
 
-  async listKeyResults(tenantId: string, objectiveId: string): Promise<KeyResult[]> {
+  async listKeyResults(
+    tenantId: string,
+    objectiveId: string,
+  ): Promise<KeyResult[]> {
     return this.keyResultRepo.find({
       where: { tenantId, objectiveId },
       order: { createdAt: 'ASC' },
@@ -1354,18 +1717,27 @@ export class ObjectivesService {
   async createKeyResult(
     tenantId: string,
     objectiveId: string,
-    data: { description: string; unit?: string; baseValue?: number; targetValue?: number },
+    data: {
+      description: string;
+      unit?: string;
+      baseValue?: number;
+      targetValue?: number;
+    },
   ): Promise<KeyResult> {
     await this.findById(tenantId, objectiveId);
     // B7.6: targetValue must be > 0
     const base = data.baseValue ?? 0;
     const target = data.targetValue ?? 100;
     if (target <= 0) {
-      throw new BadRequestException('El valor objetivo del KR debe ser mayor a 0');
+      throw new BadRequestException(
+        'El valor objetivo del KR debe ser mayor a 0',
+      );
     }
     // B7.7: targetValue must not equal baseValue (division by zero in progress calc)
     if (target === base) {
-      throw new BadRequestException('El valor objetivo no puede ser igual al valor base (causaría división por cero)');
+      throw new BadRequestException(
+        'El valor objetivo no puede ser igual al valor base (causaría división por cero)',
+      );
     }
     const kr = this.keyResultRepo.create({
       tenantId,
@@ -1383,10 +1755,17 @@ export class ObjectivesService {
   async updateKeyResult(
     tenantId: string,
     krId: string,
-    data: { currentValue?: number; description?: string; targetValue?: number; status?: KRStatus },
+    data: {
+      currentValue?: number;
+      description?: string;
+      targetValue?: number;
+      status?: KRStatus;
+    },
     actorUserId?: string,
   ): Promise<KeyResult> {
-    const kr = await this.keyResultRepo.findOne({ where: { id: krId, tenantId } });
+    const kr = await this.keyResultRepo.findOne({
+      where: { id: krId, tenantId },
+    });
     if (!kr) throw new NotFoundException('Key Result no encontrado');
     if (data.currentValue !== undefined) kr.currentValue = data.currentValue;
     if (data.description !== undefined) kr.description = data.description;
@@ -1394,20 +1773,33 @@ export class ObjectivesService {
     if (data.status !== undefined) kr.status = data.status;
 
     // Auto-complete KR if currentValue >= targetValue
-    if (Number(kr.currentValue) >= Number(kr.targetValue) && kr.status === KRStatus.ACTIVE) {
+    if (
+      Number(kr.currentValue) >= Number(kr.targetValue) &&
+      kr.status === KRStatus.ACTIVE
+    ) {
       kr.status = KRStatus.COMPLETED;
     }
 
     const saved = await this.keyResultRepo.save(kr);
 
     // Recalculate objective progress from KR completion (and possibly auto-complete)
-    await this.recalculateProgressFromKRs(tenantId, kr.objectiveId, actorUserId);
+    await this.recalculateProgressFromKRs(
+      tenantId,
+      kr.objectiveId,
+      actorUserId,
+    );
 
     return saved;
   }
 
-  async deleteKeyResult(tenantId: string, krId: string, actorUserId?: string): Promise<void> {
-    const kr = await this.keyResultRepo.findOne({ where: { id: krId, tenantId } });
+  async deleteKeyResult(
+    tenantId: string,
+    krId: string,
+    actorUserId?: string,
+  ): Promise<void> {
+    const kr = await this.keyResultRepo.findOne({
+      where: { id: krId, tenantId },
+    });
     if (!kr) throw new NotFoundException('Key Result no encontrado');
     const objectiveId = kr.objectiveId;
     await this.keyResultRepo.remove(kr);
@@ -1438,23 +1830,36 @@ export class ObjectivesService {
     objectiveId: string,
     actorUserId?: string,
   ): Promise<void> {
-    const krs = await this.keyResultRepo.find({ where: { tenantId, objectiveId } });
+    const krs = await this.keyResultRepo.find({
+      where: { tenantId, objectiveId },
+    });
     if (krs.length === 0) return;
 
     const totalProgress = krs.reduce((sum, kr) => {
       const range = Number(kr.targetValue) - Number(kr.baseValue);
       if (range <= 0) return sum + (kr.status === KRStatus.COMPLETED ? 100 : 0);
-      const krProgress = Math.min(100, Math.max(0, ((Number(kr.currentValue) - Number(kr.baseValue)) / range) * 100));
+      const krProgress = Math.min(
+        100,
+        Math.max(
+          0,
+          ((Number(kr.currentValue) - Number(kr.baseValue)) / range) * 100,
+        ),
+      );
       return sum + krProgress;
     }, 0);
 
     const avgProgress = Math.round(totalProgress / krs.length);
-    await this.objectiveRepo.update({ id: objectiveId, tenantId }, { progress: avgProgress });
+    await this.objectiveRepo.update(
+      { id: objectiveId, tenantId },
+      { progress: avgProgress },
+    );
 
     // T1.2: auto-complete objective when KRs reach 100% (fixes BUG-1)
     const allCompleted = krs.every((kr) => kr.status === KRStatus.COMPLETED);
     if (allCompleted && avgProgress >= 100) {
-      const obj = await this.objectiveRepo.findOne({ where: { id: objectiveId, tenantId } });
+      const obj = await this.objectiveRepo.findOne({
+        where: { id: objectiveId, tenantId },
+      });
       // Complete from ACTIVE u OVERDUE (T6: vencido también puede cerrar
       // con KRs completados). DRAFT/PENDING/ABANDONED no auto-completan.
       // Helper es idempotente sobre objetivos ya COMPLETED.
@@ -1478,10 +1883,16 @@ export class ObjectivesService {
 
   private escapeCsv(val: any): string {
     const str = String(val ?? '');
-    return str.includes(',') || str.includes('"') || str.includes('\n') ? `"${str.replace(/"/g, '""')}"` : str;
+    return str.includes(',') || str.includes('"') || str.includes('\n')
+      ? `"${str.replace(/"/g, '""')}"`
+      : str;
   }
 
-  private async getExportData(tenantId: string, userId?: string, role?: string): Promise<any[]> {
+  private async getExportData(
+    tenantId: string,
+    userId?: string,
+    role?: string,
+  ): Promise<any[]> {
     if (role === 'employee' || role === 'external') {
       return this.findByUser(tenantId, userId!);
     }
@@ -1491,33 +1902,73 @@ export class ObjectivesService {
     return this.findAll(tenantId);
   }
 
-  async exportObjectivesCsv(tenantId: string, userId?: string, role?: string): Promise<string> {
+  async exportObjectivesCsv(
+    tenantId: string,
+    userId?: string,
+    role?: string,
+  ): Promise<string> {
     const objectives = await this.getExportData(tenantId, userId, role);
     const rows: string[] = [];
-    rows.push('Título,Tipo,Estado,Progreso %,Peso,Fecha Meta,Responsable,Departamento');
-    const statusLabels: Record<string, string> = { draft: 'Borrador', pending_approval: 'Pendiente', active: 'Activo', overdue: 'Vencido', completed: 'Completado', cancelled: 'Cancelado', abandoned: 'Abandonado' };
+    rows.push(
+      'Título,Tipo,Estado,Progreso %,Peso,Fecha Meta,Responsable,Departamento',
+    );
+    const statusLabels: Record<string, string> = {
+      draft: 'Borrador',
+      pending_approval: 'Pendiente',
+      active: 'Activo',
+      overdue: 'Vencido',
+      completed: 'Completado',
+      cancelled: 'Cancelado',
+      abandoned: 'Abandonado',
+    };
     for (const obj of objectives) {
-      const userName = obj.user ? `${obj.user.firstName || ''} ${obj.user.lastName || ''}`.trim() : '';
+      const userName = obj.user
+        ? `${obj.user.firstName || ''} ${obj.user.lastName || ''}`.trim()
+        : '';
       const dept = obj.user?.department || '';
-      rows.push([
-        this.escapeCsv(obj.title), obj.type || 'OKR', statusLabels[obj.status] || obj.status,
-        obj.progress, obj.weight || 0,
-        obj.targetDate ? new Date(obj.targetDate).toLocaleDateString('es-CL') : '',
-        this.escapeCsv(userName), this.escapeCsv(dept),
-      ].join(','));
+      rows.push(
+        [
+          this.escapeCsv(obj.title),
+          obj.type || 'OKR',
+          statusLabels[obj.status] || obj.status,
+          obj.progress,
+          obj.weight || 0,
+          obj.targetDate
+            ? new Date(obj.targetDate).toLocaleDateString('es-CL')
+            : '',
+          this.escapeCsv(userName),
+          this.escapeCsv(dept),
+        ].join(','),
+      );
     }
     return '\uFEFF' + rows.join('\n');
   }
 
-  async exportObjectivesXlsx(tenantId: string, userId?: string, role?: string): Promise<Buffer> {
+  async exportObjectivesXlsx(
+    tenantId: string,
+    userId?: string,
+    role?: string,
+  ): Promise<Buffer> {
     const objectives = await this.getExportData(tenantId, userId, role);
-    const statusLabels: Record<string, string> = { draft: 'Borrador', pending_approval: 'Pendiente', active: 'Activo', overdue: 'Vencido', completed: 'Completado', cancelled: 'Cancelado', abandoned: 'Abandonado' };
+    const statusLabels: Record<string, string> = {
+      draft: 'Borrador',
+      pending_approval: 'Pendiente',
+      active: 'Activo',
+      overdue: 'Vencido',
+      completed: 'Completado',
+      cancelled: 'Cancelado',
+      abandoned: 'Abandonado',
+    };
 
     const ExcelJS = (await import('exceljs')).default;
     const wb = new ExcelJS.Workbook();
     const accent = { argb: 'FFC9933A' };
     const headerFont = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
-    const headerFill: any = { type: 'pattern', pattern: 'solid', fgColor: accent };
+    const headerFill: any = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: accent,
+    };
 
     // Sheet 1: Resumen
     const ws1 = wb.addWorksheet('Resumen');
@@ -1526,9 +1977,19 @@ export class ObjectivesService {
     ws1.addRow([]);
     const total = objectives.length;
     const active = objectives.filter((o: any) => o.status === 'active').length;
-    const completed = objectives.filter((o: any) => o.status === 'completed').length;
-    const atRisk = objectives.filter((o: any) => o.status === 'active' && o.progress < 40).length;
-    const avgProgress = total > 0 ? Math.round(objectives.reduce((s: number, o: any) => s + (o.progress || 0), 0) / total) : 0;
+    const completed = objectives.filter(
+      (o: any) => o.status === 'completed',
+    ).length;
+    const atRisk = objectives.filter(
+      (o: any) => o.status === 'active' && o.progress < 40,
+    ).length;
+    const avgProgress =
+      total > 0
+        ? Math.round(
+            objectives.reduce((s: number, o: any) => s + (o.progress || 0), 0) /
+              total,
+          )
+        : 0;
     ws1.addRow(['Total objetivos', total]);
     ws1.addRow(['Activos', active]);
     ws1.addRow(['Completados', completed]);
@@ -1539,27 +2000,65 @@ export class ObjectivesService {
     // Sheet 2: Detalle
     const ws2 = wb.addWorksheet('Objetivos');
     ws2.columns = [
-      { width: 35 }, { width: 10 }, { width: 14 }, { width: 12 },
-      { width: 10 }, { width: 14 }, { width: 22 }, { width: 18 },
+      { width: 35 },
+      { width: 10 },
+      { width: 14 },
+      { width: 12 },
+      { width: 10 },
+      { width: 14 },
+      { width: 22 },
+      { width: 18 },
     ];
-    const h2 = ws2.addRow(['Título', 'Tipo', 'Estado', 'Progreso %', 'Peso', 'Fecha Meta', 'Responsable', 'Departamento']);
-    h2.eachCell((cell) => { cell.font = headerFont; cell.fill = headerFill; });
+    const h2 = ws2.addRow([
+      'Título',
+      'Tipo',
+      'Estado',
+      'Progreso %',
+      'Peso',
+      'Fecha Meta',
+      'Responsable',
+      'Departamento',
+    ]);
+    h2.eachCell((cell) => {
+      cell.font = headerFont;
+      cell.fill = headerFill;
+    });
     for (const obj of objectives) {
-      const userName = obj.user ? `${obj.user.firstName || ''} ${obj.user.lastName || ''}`.trim() : '';
+      const userName = obj.user
+        ? `${obj.user.firstName || ''} ${obj.user.lastName || ''}`.trim()
+        : '';
       ws2.addRow([
-        obj.title, obj.type || 'OKR', statusLabels[obj.status] || obj.status,
-        obj.progress, obj.weight || 0,
-        obj.targetDate ? new Date(obj.targetDate).toLocaleDateString('es-CL') : '',
-        userName, obj.user?.department || '',
+        obj.title,
+        obj.type || 'OKR',
+        statusLabels[obj.status] || obj.status,
+        obj.progress,
+        obj.weight || 0,
+        obj.targetDate
+          ? new Date(obj.targetDate).toLocaleDateString('es-CL')
+          : '',
+        userName,
+        obj.user?.department || '',
       ]);
     }
 
     return Buffer.from(await wb.xlsx.writeBuffer());
   }
 
-  async exportObjectivesPdf(tenantId: string, userId?: string, role?: string): Promise<Buffer> {
+  async exportObjectivesPdf(
+    tenantId: string,
+    userId?: string,
+    role?: string,
+  ): Promise<Buffer> {
     const objectives = await this.getExportData(tenantId, userId, role);
-    const statusLabels: Record<string, string> = { draft: 'Borrador', pending_approval: 'Pendiente', active: 'Activo', overdue: 'Vencido', completed: 'Completado', cancelled: 'Cancelado', abandoned: 'Abandonado' };
+    const statusLabels: Record<string, string> = {
+      draft: 'Borrador',
+      pending_approval: 'Pendiente',
+      active: 'Activo',
+      overdue: 'Vencido',
+      completed: 'Completado',
+      cancelled: 'Cancelado',
+      abandoned: 'Abandonado',
+    };
 
     const { jsPDF } = await import('jspdf');
     const autoTable = (await import('jspdf-autotable')).default;
@@ -1575,16 +2074,30 @@ export class ObjectivesService {
     doc.text('Objetivos / OKRs', margin, 16);
     doc.setFontSize(9);
     doc.setTextColor(201, 147, 58);
-    doc.text(`Exportado el ${new Date().toLocaleDateString('es-CL')}`, margin, 24);
+    doc.text(
+      `Exportado el ${new Date().toLocaleDateString('es-CL')}`,
+      margin,
+      24,
+    );
 
     let y = 38;
 
     // KPIs
     const total = objectives.length;
     const active = objectives.filter((o: any) => o.status === 'active').length;
-    const completedCount = objectives.filter((o: any) => o.status === 'completed').length;
-    const atRisk = objectives.filter((o: any) => o.status === 'active' && o.progress < 40).length;
-    const avgProgress = total > 0 ? Math.round(objectives.reduce((s: number, o: any) => s + (o.progress || 0), 0) / total) : 0;
+    const completedCount = objectives.filter(
+      (o: any) => o.status === 'completed',
+    ).length;
+    const atRisk = objectives.filter(
+      (o: any) => o.status === 'active' && o.progress < 40,
+    ).length;
+    const avgProgress =
+      total > 0
+        ? Math.round(
+            objectives.reduce((s: number, o: any) => s + (o.progress || 0), 0) /
+              total,
+          )
+        : 0;
 
     const kpis = [
       { label: 'Total', value: `${total}` },
@@ -1611,14 +2124,34 @@ export class ObjectivesService {
     autoTable(doc, {
       startY: y,
       margin: { left: margin, right: margin },
-      head: [['Título', 'Tipo', 'Estado', 'Progreso', 'Peso', 'Fecha Meta', 'Responsable']],
+      head: [
+        [
+          'Título',
+          'Tipo',
+          'Estado',
+          'Progreso',
+          'Peso',
+          'Fecha Meta',
+          'Responsable',
+        ],
+      ],
       body: objectives.map((o: any) => [
-        o.title, o.type || 'OKR', statusLabels[o.status] || o.status,
-        `${o.progress}%`, o.weight || 0,
+        o.title,
+        o.type || 'OKR',
+        statusLabels[o.status] || o.status,
+        `${o.progress}%`,
+        o.weight || 0,
         o.targetDate ? new Date(o.targetDate).toLocaleDateString('es-CL') : '-',
-        o.user ? `${o.user.firstName || ''} ${o.user.lastName || ''}`.trim() : '',
+        o.user
+          ? `${o.user.firstName || ''} ${o.user.lastName || ''}`.trim()
+          : '',
       ]),
-      headStyles: { fillColor: [201, 147, 58], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 7 },
+      headStyles: {
+        fillColor: [201, 147, 58],
+        textColor: [255, 255, 255],
+        fontStyle: 'bold',
+        fontSize: 7,
+      },
       bodyStyles: { fontSize: 7 },
       alternateRowStyles: { fillColor: [248, 250, 252] },
     });
@@ -1629,8 +2162,17 @@ export class ObjectivesService {
       doc.setPage(i);
       doc.setFontSize(7);
       doc.setTextColor(148, 163, 184);
-      doc.text(`Generado el ${new Date().toLocaleDateString('es-CL')} — Eva360`, margin, doc.internal.pageSize.getHeight() - 8);
-      doc.text(`Página ${i} de ${pageCount}`, pageW - margin, doc.internal.pageSize.getHeight() - 8, { align: 'right' });
+      doc.text(
+        `Generado el ${new Date().toLocaleDateString('es-CL')} — Eva360`,
+        margin,
+        doc.internal.pageSize.getHeight() - 8,
+      );
+      doc.text(
+        `Página ${i} de ${pageCount}`,
+        pageW - margin,
+        doc.internal.pageSize.getHeight() - 8,
+        { align: 'right' },
+      );
     }
 
     return Buffer.from(doc.output('arraybuffer'));
@@ -1649,25 +2191,44 @@ export class ObjectivesService {
     return result;
   }
 
-  async exportObjectivesTreeXlsx(tenantId: string, role?: string, userId?: string): Promise<Buffer> {
+  async exportObjectivesTreeXlsx(
+    tenantId: string,
+    role?: string,
+    userId?: string,
+  ): Promise<Buffer> {
     const tree = await this.getObjectiveTree(tenantId, role, userId);
     const flat = this.flattenTree(tree);
-    const statusLabels: Record<string, string> = { draft: 'Borrador', pending_approval: 'Pendiente', active: 'Activo', overdue: 'Vencido', completed: 'Completado', cancelled: 'Cancelado', abandoned: 'Abandonado' };
+    const statusLabels: Record<string, string> = {
+      draft: 'Borrador',
+      pending_approval: 'Pendiente',
+      active: 'Activo',
+      overdue: 'Vencido',
+      completed: 'Completado',
+      cancelled: 'Cancelado',
+      abandoned: 'Abandonado',
+    };
 
     const ExcelJS = (await import('exceljs')).default;
     const wb = new ExcelJS.Workbook();
     const accent = { argb: 'FFC9933A' };
     const headerFont = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
-    const headerFill: any = { type: 'pattern', pattern: 'solid', fgColor: accent };
+    const headerFill: any = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: accent,
+    };
 
     // Sheet 1: Resumen
     const ws1 = wb.addWorksheet('Resumen');
     ws1.columns = [{ width: 25 }, { width: 15 }];
-    ws1.addRow(['Objetivos / OKRs — Vista Árbol']).font = { bold: true, size: 14 };
+    ws1.addRow(['Objetivos / OKRs — Vista Árbol']).font = {
+      bold: true,
+      size: 14,
+    };
     ws1.addRow([]);
     const total = flat.length;
-    const active = flat.filter(o => o.status === 'active').length;
-    const completed = flat.filter(o => o.status === 'completed').length;
+    const active = flat.filter((o) => o.status === 'active').length;
+    const completed = flat.filter((o) => o.status === 'completed').length;
     const roots = tree.length;
     ws1.addRow(['Total objetivos', total]);
     ws1.addRow(['Objetivos raíz', roots]);
@@ -1678,19 +2239,42 @@ export class ObjectivesService {
     // Sheet 2: Árbol
     const ws2 = wb.addWorksheet('Árbol de Objetivos');
     ws2.columns = [
-      { width: 6 }, { width: 40 }, { width: 10 }, { width: 14 }, { width: 12 },
-      { width: 10 }, { width: 14 }, { width: 22 },
+      { width: 6 },
+      { width: 40 },
+      { width: 10 },
+      { width: 14 },
+      { width: 12 },
+      { width: 10 },
+      { width: 14 },
+      { width: 22 },
     ];
-    const h2 = ws2.addRow(['Nivel', 'Título', 'Tipo', 'Estado', 'Progreso %', 'Peso', 'Fecha Meta', 'Responsable']);
-    h2.eachCell((cell) => { cell.font = headerFont; cell.fill = headerFill; });
+    const h2 = ws2.addRow([
+      'Nivel',
+      'Título',
+      'Tipo',
+      'Estado',
+      'Progreso %',
+      'Peso',
+      'Fecha Meta',
+      'Responsable',
+    ]);
+    h2.eachCell((cell) => {
+      cell.font = headerFont;
+      cell.fill = headerFill;
+    });
     for (const obj of flat) {
       const indent = '  '.repeat(obj.depth);
       const prefix = obj.depth > 0 ? '└ ' : '';
       const row = ws2.addRow([
-        obj.depth, `${indent}${prefix}${obj.title}`,
-        obj.type || 'OKR', statusLabels[obj.status] || obj.status,
-        obj.progress, obj.weight || 0,
-        obj.targetDate ? new Date(obj.targetDate).toLocaleDateString('es-CL') : '',
+        obj.depth,
+        `${indent}${prefix}${obj.title}`,
+        obj.type || 'OKR',
+        statusLabels[obj.status] || obj.status,
+        obj.progress,
+        obj.weight || 0,
+        obj.targetDate
+          ? new Date(obj.targetDate).toLocaleDateString('es-CL')
+          : '',
         obj.userName || '',
       ]);
       if (obj.depth > 0) {
@@ -1701,10 +2285,22 @@ export class ObjectivesService {
     return Buffer.from(await wb.xlsx.writeBuffer());
   }
 
-  async exportObjectivesTreePdf(tenantId: string, role?: string, userId?: string): Promise<Buffer> {
+  async exportObjectivesTreePdf(
+    tenantId: string,
+    role?: string,
+    userId?: string,
+  ): Promise<Buffer> {
     const tree = await this.getObjectiveTree(tenantId, role, userId);
     const flat = this.flattenTree(tree);
-    const statusLabels: Record<string, string> = { draft: 'Borrador', pending_approval: 'Pendiente', active: 'Activo', overdue: 'Vencido', completed: 'Completado', cancelled: 'Cancelado', abandoned: 'Abandonado' };
+    const statusLabels: Record<string, string> = {
+      draft: 'Borrador',
+      pending_approval: 'Pendiente',
+      active: 'Activo',
+      overdue: 'Vencido',
+      completed: 'Completado',
+      cancelled: 'Cancelado',
+      abandoned: 'Abandonado',
+    };
 
     const { jsPDF } = await import('jspdf');
     const autoTable = (await import('jspdf-autotable')).default;
@@ -1720,14 +2316,18 @@ export class ObjectivesService {
     doc.text('Objetivos / OKRs — Vista Árbol', margin, 16);
     doc.setFontSize(9);
     doc.setTextColor(201, 147, 58);
-    doc.text(`Exportado el ${new Date().toLocaleDateString('es-CL')}`, margin, 24);
+    doc.text(
+      `Exportado el ${new Date().toLocaleDateString('es-CL')}`,
+      margin,
+      24,
+    );
 
     let y = 38;
 
     // KPIs
     const total = flat.length;
-    const active = flat.filter(o => o.status === 'active').length;
-    const completedCount = flat.filter(o => o.status === 'completed').length;
+    const active = flat.filter((o) => o.status === 'active').length;
+    const completedCount = flat.filter((o) => o.status === 'completed').length;
     const roots = tree.length;
 
     const kpis = [
@@ -1754,18 +2354,38 @@ export class ObjectivesService {
     autoTable(doc, {
       startY: y,
       margin: { left: margin, right: margin },
-      head: [['Título', 'Tipo', 'Estado', 'Progreso', 'Peso', 'Fecha Meta', 'Responsable']],
+      head: [
+        [
+          'Título',
+          'Tipo',
+          'Estado',
+          'Progreso',
+          'Peso',
+          'Fecha Meta',
+          'Responsable',
+        ],
+      ],
       body: flat.map((o: any) => {
         const indent = '  '.repeat(o.depth);
         const prefix = o.depth > 0 ? '└ ' : '';
         return [
-          `${indent}${prefix}${o.title}`, o.type || 'OKR', statusLabels[o.status] || o.status,
-          `${o.progress}%`, o.weight || 0,
-          o.targetDate ? new Date(o.targetDate).toLocaleDateString('es-CL') : '-',
+          `${indent}${prefix}${o.title}`,
+          o.type || 'OKR',
+          statusLabels[o.status] || o.status,
+          `${o.progress}%`,
+          o.weight || 0,
+          o.targetDate
+            ? new Date(o.targetDate).toLocaleDateString('es-CL')
+            : '-',
           o.userName || '',
         ];
       }),
-      headStyles: { fillColor: [201, 147, 58], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 7 },
+      headStyles: {
+        fillColor: [201, 147, 58],
+        textColor: [255, 255, 255],
+        fontStyle: 'bold',
+        fontSize: 7,
+      },
       bodyStyles: { fontSize: 7 },
       alternateRowStyles: { fillColor: [248, 250, 252] },
       didParseCell: (data: any) => {
@@ -1785,8 +2405,17 @@ export class ObjectivesService {
       doc.setPage(i);
       doc.setFontSize(7);
       doc.setTextColor(148, 163, 184);
-      doc.text(`Generado el ${new Date().toLocaleDateString('es-CL')} — Eva360`, margin, doc.internal.pageSize.getHeight() - 8);
-      doc.text(`Página ${i} de ${pageCount}`, pageW - margin, doc.internal.pageSize.getHeight() - 8, { align: 'right' });
+      doc.text(
+        `Generado el ${new Date().toLocaleDateString('es-CL')} — Eva360`,
+        margin,
+        doc.internal.pageSize.getHeight() - 8,
+      );
+      doc.text(
+        `Página ${i} de ${pageCount}`,
+        pageW - margin,
+        doc.internal.pageSize.getHeight() - 8,
+        { align: 'right' },
+      );
     }
 
     return Buffer.from(doc.output('arraybuffer'));

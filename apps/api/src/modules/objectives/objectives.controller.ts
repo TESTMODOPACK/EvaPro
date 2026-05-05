@@ -27,6 +27,7 @@ import { CreateObjectiveDto } from './dto/create-objective.dto';
 import { UpdateObjectiveDto, CreateObjectiveUpdateDto } from './dto/update-objective.dto';
 import { BulkApproveDto } from './dto/bulk-approve.dto';
 import { CancelObjectiveDto } from './dto/cancel-objective.dto';
+import { ListObjectivesQueryDto } from './dto/list-objectives-query.dto';
 import { FeatureGuard } from '../../common/guards/feature.guard';
 import { Feature } from '../../common/decorators/feature.decorator';
 import { PlanFeature } from '../../common/constants/plan-features';
@@ -90,6 +91,37 @@ export class ObjectivesController {
 
     // employee, external: only own
     return this.objectivesService.findByUser(tenantId, req.user.userId);
+  }
+
+  /**
+   * T12 — Audit P2: listado paginado con filtros server-side.
+   * Reemplaza el patrón legacy `GET /objectives` (capado a 200).
+   *
+   * Query: ?page=1&pageSize=50&userId=&status=&type=&cycleId=&search=&department=
+   *
+   * Response: { data, total, page, pageSize, totalPages }
+   *
+   * Nota: el endpoint legacy `GET /objectives` se mantiene por
+   * compatibilidad con consumidores que aún esperan un array directo
+   * (export internals, otros). Migrar progresivamente a este endpoint.
+   */
+  @Get('list')
+  listPaginated(@Request() req: any, @Query() query: ListObjectivesQueryDto) {
+    return this.objectivesService.listObjectives(
+      req.user.tenantId,
+      req.user.role,
+      req.user.userId,
+      {
+        page: query.page,
+        pageSize: query.pageSize,
+        userId: query.userId,
+        status: query.status,
+        type: query.type,
+        cycleId: query.cycleId,
+        search: query.search,
+        department: query.department,
+      },
+    );
   }
 
   // B2.11: Objectives at risk (<40% progress)

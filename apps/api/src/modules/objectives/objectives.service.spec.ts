@@ -2808,3 +2808,201 @@ describe('ObjectivesService — Tarea 13 (at-risk SQL filter)', () => {
     expect(result).toEqual(fakeAtRisk);
   });
 });
+
+// ─── Tarea 12 — listObjectives paginado ────────────────────────────────
+
+describe('ObjectivesService — Tarea 12 (paginated list)', () => {
+  let service: ObjectivesService;
+  let objRepo: any;
+  let userRepo: any;
+
+  beforeEach(async () => {
+    objRepo = createMockRepository();
+    userRepo = createMockRepository();
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        ObjectivesService,
+        { provide: getRepositoryToken(Objective), useValue: objRepo },
+        {
+          provide: getRepositoryToken(ObjectiveUpdate),
+          useValue: createMockRepository(),
+        },
+        {
+          provide: getRepositoryToken(ObjectiveComment),
+          useValue: createMockRepository(),
+        },
+        {
+          provide: getRepositoryToken(KeyResult),
+          useValue: createMockRepository(),
+        },
+        {
+          provide: getRepositoryToken(ObjectiveRejection),
+          useValue: createMockRepository(),
+        },
+        {
+          provide: getRepositoryToken(EvaluationObjectiveSnapshot),
+          useValue: createMockRepository(),
+        },
+        { provide: getRepositoryToken(User), useValue: userRepo },
+        {
+          provide: getRepositoryToken(EvaluationCycle),
+          useValue: createMockRepository(),
+        },
+        { provide: AuditService, useValue: createMockAuditService() },
+        {
+          provide: EmailService,
+          useValue: {
+            sendObjectiveAssigned: jest.fn().mockResolvedValue(undefined),
+            sendObjectiveCompleted: jest.fn().mockResolvedValue(undefined),
+          },
+        },
+        {
+          provide: RecognitionService,
+          useValue: {
+            addPoints: jest.fn().mockResolvedValue(undefined),
+            checkAutoBadges: jest.fn().mockResolvedValue(undefined),
+          },
+        },
+        {
+          provide: NotificationsService,
+          useValue: createMockNotificationsService(),
+        },
+        {
+          provide: PushService,
+          useValue: { sendToUser: jest.fn().mockResolvedValue(undefined) },
+        },
+      ],
+    }).compile();
+
+    service = module.get<ObjectivesService>(ObjectivesService);
+  });
+
+  it('returns paginated shape with default page=1, pageSize=50', async () => {
+    const fakeData = [makeObj({ id: fakeUuid(1200) })];
+    const qb = objRepo.createQueryBuilder();
+    qb.getCount.mockResolvedValueOnce(120);
+    qb.getMany.mockResolvedValueOnce(fakeData);
+
+    const result = await service.listObjectives(TID, 'tenant_admin', UID, {});
+
+    expect(result.page).toBe(1);
+    expect(result.pageSize).toBe(50);
+    expect(result.total).toBe(120);
+    expect(result.totalPages).toBe(3); // ceil(120/50)
+    expect(result.data).toEqual(fakeData);
+    expect(qb.skip).toHaveBeenCalledWith(0);
+    expect(qb.take).toHaveBeenCalledWith(50);
+  });
+
+  it('clamps pageSize to 200 max', async () => {
+    const qb = objRepo.createQueryBuilder();
+    qb.getCount.mockResolvedValueOnce(0);
+    qb.getMany.mockResolvedValueOnce([]);
+
+    const result = await service.listObjectives(TID, 'tenant_admin', UID, {
+      pageSize: 500,
+    });
+
+    expect(result.pageSize).toBe(200);
+    expect(qb.take).toHaveBeenCalledWith(200);
+  });
+
+  it('computes skip correctly for page=3 with pageSize=20', async () => {
+    const qb = objRepo.createQueryBuilder();
+    qb.getCount.mockResolvedValueOnce(100);
+    qb.getMany.mockResolvedValueOnce([]);
+
+    await service.listObjectives(TID, 'tenant_admin', UID, {
+      page: 3,
+      pageSize: 20,
+    });
+
+    expect(qb.skip).toHaveBeenCalledWith(40); // (3-1) * 20
+  });
+
+  it('employee scope: forces userId = currentUserId, ignores opts.userId', async () => {
+    const qb = objRepo.createQueryBuilder();
+    qb.getCount.mockResolvedValueOnce(0);
+    qb.getMany.mockResolvedValueOnce([]);
+
+    await service.listObjectives(TID, 'employee', UID, {
+      userId: fakeUuid(99), // intento de spoofing — debe ignorarse
+    });
+
+    const selfCall = qb.andWhere.mock.calls.find(
+      (c: any[]) => c[1]?.selfUid === UID,
+    );
+    expect(selfCall).toBeDefined();
+    // No filterUid — el opts.userId del employee no se aplica
+    const filterCall = qb.andWhere.mock.calls.find((c: any[]) => c[1]?.filterUid);
+    expect(filterCall).toBeUndefined();
+  });
+
+  it('manager scope: own + direct reports (excluding tenant_admins)', async () => {
+    userRepo.find.mockResolvedValueOnce([
+      { id: fakeUuid(80), role: 'employee' },
+      { id: fakeUuid(81), role: 'tenant_admin' }, // debe excluirse
+      { id: fakeUuid(82), role: 'manager' },
+    ]);
+    const qb = objRepo.createQueryBuilder();
+    qb.getCount.mockResolvedValueOnce(0);
+    qb.getMany.mockResolvedValueOnce([]);
+
+    await service.listObjectives(TID, 'manager', UID, {});
+
+    const mgrCall = qb.andWhere.mock.calls.find((c: any[]) => c[1]?.mgrScope);
+    expect(mgrCall[1].mgrScope).toEqual([
+      UID,
+      fakeUuid(80),
+      fakeUuid(82),
+      // tenant_admin excluido
+    ]);
+  });
+
+  it('admin scope: respects opts.userId filter when provided', async () => {
+    const qb = objRepo.createQueryBuilder();
+    qb.getCount.mockResolvedValueOnce(0);
+    qb.getMany.mockResolvedValueOnce([]);
+    const targetUid = fakeUuid(42);
+
+    await service.listObjectives(TID, 'tenant_admin', UID, { userId: targetUid });
+
+    const filterCall = qb.andWhere.mock.calls.find((c: any[]) => c[1]?.filterUid);
+    expect(filterCall[1].filterUid).toBe(targetUid);
+  });
+
+  it('search applies LOWER LIKE on title + firstName + lastName', async () => {
+    const qb = objRepo.createQueryBuilder();
+    qb.getCount.mockResolvedValueOnce(0);
+    qb.getMany.mockResolvedValueOnce([]);
+
+    await service.listObjectives(TID, 'tenant_admin', UID, { search: 'CRM' });
+
+    const searchCall = qb.andWhere.mock.calls.find((c: any[]) =>
+      c[1]?.fSearch,
+    );
+    expect(searchCall[1].fSearch).toBe('%CRM%');
+    expect(String(searchCall[0])).toMatch(/LOWER\(o\.title\)/);
+    expect(String(searchCall[0])).toMatch(/firstName/);
+    expect(String(searchCall[0])).toMatch(/lastName/);
+  });
+
+  it('total reflects post-filter count, not the paginated slice', async () => {
+    const qb = objRepo.createQueryBuilder();
+    qb.getCount.mockResolvedValueOnce(85); // hay 85 que matchean
+    qb.getMany.mockResolvedValueOnce([
+      makeObj({ id: fakeUuid(1300) }),
+      makeObj({ id: fakeUuid(1301) }),
+    ]); // página devuelve solo 2
+
+    const result = await service.listObjectives(TID, 'tenant_admin', UID, {
+      page: 1,
+      pageSize: 2,
+    });
+
+    expect(result.total).toBe(85);
+    expect(result.data).toHaveLength(2);
+    expect(result.totalPages).toBe(43); // ceil(85/2)
+  });
+});
