@@ -1548,6 +1548,48 @@ export const api = {
       request<any[]>(`/objectives/tree`, {}, token),
   },
 
+  /** T10 — Audit P2: métricas recurrentes (KPI semánticamente correctos). */
+  recurringMetrics: {
+    list: (token: string, opts?: { ownerUserId?: string; isActive?: boolean }) => {
+      const params = new URLSearchParams();
+      if (opts?.ownerUserId) params.set('ownerUserId', opts.ownerUserId);
+      if (opts?.isActive !== undefined) params.set('isActive', String(opts.isActive));
+      const qs = params.toString();
+      return request<any[]>(`/recurring-metrics${qs ? `?${qs}` : ''}`, {}, token);
+    },
+    getById: (token: string, id: string) =>
+      request<any>(`/recurring-metrics/${id}`, {}, token),
+    /** Estado actual: { metric, lastMeasurement, status, daysSinceLastMeasurement, isOverdue }. */
+    getState: (token: string, id: string) =>
+      request<{
+        metric: any;
+        lastMeasurement: any | null;
+        status: 'green' | 'yellow' | 'red' | 'no_data';
+        daysSinceLastMeasurement: number | null;
+        isOverdue: boolean;
+      }>(`/recurring-metrics/${id}/state`, {}, token),
+    create: (token: string, data: any) =>
+      request<any>('/recurring-metrics', { method: 'POST', body: JSON.stringify(data) }, token),
+    update: (token: string, id: string, data: any) =>
+      request<any>(`/recurring-metrics/${id}`, { method: 'PATCH', body: JSON.stringify(data) }, token),
+    deactivate: (token: string, id: string) =>
+      request<void>(`/recurring-metrics/${id}`, { method: 'DELETE' }, token),
+    addMeasurement: (
+      token: string,
+      id: string,
+      data: { value: number; observedAt?: string; notes?: string },
+    ) =>
+      request<any>(
+        `/recurring-metrics/${id}/measurements`,
+        { method: 'POST', body: JSON.stringify(data) },
+        token,
+      ),
+    listMeasurements: (token: string, id: string, limit?: number) => {
+      const qs = limit ? `?limit=${limit}` : '';
+      return request<any[]>(`/recurring-metrics/${id}/measurements${qs}`, {}, token);
+    },
+  },
+
   reports: {
     executiveDashboard: (token: string, cycleId?: string, scope?: 'org') => {
       const params = new URLSearchParams();

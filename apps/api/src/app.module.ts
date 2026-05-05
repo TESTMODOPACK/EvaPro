@@ -22,6 +22,7 @@ import { ReportsModule } from './modules/reports/reports.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { FeedbackModule } from './modules/feedback/feedback.module';
 import { ObjectivesModule } from './modules/objectives/objectives.module';
+import { RecurringMetricsModule } from './modules/recurring-metrics/recurring-metrics.module';
 import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
 import { TalentModule } from './modules/talent/talent.module';
 import { DevelopmentModule } from './modules/development/development.module';
@@ -108,6 +109,7 @@ import { CsrfGuard } from './common/guards/csrf.guard';
     NotificationsModule,
     FeedbackModule,
     ObjectivesModule,
+    RecurringMetricsModule,
     SubscriptionsModule,
     TalentModule,
     DevelopmentModule,
