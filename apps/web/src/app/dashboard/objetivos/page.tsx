@@ -724,6 +724,10 @@ function TreeNode({ node, depth = 0 }: { node: any; depth?: number }) {
 
 function ObjectiveTreeView({ data, loading }: { data: any[]; loading: boolean }) {
   const { t } = useTranslation();
+  // Audit P1 T7 — el filtro 'abandoned' es admin-only (soft-delete técnico).
+  // Para empleado/manager solo se muestra 'cancelled' (cancelación de negocio).
+  const userRole = useAuthStore((s) => s.user?.role) || '';
+  const isAdminOrSuper = userRole === 'tenant_admin' || userRole === 'super_admin';
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [treeSearch, setTreeSearch] = useState('');
   const [treeType, setTreeType] = useState('');
@@ -803,7 +807,9 @@ function ObjectiveTreeView({ data, loading }: { data: any[]; loading: boolean })
           <option value="overdue">Vencido</option>
           <option value="completed">Completado</option>
           <option value="cancelled">Cancelado</option>
-          <option value="abandoned">Abandonado</option>
+          {isAdminOrSuper && (
+            <option value="abandoned">Abandonado (admin)</option>
+          )}
         </select>
         {(treeSearch || treeType || treeStatus) && (
           <button
@@ -964,6 +970,13 @@ function ObjetivosPageContent() {
   const userId = useAuthStore((s) => s.user?.userId) || '';
   const toast = useToastStore();
 
+  const isAdmin = userRole === 'tenant_admin';
+  const isSuperAdmin = userRole === 'super_admin';
+  // Fix T7 follow-up: ABANDONED quedó reservado a soft-delete técnico admin
+  // (DELETE /:id, restringido a super/tenant_admin). End users no deberían
+  // ver ese filtro — confunde con CANCELLED (cancelación de negocio).
+  const canSeeAbandoned = isAdmin || isSuperAdmin;
+
   const statusLabel: Record<string, string> = {
     draft: t('objetivos.objStatus.draft'),
     pending_approval: t('objetivos.objStatus.pending_approval'),
@@ -973,9 +986,13 @@ function ObjetivosPageContent() {
     completed: t('objetivos.objStatus.completed'),
     // T7 — Audit P1: cancelado por decisión de negocio (con razón)
     cancelled: 'Cancelado',
-    abandoned: t('objetivos.objStatus.cancelled'),
+    // ABANDONED es soft-delete admin. Etiqueta diferenciada para evitar
+    // confusión con "Cancelado" — el i18n key legacy decía solo "Cancelado".
+    abandoned: 'Abandonado (admin)',
   };
 
+  // Pills consistentes con el dropdown del Árbol: mismas labels, mismos
+  // estados, misma visibilidad por rol. 'abandoned' solo lo ve admin/super.
   const filterPills: { key: FilterStatus; label: string }[] = [
     { key: 'all', label: 'Todos' },
     { key: 'draft', label: t('objetivos.objStatus.draft') },
@@ -983,12 +1000,12 @@ function ObjetivosPageContent() {
     { key: 'active', label: t('objetivos.objStatus.in_progress') },
     { key: 'overdue', label: '⏰ Vencidos' },
     { key: 'completed', label: t('objetivos.objStatus.completed') },
-    { key: 'cancelled', label: '🚫 Cancelados' },
-    { key: 'abandoned', label: t('objetivos.objStatus.cancelled') },
+    { key: 'cancelled', label: 'Cancelado' },
+    ...(canSeeAbandoned
+      ? ([{ key: 'abandoned' as FilterStatus, label: 'Abandonado (admin)' }])
+      : []),
     { key: 'at_risk', label: '⚠️ En riesgo' },
   ];
-
-  const isAdmin = userRole === 'tenant_admin';
   const isManager = userRole === 'manager';
   const isEmployee = userRole === 'employee';
   const canCreate = true; // all roles can create
