@@ -3006,3 +3006,288 @@ describe('ObjectivesService — Tarea 12 (paginated list)', () => {
     expect(result.totalPages).toBe(43); // ceil(85/2)
   });
 });
+
+// ─── Tarea 11 — Carry-over al siguiente ciclo ──────────────────────────
+
+describe('ObjectivesService — Tarea 11 (carry-over)', () => {
+  let service: ObjectivesService;
+  let objRepo: any;
+  let krRepo: any;
+  let cycleRepo: any;
+
+  const SOURCE_ID = fakeUuid(1400);
+  const TARGET_CYCLE = fakeUuid(1401);
+
+  beforeEach(async () => {
+    objRepo = createMockRepository();
+    krRepo = createMockRepository();
+    cycleRepo = createMockRepository();
+    cycleRepo.findOne.mockImplementation((args: any) => {
+      const id = args?.where?.id;
+      if (id === TARGET_CYCLE) {
+        return Promise.resolve({
+          id: TARGET_CYCLE,
+          tenantId: TID,
+          status: 'active', // open
+        });
+      }
+      return Promise.resolve(null);
+    });
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        ObjectivesService,
+        { provide: getRepositoryToken(Objective), useValue: objRepo },
+        {
+          provide: getRepositoryToken(ObjectiveUpdate),
+          useValue: createMockRepository(),
+        },
+        {
+          provide: getRepositoryToken(ObjectiveComment),
+          useValue: createMockRepository(),
+        },
+        { provide: getRepositoryToken(KeyResult), useValue: krRepo },
+        {
+          provide: getRepositoryToken(ObjectiveRejection),
+          useValue: createMockRepository(),
+        },
+        {
+          provide: getRepositoryToken(EvaluationObjectiveSnapshot),
+          useValue: createMockRepository(),
+        },
+        { provide: getRepositoryToken(User), useValue: createMockRepository() },
+        { provide: getRepositoryToken(EvaluationCycle), useValue: cycleRepo },
+        { provide: AuditService, useValue: createMockAuditService() },
+        {
+          provide: EmailService,
+          useValue: {
+            sendObjectiveAssigned: jest.fn().mockResolvedValue(undefined),
+            sendObjectiveCompleted: jest.fn().mockResolvedValue(undefined),
+          },
+        },
+        {
+          provide: RecognitionService,
+          useValue: {
+            addPoints: jest.fn().mockResolvedValue(undefined),
+            checkAutoBadges: jest.fn().mockResolvedValue(undefined),
+          },
+        },
+        {
+          provide: NotificationsService,
+          useValue: createMockNotificationsService(),
+        },
+        {
+          provide: PushService,
+          useValue: { sendToUser: jest.fn().mockResolvedValue(undefined) },
+        },
+      ],
+    }).compile();
+
+    service = module.get<ObjectivesService>(ObjectivesService);
+  });
+
+  it('carries over an ACTIVE OKR with KRs, resetting progress and currentValue', async () => {
+    const future = new Date();
+    future.setDate(future.getDate() + 60);
+    const source = makeObj({
+      id: SOURCE_ID,
+      type: ObjectiveType.OKR,
+      status: ObjectiveStatus.ACTIVE,
+      progress: 70,
+      title: 'Implementar CRM',
+      cycleId: fakeUuid(1402),
+      targetDate: future,
+    });
+    objRepo.findOne.mockResolvedValueOnce(source);
+    krRepo.find.mockResolvedValueOnce([
+      makeKR({
+        id: fakeUuid(1410),
+        objectiveId: SOURCE_ID,
+        baseValue: 0,
+        targetValue: 100,
+        currentValue: 70,
+        status: KRStatus.ACTIVE,
+      }),
+    ]);
+    objRepo.create.mockImplementation((dto: any) => dto);
+    objRepo.save.mockImplementation((entity: any) =>
+      Promise.resolve({ ...entity, id: fakeUuid(1420) }),
+    );
+    krRepo.create.mockImplementation((dto: any) => dto);
+    krRepo.save.mockImplementation((entity: any) => Promise.resolve(entity));
+
+    const result = await service.carryOverObjectives(TID, UID, {
+      objectiveIds: [SOURCE_ID],
+      targetCycleId: TARGET_CYCLE,
+    });
+
+    expect(result.created).toEqual([
+      { sourceId: SOURCE_ID, newId: fakeUuid(1420) },
+    ]);
+    expect(result.cancelled).toEqual([]);
+    expect(result.failed).toEqual([]);
+
+    // Verifica el shape del nuevo objetivo
+    const newObj = objRepo.save.mock.calls[0][0];
+    expect(newObj).toMatchObject({
+      title: 'Implementar CRM',
+      cycleId: TARGET_CYCLE,
+      progress: 0,
+      status: ObjectiveStatus.ACTIVE,
+      carriedFromObjectiveId: SOURCE_ID,
+    });
+
+    // Verifica que el KR se duplicó con currentValue=baseValue
+    const newKr = krRepo.save.mock.calls[0][0];
+    expect(newKr).toMatchObject({
+      currentValue: 0, // base, no el 70 del source
+      status: KRStatus.ACTIVE,
+    });
+  });
+
+  it('clears targetDate if it is in the past (let owner re-set)', async () => {
+    const past = new Date();
+    past.setDate(past.getDate() - 30);
+    const source = makeObj({
+      id: SOURCE_ID,
+      status: ObjectiveStatus.OVERDUE,
+      progress: 20,
+      targetDate: past,
+    });
+    objRepo.findOne.mockResolvedValueOnce(source);
+    objRepo.create.mockImplementation((dto: any) => dto);
+    objRepo.save.mockImplementation((entity: any) =>
+      Promise.resolve({ ...entity, id: fakeUuid(1421) }),
+    );
+
+    await service.carryOverObjectives(TID, UID, {
+      objectiveIds: [SOURCE_ID],
+      targetCycleId: TARGET_CYCLE,
+    });
+
+    const newObj = objRepo.save.mock.calls[0][0];
+    expect(newObj.targetDate).toBeNull();
+  });
+
+  it('rejects carry-over of terminal objectives (COMPLETED, CANCELLED, ABANDONED)', async () => {
+    for (const terminalStatus of [
+      ObjectiveStatus.COMPLETED,
+      ObjectiveStatus.CANCELLED,
+      ObjectiveStatus.ABANDONED,
+    ]) {
+      objRepo.save.mockClear();
+      objRepo.findOne.mockReset();
+      const source = makeObj({ id: SOURCE_ID, status: terminalStatus });
+      objRepo.findOne.mockResolvedValueOnce(source);
+
+      const result = await service.carryOverObjectives(TID, UID, {
+        objectiveIds: [SOURCE_ID],
+        targetCycleId: TARGET_CYCLE,
+      });
+
+      expect(result.created).toEqual([]);
+      expect(result.failed).toHaveLength(1);
+      expect(result.failed[0].reason).toMatch(/terminal/);
+      expect(objRepo.save).not.toHaveBeenCalled();
+    }
+  });
+
+  it('marks objectiveId as failed when source not found', async () => {
+    objRepo.findOne.mockResolvedValueOnce(null);
+
+    const result = await service.carryOverObjectives(TID, UID, {
+      objectiveIds: [SOURCE_ID],
+      targetCycleId: TARGET_CYCLE,
+    });
+
+    expect(result.created).toEqual([]);
+    expect(result.failed).toEqual([
+      { id: SOURCE_ID, reason: 'Objetivo no encontrado' },
+    ]);
+  });
+
+  it('cancels source when cancelSource=true with valid reason', async () => {
+    const source = makeObj({
+      id: SOURCE_ID,
+      status: ObjectiveStatus.ACTIVE,
+    });
+    // findOne se llama 2x: una para carry-over (source), otra para cancel (mismo)
+    objRepo.findOne.mockResolvedValue(source);
+    // findById usa createQueryBuilder().getOne()
+    const qb = objRepo.createQueryBuilder();
+    qb.getOne.mockResolvedValue(source);
+    objRepo.create.mockImplementation((dto: any) => dto);
+    objRepo.save.mockImplementation((entity: any) =>
+      Promise.resolve({ ...entity, id: entity.id ?? fakeUuid(1422) }),
+    );
+
+    const result = await service.carryOverObjectives(TID, UID, {
+      objectiveIds: [SOURCE_ID],
+      targetCycleId: TARGET_CYCLE,
+      cancelSource: true,
+      sourceCancelReason: 'Continúa en Q2 con scope ajustado',
+    });
+
+    expect(result.created).toHaveLength(1);
+    expect(result.cancelled).toEqual([SOURCE_ID]);
+  });
+
+  it('throws if cancelSource=true but reason is missing or too short', async () => {
+    await expect(
+      service.carryOverObjectives(TID, UID, {
+        objectiveIds: [SOURCE_ID],
+        targetCycleId: TARGET_CYCLE,
+        cancelSource: true,
+      }),
+    ).rejects.toThrow(/sourceCancelReason/);
+
+    await expect(
+      service.carryOverObjectives(TID, UID, {
+        objectiveIds: [SOURCE_ID],
+        targetCycleId: TARGET_CYCLE,
+        cancelSource: true,
+        sourceCancelReason: 'x', // <5 chars
+      }),
+    ).rejects.toThrow(/sourceCancelReason/);
+  });
+
+  it('rejects when target cycle does not exist', async () => {
+    cycleRepo.findOne.mockResolvedValueOnce(null);
+
+    await expect(
+      service.carryOverObjectives(TID, UID, {
+        objectiveIds: [SOURCE_ID],
+        targetCycleId: fakeUuid(9999),
+      }),
+    ).rejects.toThrow(/no existe/);
+  });
+
+  it('processes batch with mix of valid and invalid sources', async () => {
+    const validSource = makeObj({
+      id: fakeUuid(1430),
+      status: ObjectiveStatus.ACTIVE,
+    });
+    const completedSource = makeObj({
+      id: fakeUuid(1431),
+      status: ObjectiveStatus.COMPLETED,
+    });
+
+    objRepo.findOne
+      .mockResolvedValueOnce(validSource)
+      .mockResolvedValueOnce(completedSource)
+      .mockResolvedValueOnce(null); // tercero no existe
+    objRepo.create.mockImplementation((dto: any) => dto);
+    objRepo.save.mockImplementation((entity: any) =>
+      Promise.resolve({ ...entity, id: fakeUuid(1432) }),
+    );
+
+    const result = await service.carryOverObjectives(TID, UID, {
+      objectiveIds: [fakeUuid(1430), fakeUuid(1431), fakeUuid(1433)],
+      targetCycleId: TARGET_CYCLE,
+    });
+
+    expect(result.created).toHaveLength(1);
+    expect(result.created[0].sourceId).toBe(fakeUuid(1430));
+    expect(result.failed).toHaveLength(2);
+  });
+});

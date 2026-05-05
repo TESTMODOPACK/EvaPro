@@ -964,6 +964,162 @@ export class ObjectivesService {
   }
 
   /**
+   * T11 — Audit P2: carry-over de objetivos al ciclo siguiente.
+   * Para cada id válido crea un duplicado en el ciclo destino con
+   * progress=0, status=ACTIVE, `carriedFromObjectiveId` apuntando al
+   * source. Duplica los KRs (currentValue=baseValue, status=ACTIVE).
+   * Si `cancelSource=true`, cancela el source via `cancel()`.
+   * Devuelve { created, cancelled, failed[] } per-item — un fallo no
+   * aborta los demás (mismo patrón que bulkApprove de T4).
+   */
+  async carryOverObjectives(
+    tenantId: string,
+    actorUserId: string,
+    opts: {
+      objectiveIds: string[];
+      targetCycleId: string;
+      cancelSource?: boolean;
+      sourceCancelReason?: string;
+    },
+  ): Promise<{
+    created: Array<{ sourceId: string; newId: string }>;
+    cancelled: string[];
+    failed: Array<{ id: string; reason: string }>;
+  }> {
+    await this.validateCycleOpen(opts.targetCycleId, tenantId);
+
+    if (
+      opts.cancelSource &&
+      (!opts.sourceCancelReason || opts.sourceCancelReason.length < 5)
+    ) {
+      throw new BadRequestException(
+        'Si cancelSource=true, sourceCancelReason debe tener al menos 5 caracteres',
+      );
+    }
+
+    const created: Array<{ sourceId: string; newId: string }> = [];
+    const cancelled: string[] = [];
+    const failed: Array<{ id: string; reason: string }> = [];
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    for (const sourceId of opts.objectiveIds) {
+      try {
+        const source = await this.objectiveRepo.findOne({
+          where: { id: sourceId, tenantId },
+        });
+        if (!source) {
+          failed.push({ id: sourceId, reason: 'Objetivo no encontrado' });
+          continue;
+        }
+
+        if (
+          source.status === ObjectiveStatus.COMPLETED ||
+          source.status === ObjectiveStatus.CANCELLED ||
+          source.status === ObjectiveStatus.ABANDONED
+        ) {
+          failed.push({
+            id: sourceId,
+            reason: `Objetivo en estado terminal (${source.status}) no puede llevarse al próximo ciclo`,
+          });
+          continue;
+        }
+
+        // targetDate: solo conservar si es futura, sino null para que
+        // el owner la fije con el horizonte del nuevo ciclo.
+        const newTargetDate =
+          source.targetDate && new Date(source.targetDate) >= today
+            ? source.targetDate
+            : null;
+
+        const newObj = await this.objectiveRepo.save(
+          this.objectiveRepo.create({
+            tenantId,
+            userId: source.userId,
+            title: source.title,
+            description: source.description,
+            type: source.type,
+            cycleId: opts.targetCycleId,
+            weight: source.weight,
+            parentObjectiveId: source.parentObjectiveId,
+            targetDate: newTargetDate as Date | undefined,
+            status: ObjectiveStatus.ACTIVE,
+            progress: 0,
+            carriedFromObjectiveId: source.id,
+          }),
+        );
+
+        // Duplicar KRs si el source es OKR (con valores reset al base).
+        if (source.type === 'OKR') {
+          const sourceKrs = await this.keyResultRepo.find({
+            where: { tenantId, objectiveId: source.id },
+          });
+          for (const kr of sourceKrs) {
+            await this.keyResultRepo.save(
+              this.keyResultRepo.create({
+                tenantId,
+                objectiveId: newObj.id,
+                description: kr.description,
+                unit: kr.unit,
+                baseValue: kr.baseValue,
+                targetValue: kr.targetValue,
+                currentValue: kr.baseValue, // reset al base
+                status: KRStatus.ACTIVE,
+              }),
+            );
+          }
+        }
+
+        this.auditService
+          .log(
+            tenantId,
+            actorUserId,
+            'objective.carried_over',
+            'objective',
+            newObj.id,
+            {
+              sourceId: source.id,
+              sourceCycleId: source.cycleId,
+              targetCycleId: opts.targetCycleId,
+            },
+          )
+          .catch(() => {});
+
+        created.push({ sourceId: source.id, newId: newObj.id });
+
+        // Cancelar source si se pidió. Usa service.cancel() para preservar
+        // garantías de validación y audit (mismo flujo que UI manual).
+        if (opts.cancelSource) {
+          try {
+            await this.cancel(
+              tenantId,
+              source.id,
+              opts.sourceCancelReason as string,
+              actorUserId,
+            );
+            cancelled.push(source.id);
+          } catch (cancelErr: unknown) {
+            const msg =
+              cancelErr instanceof Error
+                ? cancelErr.message
+                : String(cancelErr);
+            failed.push({
+              id: source.id,
+              reason: `Carry-over creado pero cancelación del source falló: ${msg}`,
+            });
+          }
+        }
+      } catch (err: unknown) {
+        const reason = err instanceof Error ? err.message : 'Error desconocido';
+        failed.push({ id: sourceId, reason });
+      }
+    }
+
+    return { created, cancelled, failed };
+  }
+
+  /**
    * T8.2 — Audit P1: lista el historial completo de rechazos de un
    * objetivo, ordenado del más reciente al más antiguo. Cada fila
    * incluye razón, autor (con datos básicos del user) y timestamp.

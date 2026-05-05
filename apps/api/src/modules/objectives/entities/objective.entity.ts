@@ -126,6 +126,13 @@ export class Objective {
   @Column({ type: 'timestamptz', name: 'cancelled_at', nullable: true })
   cancelledAt: Date | null;
 
+  // T11 (Audit P2): linaje de carry-over entre ciclos. Cuando un objetivo
+  // se "lleva" al próximo ciclo (continuación de un OKR multi-período),
+  // el nuevo objetivo apunta al original via este campo. Diferente de
+  // parentObjectiveId (que es cascading OKR jerárquico).
+  @Column({ type: 'uuid', name: 'carried_from_objective_id', nullable: true })
+  carriedFromObjectiveId: string | null;
+
   @Column({ type: 'uuid', name: 'approved_by', nullable: true })
   approvedBy: string | null;
 

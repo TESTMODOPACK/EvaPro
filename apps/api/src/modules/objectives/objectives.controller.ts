@@ -28,6 +28,7 @@ import { UpdateObjectiveDto, CreateObjectiveUpdateDto } from './dto/update-objec
 import { BulkApproveDto } from './dto/bulk-approve.dto';
 import { CancelObjectiveDto } from './dto/cancel-objective.dto';
 import { ListObjectivesQueryDto } from './dto/list-objectives-query.dto';
+import { CarryOverObjectivesDto } from './dto/carry-over-objectives.dto';
 import { FeatureGuard } from '../../common/guards/feature.guard';
 import { Feature } from '../../common/decorators/feature.decorator';
 import { PlanFeature } from '../../common/constants/plan-features';
@@ -301,6 +302,30 @@ export class ObjectivesController {
    * client-side que no reportaba fallidos. Cada item se procesa de
    * manera independiente; un fallo no aborta el resto.
    */
+  /**
+   * T11 — Audit P2: carry-over de objetivos no terminados al ciclo
+   * siguiente. Body: { objectiveIds, targetCycleId, cancelSource?,
+   * sourceCancelReason? }. Devuelve { created, cancelled, failed[] }.
+   *
+   * Permisos: super_admin / tenant_admin / manager. El service valida
+   * cada item; manager solo puede llevar objetivos de su scope (similar
+   * a bulk-approve en T4).
+   */
+  @Post('carry-over')
+  @Roles('super_admin', 'tenant_admin', 'manager')
+  carryOver(@Request() req: any, @Body() dto: CarryOverObjectivesDto) {
+    return this.objectivesService.carryOverObjectives(
+      req.user.tenantId,
+      req.user.userId,
+      {
+        objectiveIds: dto.objectiveIds,
+        targetCycleId: dto.targetCycleId,
+        cancelSource: dto.cancelSource,
+        sourceCancelReason: dto.sourceCancelReason,
+      },
+    );
+  }
+
   @Post('bulk-approve')
   @Roles('super_admin', 'tenant_admin', 'manager')
   bulkApprove(@Request() req: any, @Body() dto: BulkApproveDto) {
