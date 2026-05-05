@@ -1004,16 +1004,41 @@ export class ObjectivesService {
   }
 
   // B2.11: Objectives at risk — considers both progress AND time elapsed
-  // An objective is at-risk if its progress is behind the expected pace
-  // Expected pace = (elapsed time / total time) * 100
-  // At-risk when: progress < expectedPace * 0.6 (40% behind expected) OR progress < 40% with no target date
+  //
+  // T13 — Audit P2: el cálculo de pace ahora corre en SQL en lugar de
+  // traer todos los activos a memoria y filtrar en JS. Beneficio:
+  //   - Postgres usa los índices y solo retorna at-risk
+  //   - Tenants con miles de objetivos activos dejan de degradar
+  //   - Memoria del proceso baja drásticamente (no carga todos los activos)
+  //
+  // Expresión SQL del threshold de at-risk:
+  //   - target_date IS NULL              → progress < 40 (threshold simple)
+  //   - target_date <= CURRENT_DATE      → progress < 100 (vencido = at-risk si no completado)
+  //   - target_date <= created_at::date  → progress < 100 (totalDuration <= 0 edge case)
+  //   - default                          → progress < pace * 0.6
+  //     donde pace = (elapsed / total_duration, capped to 1) * 100
   async getAtRiskObjectives(tenantId: string, filterUserId?: string, role?: string, currentUserId?: string): Promise<Objective[]> {
-    // Fetch all active objectives first, then filter intelligently
     const qb = this.objectiveRepo
       .createQueryBuilder('o')
       .leftJoinAndSelect('o.user', 'u', 'u.tenant_id = o.tenant_id')
       .where('o.tenantId = :tenantId', { tenantId })
-      .andWhere('o.status = :status', { status: ObjectiveStatus.ACTIVE });
+      .andWhere('o.status = :status', { status: ObjectiveStatus.ACTIVE })
+      // Filtro at-risk en SQL: el WHERE final solo deja pasar objetivos
+      // cuyo progress está por debajo del threshold calculado per-fila.
+      .andWhere(
+        `o.progress < (
+          CASE
+            WHEN o.target_date IS NULL THEN 40
+            WHEN o.target_date <= CURRENT_DATE THEN 100
+            WHEN o.target_date::timestamp <= o.created_at THEN 100
+            ELSE LEAST(
+              1.0,
+              EXTRACT(EPOCH FROM (NOW() - o.created_at)) /
+              NULLIF(EXTRACT(EPOCH FROM (o.target_date::timestamp - o.created_at)), 0)
+            ) * 100 * 0.6
+          END
+        )`,
+      );
 
     if (role === 'manager' && currentUserId) {
       // Manager: only see at-risk objectives for their direct reports + own
@@ -1021,31 +1046,8 @@ export class ObjectivesService {
     } else if (filterUserId) {
       qb.andWhere('o.userId = :filterUserId', { filterUserId });
     }
-    const activeObjectives = await qb.orderBy('o.progress', 'ASC').getMany();
 
-    const now = new Date();
-    return activeObjectives.filter((o) => {
-      if (!o.targetDate) {
-        // No target date: fallback to simple threshold
-        return o.progress < 40;
-      }
-
-      const createdAt = new Date(o.createdAt);
-      const targetDate = new Date(o.targetDate);
-      const totalDuration = targetDate.getTime() - createdAt.getTime();
-
-      if (totalDuration <= 0) {
-        // Target date already passed or same day → at risk if not done
-        return o.progress < 100;
-      }
-
-      const elapsed = now.getTime() - createdAt.getTime();
-      const timeRatio = Math.min(elapsed / totalDuration, 1); // 0..1
-      const expectedProgress = timeRatio * 100; // Expected % if linear pace
-
-      // At-risk if progress is less than 60% of what's expected at this point in time
-      return o.progress < expectedProgress * 0.6;
-    });
+    return qb.orderBy('o.progress', 'ASC').getMany();
   }
 
   async getCompletionStats(tenantId: string, userId: string) {

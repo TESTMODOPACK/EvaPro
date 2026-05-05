@@ -2678,3 +2678,133 @@ describe('ObjectivesService — Tarea 9 (history-by-period with includeActive)',
     expect(result.periods[0].totalObjectives).toBe(4);
   });
 });
+
+// ─── Tarea 13 — getAtRiskObjectives con filtro SQL ─────────────────────
+
+describe('ObjectivesService — Tarea 13 (at-risk SQL filter)', () => {
+  let service: ObjectivesService;
+  let objRepo: any;
+
+  beforeEach(async () => {
+    objRepo = createMockRepository();
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        ObjectivesService,
+        { provide: getRepositoryToken(Objective), useValue: objRepo },
+        {
+          provide: getRepositoryToken(ObjectiveUpdate),
+          useValue: createMockRepository(),
+        },
+        {
+          provide: getRepositoryToken(ObjectiveComment),
+          useValue: createMockRepository(),
+        },
+        {
+          provide: getRepositoryToken(KeyResult),
+          useValue: createMockRepository(),
+        },
+        {
+          provide: getRepositoryToken(ObjectiveRejection),
+          useValue: createMockRepository(),
+        },
+        {
+          provide: getRepositoryToken(EvaluationObjectiveSnapshot),
+          useValue: createMockRepository(),
+        },
+        { provide: getRepositoryToken(User), useValue: createMockRepository() },
+        {
+          provide: getRepositoryToken(EvaluationCycle),
+          useValue: createMockRepository(),
+        },
+        { provide: AuditService, useValue: createMockAuditService() },
+        {
+          provide: EmailService,
+          useValue: {
+            sendObjectiveAssigned: jest.fn().mockResolvedValue(undefined),
+            sendObjectiveCompleted: jest.fn().mockResolvedValue(undefined),
+          },
+        },
+        {
+          provide: RecognitionService,
+          useValue: {
+            addPoints: jest.fn().mockResolvedValue(undefined),
+            checkAutoBadges: jest.fn().mockResolvedValue(undefined),
+          },
+        },
+        {
+          provide: NotificationsService,
+          useValue: createMockNotificationsService(),
+        },
+        {
+          provide: PushService,
+          useValue: { sendToUser: jest.fn().mockResolvedValue(undefined) },
+        },
+      ],
+    }).compile();
+
+    service = module.get<ObjectivesService>(ObjectivesService);
+  });
+
+  it('builds the query with status=ACTIVE and the pace CASE expression in WHERE', async () => {
+    const qb = objRepo.createQueryBuilder();
+    qb.getMany.mockResolvedValueOnce([]);
+
+    await service.getAtRiskObjectives(TID);
+
+    // Verifica que el filtro de pace está en SQL (CASE/LEAST/EPOCH)
+    const andWhereCalls = qb.andWhere.mock.calls;
+    const paceCallSql = andWhereCalls.find((c: any[]) =>
+      String(c[0]).includes('CASE'),
+    );
+    expect(paceCallSql).toBeDefined();
+    expect(String(paceCallSql[0])).toMatch(/o\.target_date IS NULL/);
+    expect(String(paceCallSql[0])).toMatch(/LEAST/);
+    expect(String(paceCallSql[0])).toMatch(/EPOCH/);
+    // Y que sigue filtrando por status=ACTIVE
+    const statusCall = andWhereCalls.find(
+      (c: any[]) => String(c[0]).includes('o.status') && c[1]?.status,
+    );
+    expect(statusCall[1].status).toBe(ObjectiveStatus.ACTIVE);
+  });
+
+  it('applies manager scope via o.userId OR u.manager_id', async () => {
+    const qb = objRepo.createQueryBuilder();
+    qb.getMany.mockResolvedValueOnce([]);
+
+    await service.getAtRiskObjectives(TID, undefined, 'manager', UID);
+
+    const mgrCall = qb.andWhere.mock.calls.find((c: any[]) =>
+      String(c[0]).includes('manager_id'),
+    );
+    expect(mgrCall).toBeDefined();
+    expect(mgrCall[1].mgr).toBe(UID);
+  });
+
+  it('applies filterUserId scope when not manager', async () => {
+    const qb = objRepo.createQueryBuilder();
+    qb.getMany.mockResolvedValueOnce([]);
+    const otherUser = fakeUuid(99);
+
+    await service.getAtRiskObjectives(TID, otherUser, 'tenant_admin');
+
+    const userFilter = qb.andWhere.mock.calls.find((c: any[]) =>
+      c[1]?.filterUserId,
+    );
+    expect(userFilter[1].filterUserId).toBe(otherUser);
+  });
+
+  it('orders by progress ASC (most behind first) and returns whatever the QB returns', async () => {
+    const fakeAtRisk = [
+      makeObj({ id: fakeUuid(1100), progress: 5, status: ObjectiveStatus.ACTIVE }),
+      makeObj({ id: fakeUuid(1101), progress: 15, status: ObjectiveStatus.ACTIVE }),
+    ];
+    const qb = objRepo.createQueryBuilder();
+    qb.getMany.mockResolvedValueOnce(fakeAtRisk);
+
+    const result = await service.getAtRiskObjectives(TID);
+
+    expect(qb.orderBy).toHaveBeenCalledWith('o.progress', 'ASC');
+    expect(result).toEqual(fakeAtRisk);
+  });
+});
