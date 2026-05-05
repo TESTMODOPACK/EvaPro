@@ -752,21 +752,32 @@ function ObjectiveTreeView({ data, loading }: { data: any[]; loading: boolean })
     return nameMatch && typeMatch && statusMatch;
   };
 
-  const filterTree = (nodes: any[]): any[] => {
-    return nodes.reduce((acc: any[], node: any) => {
-      const filteredChildren = filterTree(node.children || []);
-      if (matchesFilter(node) || filteredChildren.length > 0) {
-        acc.push({ ...node, children: filteredChildren });
+  // Audit P2 — hotfix consistencia Lista ↔ Árbol:
+  // Cuando hay filtro activo, NO mantenemos padres no-matcheantes "por
+  // jerarquía". Aplanamos a los nodos que realmente matchean y los
+  // agrupamos por su owner real. Sin esto, un objetivo cancelado hijo de
+  // uno activo aparecía bajo el grupo del padre (owner equivocado) y se
+  // contaba al padre como match, dando totales distintos a la pestaña
+  // Lista (Lista=3 vs Árbol=4 en el caso reportado).
+  const collectMatches = (nodes: any[], acc: any[] = []): any[] => {
+    for (const node of nodes) {
+      if (matchesFilter(node)) {
+        acc.push({ ...node, children: [] }); // aplanado: el match va sin descendientes
       }
-      return acc;
-    }, []);
+      if (node.children && node.children.length > 0) {
+        collectMatches(node.children, acc);
+      }
+    }
+    return acc;
   };
 
-  const filteredData = (treeSearch || treeType || treeStatus) ? filterTree(data) : data;
+  const hasFilter = !!(treeSearch || treeType || treeStatus);
+  const filteredData = hasFilter ? collectMatches(data) : data;
 
-  // Group by user for better visualization
+  // totalCount: con filtro activo es length plano (los matches ya están
+  // como roots); sin filtro recorre la jerarquía completa.
   const totalCount = (nodes: any[]): number => nodes.reduce((sum, n) => sum + 1 + totalCount(n.children || []), 0);
-  const total = totalCount(filteredData);
+  const total = hasFilter ? filteredData.length : totalCount(filteredData);
 
   const grouped: Record<string, { userName: string; position: string; nodes: any[] }> = {};
   for (const node of filteredData) {
