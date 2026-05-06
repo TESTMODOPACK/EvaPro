@@ -14,6 +14,8 @@ import {
   useCreateObjective,
   useUpdateObjective,
   useDeleteObjective,
+  useCancelObjective,
+  useObjectiveRejectionHistory,
   useAddObjectiveProgress,
   useObjectiveComments,
   useCreateObjectiveComment,
@@ -36,7 +38,7 @@ import { getRoleLabel } from '@/lib/roles';
 import { useDepartments } from '@/hooks/useDepartments';
 import { FirstVisitTip } from '@/components/FirstVisitTip';
 
-type FilterStatus = 'all' | 'draft' | 'pending_approval' | 'active' | 'completed' | 'abandoned' | 'at_risk';
+type FilterStatus = 'all' | 'draft' | 'pending_approval' | 'active' | 'overdue' | 'completed' | 'cancelled' | 'abandoned' | 'at_risk';
 type ObjType = 'OKR' | 'KPI' | 'SMART';
 type CommentType = 'seguimiento' | 'felicitacion' | 'bloqueo' | 'decision' | 'comentario' | 'adjunto';
 
@@ -52,7 +54,12 @@ const statusBadge: Record<string, string> = {
   draft: 'badge-warning',
   pending_approval: 'badge-ghost',
   active: 'badge-success',
+  // T6: vencido — rojo, mismo color que abandoned para reflejar la
+  // urgencia visual sin confundir (el texto del badge sí distingue).
+  overdue: 'badge-danger',
   completed: 'badge-accent',
+  // T7: cancelado por decisión de negocio (≠ abandonado técnico)
+  cancelled: 'badge-ghost',
   abandoned: 'badge-danger',
 };
 
@@ -650,7 +657,11 @@ const STATUS_COLORS: Record<string, string> = {
   draft: '#f59e0b',
   pending_approval: '#94a3b8',
   active: '#10b981',
+  // T6: vencido — rojo intenso (mismo tono que abandoned)
+  overdue: '#dc2626',
   completed: '#6366f1',
+  // T7: cancelado — gris (decisión de negocio, no falla)
+  cancelled: '#6b7280',
   abandoned: '#ef4444',
 };
 
@@ -713,6 +724,10 @@ function TreeNode({ node, depth = 0 }: { node: any; depth?: number }) {
 
 function ObjectiveTreeView({ data, loading }: { data: any[]; loading: boolean }) {
   const { t } = useTranslation();
+  // Audit P1 T7 — el filtro 'abandoned' es admin-only (soft-delete técnico).
+  // Para empleado/manager solo se muestra 'cancelled' (cancelación de negocio).
+  const userRole = useAuthStore((s) => s.user?.role) || '';
+  const isAdminOrSuper = userRole === 'tenant_admin' || userRole === 'super_admin';
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [treeSearch, setTreeSearch] = useState('');
   const [treeType, setTreeType] = useState('');
@@ -737,21 +752,32 @@ function ObjectiveTreeView({ data, loading }: { data: any[]; loading: boolean })
     return nameMatch && typeMatch && statusMatch;
   };
 
-  const filterTree = (nodes: any[]): any[] => {
-    return nodes.reduce((acc: any[], node: any) => {
-      const filteredChildren = filterTree(node.children || []);
-      if (matchesFilter(node) || filteredChildren.length > 0) {
-        acc.push({ ...node, children: filteredChildren });
+  // Audit P2 — hotfix consistencia Lista ↔ Árbol:
+  // Cuando hay filtro activo, NO mantenemos padres no-matcheantes "por
+  // jerarquía". Aplanamos a los nodos que realmente matchean y los
+  // agrupamos por su owner real. Sin esto, un objetivo cancelado hijo de
+  // uno activo aparecía bajo el grupo del padre (owner equivocado) y se
+  // contaba al padre como match, dando totales distintos a la pestaña
+  // Lista (Lista=3 vs Árbol=4 en el caso reportado).
+  const collectMatches = (nodes: any[], acc: any[] = []): any[] => {
+    for (const node of nodes) {
+      if (matchesFilter(node)) {
+        acc.push({ ...node, children: [] }); // aplanado: el match va sin descendientes
       }
-      return acc;
-    }, []);
+      if (node.children && node.children.length > 0) {
+        collectMatches(node.children, acc);
+      }
+    }
+    return acc;
   };
 
-  const filteredData = (treeSearch || treeType || treeStatus) ? filterTree(data) : data;
+  const hasFilter = !!(treeSearch || treeType || treeStatus);
+  const filteredData = hasFilter ? collectMatches(data) : data;
 
-  // Group by user for better visualization
+  // totalCount: con filtro activo es length plano (los matches ya están
+  // como roots); sin filtro recorre la jerarquía completa.
   const totalCount = (nodes: any[]): number => nodes.reduce((sum, n) => sum + 1 + totalCount(n.children || []), 0);
-  const total = totalCount(filteredData);
+  const total = hasFilter ? filteredData.length : totalCount(filteredData);
 
   const grouped: Record<string, { userName: string; position: string; nodes: any[] }> = {};
   for (const node of filteredData) {
@@ -789,8 +815,12 @@ function ObjectiveTreeView({ data, loading }: { data: any[]; loading: boolean })
           <option value="draft">Borrador</option>
           <option value="pending_approval">Pendiente</option>
           <option value="active">Activo</option>
+          <option value="overdue">Vencido</option>
           <option value="completed">Completado</option>
-          <option value="abandoned">Abandonado</option>
+          <option value="cancelled">Cancelado</option>
+          {isAdminOrSuper && (
+            <option value="abandoned">Abandonado (admin)</option>
+          )}
         </select>
         {(treeSearch || treeType || treeStatus) && (
           <button
@@ -856,6 +886,93 @@ function ObjectiveTreeView({ data, loading }: { data: any[]; loading: boolean })
   );
 }
 
+/* ─── Rejection History Toggle (T8.3) ────────────────────────────────────── */
+
+/**
+ * Toggle inline que muestra el historial completo de rechazos del objetivo.
+ * Lazy fetch: solo dispara la query cuando el usuario expande el bloque.
+ * Se renderiza junto al `rejectionReason` (último motivo) en draft con
+ * rechazos previos.
+ */
+function RejectionHistoryToggle({ objectiveId }: { objectiveId: string }) {
+  const [open, setOpen] = useState(false);
+  const { data, isLoading } = useObjectiveRejectionHistory(open ? objectiveId : null);
+
+  return (
+    <div style={{ marginTop: '0.4rem' }}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        style={{
+          fontSize: '0.7rem',
+          background: 'none',
+          border: 'none',
+          color: 'var(--accent)',
+          cursor: 'pointer',
+          padding: 0,
+          textDecoration: 'underline',
+        }}
+      >
+        {open ? 'Ocultar historial de rechazos' : 'Ver historial completo de rechazos'}
+      </button>
+      {open && (
+        <div style={{ marginTop: '0.4rem' }}>
+          {isLoading ? (
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+              Cargando…
+            </div>
+          ) : data && data.length > 0 ? (
+            <ul
+              style={{
+                listStyle: 'none',
+                padding: 0,
+                margin: 0,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.4rem',
+              }}
+            >
+              {data.map((r) => (
+                <li
+                  key={r.id}
+                  style={{
+                    padding: '0.4rem 0.6rem',
+                    background: 'var(--bg-surface)',
+                    borderLeft: '2px solid var(--danger)',
+                    borderRadius: 'var(--radius-sm, 4px)',
+                    fontSize: '0.72rem',
+                    color: 'var(--text-secondary)',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '0.4rem' }}>
+                    <strong style={{ color: 'var(--text-primary)' }}>
+                      {formatDate(r.rejectedAt) || r.rejectedAt}
+                    </strong>
+                    <span style={{ color: 'var(--text-muted)' }}>
+                      {r.rejector
+                        ? `${r.rejector.firstName ?? ''} ${r.rejector.lastName ?? ''}`.trim() ||
+                          r.rejector.email ||
+                          'Encargado'
+                        : 'Encargado'}
+                    </span>
+                  </div>
+                  <div style={{ marginTop: '0.2rem', whiteSpace: 'pre-wrap' }}>
+                    {r.reason || <em style={{ color: 'var(--text-muted)' }}>Sin motivo registrado</em>}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+              Sin rechazos previos registrados.
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ─── Main Page ───────────────────────────────────────────────────────────── */
 
 function ObjetivosPageContent() {
@@ -864,25 +981,42 @@ function ObjetivosPageContent() {
   const userId = useAuthStore((s) => s.user?.userId) || '';
   const toast = useToastStore();
 
+  const isAdmin = userRole === 'tenant_admin';
+  const isSuperAdmin = userRole === 'super_admin';
+  // Fix T7 follow-up: ABANDONED quedó reservado a soft-delete técnico admin
+  // (DELETE /:id, restringido a super/tenant_admin). End users no deberían
+  // ver ese filtro — confunde con CANCELLED (cancelación de negocio).
+  const canSeeAbandoned = isAdmin || isSuperAdmin;
+
   const statusLabel: Record<string, string> = {
     draft: t('objetivos.objStatus.draft'),
     pending_approval: t('objetivos.objStatus.pending_approval'),
     active: t('objetivos.objStatus.in_progress'),
+    // T6 — Audit P1: estado vencido. Sin clave de i18n por ahora; texto literal.
+    overdue: 'Vencido',
     completed: t('objetivos.objStatus.completed'),
-    abandoned: t('objetivos.objStatus.cancelled'),
+    // T7 — Audit P1: cancelado por decisión de negocio (con razón)
+    cancelled: 'Cancelado',
+    // ABANDONED es soft-delete admin. Etiqueta diferenciada para evitar
+    // confusión con "Cancelado" — el i18n key legacy decía solo "Cancelado".
+    abandoned: 'Abandonado (admin)',
   };
 
+  // Pills consistentes con el dropdown del Árbol: mismas labels, mismos
+  // estados, misma visibilidad por rol. 'abandoned' solo lo ve admin/super.
   const filterPills: { key: FilterStatus; label: string }[] = [
     { key: 'all', label: 'Todos' },
     { key: 'draft', label: t('objetivos.objStatus.draft') },
     { key: 'pending_approval', label: t('objetivos.objStatus.pending_approval') },
     { key: 'active', label: t('objetivos.objStatus.in_progress') },
+    { key: 'overdue', label: '⏰ Vencidos' },
     { key: 'completed', label: t('objetivos.objStatus.completed') },
-    { key: 'abandoned', label: t('objetivos.objStatus.cancelled') },
+    { key: 'cancelled', label: 'Cancelado' },
+    ...(canSeeAbandoned
+      ? ([{ key: 'abandoned' as FilterStatus, label: 'Abandonado (admin)' }])
+      : []),
     { key: 'at_risk', label: '⚠️ En riesgo' },
   ];
-
-  const isAdmin = userRole === 'tenant_admin';
   const isManager = userRole === 'manager';
   const isEmployee = userRole === 'employee';
   const canCreate = true; // all roles can create
@@ -894,6 +1028,7 @@ function ObjetivosPageContent() {
   const createObjective = useCreateObjective();
   const updateObjective = useUpdateObjective();
   const deleteObjective = useDeleteObjective();
+  const cancelObjective = useCancelObjective();
   const addProgress = useAddObjectiveProgress();
   const submitForApproval = useSubmitForApproval();
   const approveObjective = useApproveObjective();
@@ -970,12 +1105,26 @@ function ObjetivosPageContent() {
   const atRiskCount = atRiskData?.length || 0;
   const atRiskIds = new Set((atRiskData || []).map((o: any) => o.id));
 
-  // Item 10: Weight total calculation
-  const myObjectives = objectives?.filter((o: any) => {
-    const uid = o.userId || o.user?.id;
-    return uid === userId && o.status !== 'abandoned';
-  }) || [];
-  const totalWeight = myObjectives.reduce((sum: number, o: any) => sum + Number(o.weight || 0), 0);
+  // T2.5 — BUG-3: helper que replica la lógica del helper backend
+  // `validateWeightSum`. Suma pesos del usuario `targetUserId` en el bucket
+  // `(cycleId)` excluyendo ABANDONED. Mismo bucketing que el server: dos
+  // objetivos comparten bucket si comparten `cycleId` (incluyendo `null`
+  // como bucket "sin ciclo").
+  function weightSumForBucket(
+    targetUserId: string,
+    cycleId: string | null,
+  ): number {
+    if (!objectives) return 0;
+    return (objectives as any[])
+      .filter((o: any) => {
+        const uid = o.userId || o.user?.id;
+        if (uid !== targetUserId) return false;
+        if (o.status === 'abandoned') return false;
+        const ocid = o.cycleId || null;
+        return ocid === cycleId;
+      })
+      .reduce((sum: number, o: any) => sum + Number(o.weight || 0), 0);
+  }
 
   // Colapsar todos los grupos excepto el primero al cargar (admin/manager).
   // Se ejecuta UNA VEZ cuando objectives carga; usar ref para detectar
@@ -1050,7 +1199,9 @@ function ObjetivosPageContent() {
     draft: baseFiltered.filter((o: any) => o.status === 'draft').length,
     pending_approval: baseFiltered.filter((o: any) => o.status === 'pending_approval').length,
     active: baseFiltered.filter((o: any) => o.status === 'active').length,
+    overdue: baseFiltered.filter((o: any) => o.status === 'overdue').length,
     completed: baseFiltered.filter((o: any) => o.status === 'completed').length,
+    cancelled: baseFiltered.filter((o: any) => o.status === 'cancelled').length,
     abandoned: baseFiltered.filter((o: any) => o.status === 'abandoned').length,
     at_risk: baseFiltered.filter((o: any) => atRiskIds.has(o.id)).length,
   };
@@ -1164,6 +1315,9 @@ function ObjetivosPageContent() {
   // Rejection modal state
   const [rejectModal, setRejectModal] = useState<{ id: string; title: string } | null>(null);
   const [rejectReason, setRejectReason] = useState('');
+  // T7.5: modal para cancelación por decisión de negocio (razón obligatoria)
+  const [cancelModal, setCancelModal] = useState<{ id: string; title: string } | null>(null);
+  const [cancelReason, setCancelReason] = useState('');
 
   function handleReject(id: string) {
     const obj = (objectives || []).find((o: any) => o.id === id);
@@ -1202,12 +1356,43 @@ function ObjetivosPageContent() {
     setBulkApproving(true);
     try {
       const ids = Array.from(selectedForApproval);
-      for (let i = 0; i < ids.length; i++) {
-        await api.objectives.approve(token, ids[i]);
+      // T4.3 — BUG-10: una sola llamada al endpoint transaccional. Cada item
+      // tiene su propio try/catch en el backend; el response trae el detalle
+      // de éxitos y fallidos.
+      const result = await api.objectives.bulkApprove(token, ids);
+      const okCount = result.approved.length;
+      const failCount = result.failed.length;
+
+      if (failCount === 0) {
+        toast.success(`${okCount} objetivo${okCount !== 1 ? 's' : ''} aprobado${okCount !== 1 ? 's' : ''}`);
+      } else if (okCount === 0) {
+        // Todo falló — muestra primer motivo como referencia
+        const firstReason = result.failed[0]?.reason || 'Error desconocido';
+        toast.error(`No se pudo aprobar ningún objetivo. Motivo: ${firstReason}`);
+      } else {
+        // Mixto: éxito parcial. Muestro contadores; los IDs fallidos quedan
+        // con highlight via el invalidate (el backend sí cambió los OK).
+        const reasons = Array.from(new Set(result.failed.map((f: any) => f.reason)));
+        toast.warning(
+          `${okCount} aprobado${okCount !== 1 ? 's' : ''}, ${failCount} con error${failCount !== 1 ? 'es' : ''}: ${reasons.join('; ')}`,
+        );
       }
-      setSelectedForApproval(new Set());
+
+      // Sólo limpiar selección de los que efectivamente se aprobaron — los
+      // fallidos quedan seleccionados para que el usuario pueda revisar.
+      const approvedSet = new Set(result.approved);
+      setSelectedForApproval((prev) => {
+        const next = new Set<string>();
+        Array.from(prev).forEach((id) => {
+          if (!approvedSet.has(id)) next.add(id);
+        });
+        return next;
+      });
       queryClient.invalidateQueries({ queryKey: ['objectives'] });
-    } catch {} finally {
+    } catch (err: any) {
+      // Error de red o auth — el endpoint completo falló
+      toast.error(err?.message || 'Error al aprobar los objetivos');
+    } finally {
       setBulkApproving(false);
     }
   }
@@ -1862,9 +2047,31 @@ function ObjetivosPageContent() {
                   onChange={(e) => setForm({ ...form, weight: Math.min(100, Math.max(0, Number(e.target.value))) })}
                   style={{ width: '100%' }}
                 />
-                <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
-                  La suma de todos los objetivos no puede superar 100%
-                </p>
+                {/* T2.5 — BUG-3: preview en vivo de la suma de pesos del bucket
+                    seleccionado en el form. Se actualiza al cambiar weight,
+                    cycleId o el destinatario (form.userId si admin/manager). */}
+                {(() => {
+                  const targetUid = (isAdmin || isManager) && form.userId ? form.userId : userId;
+                  const bucketCycle = form.cycleId || null;
+                  const existingSum = weightSumForBucket(targetUid, bucketCycle);
+                  const newSum = existingSum + Number(form.weight || 0);
+                  const overLimit = newSum > 100;
+                  const bucketLabel = bucketCycle
+                    ? 'en este ciclo'
+                    : 'en objetivos sin ciclo';
+                  return (
+                    <p style={{
+                      fontSize: '0.7rem',
+                      color: overLimit ? 'var(--danger)' : 'var(--text-muted)',
+                      marginTop: '0.2rem',
+                      fontWeight: overLimit ? 600 : 400,
+                    }}>
+                      {overLimit
+                        ? `⚠ Suma ${bucketLabel}: ${newSum}% — supera el 100% permitido`
+                        : `Pesos asignados ${bucketLabel}: ${existingSum}% + ${Number(form.weight || 0)}% = ${newSum}% / 100%`}
+                    </p>
+                  );
+                })()}
               </div>
               <div>
                 <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, display: 'block', marginBottom: '0.3rem' }}>
@@ -2166,7 +2373,9 @@ function ObjetivosPageContent() {
                 )}
                 {obj.status === 'draft' && obj.rejectionReason && (
                   <div style={{ padding: '0.5rem 0.75rem', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 'var(--radius-sm, 6px)', fontSize: '0.78rem', color: 'var(--danger)', marginBottom: '0.35rem' }}>
-                    <strong>Rechazado:</strong> {obj.rejectionReason}
+                    <strong>Último rechazo:</strong> {obj.rejectionReason}
+                    {/* T8.3 — Audit P1: toggle al historial completo de rechazos */}
+                    <RejectionHistoryToggle objectiveId={obj.id} />
                   </div>
                 )}
 
@@ -2227,28 +2436,27 @@ function ObjetivosPageContent() {
                       </button>
                     </>
                   )}
-                  {canCancel && obj.status !== 'abandoned' && obj.status !== 'completed' && (
-                    <button
-                      className="btn-ghost"
-                      style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem', color: 'var(--warning)' }}
-                      onClick={() => setConfirmState({
-                        message: '¿Cancelar este objetivo? El objetivo quedará en estado "Cancelado" y no se eliminará.',
-                        danger: true,
-                        onConfirm: () => {
-                          setConfirmState(null);
-                          updateObjective.mutate(
-                            { id: obj.id, data: { status: 'abandoned' } },
-                            {
-                              onSuccess: () => toast.success('Objetivo cancelado'),
-                              onError: (err: any) => toast.error(err?.message || 'Error al cancelar el objetivo'),
-                            },
-                          );
-                        },
-                      })}
-                    >
-                      Cancelar objetivo
-                    </button>
-                  )}
+                  {/* T7.5 — Audit P1: cancelar por decisión de negocio. Razón
+                      obligatoria, va al endpoint POST /:id/cancel que persiste
+                      cancellationReason/cancelledBy/cancelledAt. */}
+                  {canCancel &&
+                    obj.status !== 'abandoned' &&
+                    obj.status !== 'cancelled' &&
+                    obj.status !== 'completed' && (
+                      <button
+                        className="btn-ghost"
+                        style={{
+                          fontSize: '0.75rem',
+                          padding: '0.3rem 0.6rem',
+                          color: 'var(--warning)',
+                        }}
+                        onClick={() =>
+                          setCancelModal({ id: obj.id, title: obj.title })
+                        }
+                      >
+                        Cancelar objetivo
+                      </button>
+                    )}
                 </div>
 
                 {/* Expanded section: progress update + comments */}
@@ -2384,6 +2592,90 @@ function ObjetivosPageContent() {
       )}
       </>
       )}
+      {/* T7.5 — Cancelación por decisión de negocio. Razón obligatoria
+          (mínimo 5 chars validado en el DTO backend). */}
+      {cancelModal && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: '1rem',
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setCancelModal(null);
+              setCancelReason('');
+            }
+          }}
+        >
+          <div className="card" style={{ padding: '2rem', width: '100%', maxWidth: '450px' }}>
+            <h3 style={{ fontWeight: 700, fontSize: '1.05rem', marginBottom: '0.5rem' }}>
+              Cancelar objetivo
+            </h3>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>
+              {cancelModal.title}
+            </p>
+            <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '1rem', lineHeight: 1.4 }}>
+              El objetivo quedará en estado <strong>Cancelado</strong> con la razón registrada para auditoría. Esta acción es irreversible.
+            </p>
+            <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.35rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Razón de cancelación <span style={{ color: 'var(--danger)' }}>*</span>
+            </label>
+            <textarea
+              className="input"
+              rows={3}
+              placeholder="Ej: Cambio de prioridades del trimestre, scope reducido, depende de proyecto X que se postergó..."
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value)}
+              style={{ width: '100%', resize: 'vertical', marginBottom: '1rem' }}
+              minLength={5}
+            />
+            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+              <button
+                className="btn-ghost"
+                onClick={() => {
+                  setCancelModal(null);
+                  setCancelReason('');
+                }}
+              >
+                Volver
+              </button>
+              <button
+                className="btn-primary"
+                disabled={
+                  cancelObjective.isPending || cancelReason.trim().length < 5
+                }
+                onClick={() => {
+                  if (cancelReason.trim().length < 5) return;
+                  cancelObjective.mutate(
+                    { id: cancelModal.id, reason: cancelReason.trim() },
+                    {
+                      onSuccess: () => {
+                        toast.success('Objetivo cancelado');
+                        setCancelModal(null);
+                        setCancelReason('');
+                      },
+                      onError: (err: any) =>
+                        toast.error(
+                          err?.message || 'Error al cancelar el objetivo',
+                        ),
+                    },
+                  );
+                }}
+                style={{ background: 'var(--danger)', boxShadow: 'none' }}
+              >
+                {cancelObjective.isPending ? 'Cancelando...' : 'Confirmar cancelación'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Rejection modal */}
       {rejectModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem' }}

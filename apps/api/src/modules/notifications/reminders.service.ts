@@ -268,6 +268,96 @@ export class RemindersService {
     });
   }
 
+  // ─── 2.5 Objetivos vencidos (diario a las 0:30am) ───────────────────
+  // Audit P1, Tarea 6: marca objetivos `active` cuyo `target_date` ya
+  // pasó como `overdue`. Corre antes del at-risk reminder de las 9am
+  // para que ese flujo solo opere sobre los todavía vigentes.
+  //
+  // Estado intermedio: el owner puede extender targetDate (vuelve a
+  // active vía update()) o cerrarlo como completed/abandoned.
+
+  @Cron('30 0 * * *')
+  async markOverdueObjectives() {
+    await this.tenantCronRunner.runForEachTenant(
+      'markOverdueObjectives',
+      async (tenantId) => {
+        this.logger.log(
+          `[Cron] Marking overdue objectives for tenant ${tenantId.slice(0, 8)}...`,
+        );
+        try {
+          // Hoy en YYYY-MM-DD (Postgres compara DATE en formato ISO).
+          const today = new Date().toISOString().slice(0, 10);
+
+          // Cargamos los candidatos para poder notificar al owner. Filtramos
+          // por user activo (F-004) — no avisamos a colaboradores
+          // desvinculados.
+          const overdue = await this.objectiveRepo
+            .createQueryBuilder('o')
+            .leftJoinAndSelect('o.user', 'u', 'u.tenant_id = o.tenant_id')
+            .where('o.tenant_id = :tenantId', { tenantId })
+            .andWhere('o.status = :status', { status: ObjectiveStatus.ACTIVE })
+            .andWhere('o.target_date IS NOT NULL')
+            .andWhere('o.target_date < :today', { today })
+            .andWhere('u.is_active = true')
+            .getMany();
+
+          if (overdue.length === 0) {
+            this.logger.log(`[Cron] No overdue objectives in tenant ${tenantId.slice(0, 8)}`);
+            return;
+          }
+
+          // Update masivo: pasar a OVERDUE en una sola query.
+          const ids = overdue.map((o) => o.id);
+          await this.objectiveRepo
+            .createQueryBuilder()
+            .update()
+            .set({ status: ObjectiveStatus.OVERDUE })
+            .where('id IN (:...ids)', { ids })
+            .andWhere('tenant_id = :tenantId', { tenantId })
+            .andWhere('status = :status', { status: ObjectiveStatus.ACTIVE })
+            .execute();
+
+          // Notificación in-app + email al owner. Reusamos el tipo
+          // OBJECTIVE_AT_RISK porque OVERDUE es el caso límite extremo
+          // (no agregamos un enum nuevo para no requerir nueva migration).
+          const notifications = overdue.map((obj) => {
+            const daysOverdue = Math.floor(
+              (Date.now() - new Date(obj.targetDate).getTime()) /
+                (1000 * 60 * 60 * 24),
+            );
+            return {
+              tenantId: obj.tenantId,
+              userId: obj.userId,
+              type: NotificationType.OBJECTIVE_AT_RISK,
+              title: 'Objetivo vencido',
+              message: `Tu objetivo "${obj.title}" venció hace ${daysOverdue} día(s) con ${obj.progress}% de avance. Extiende la fecha o cierra el objetivo.`,
+              metadata: {
+                objectiveId: obj.id,
+                progress: obj.progress,
+                daysOverdue,
+                action: 'objective_overdue',
+              },
+            };
+          });
+          await this.notificationsService.createBulk(notifications);
+          this.logger.log(
+            `[Cron] Marked ${overdue.length} objectives as overdue`,
+          );
+        } catch (error) {
+          this.logger.error(
+            `[Cron] Error in markOverdueObjectives (tenant=${tenantId.slice(0, 8)}): ${String(error)}`,
+          );
+          await this.recordCronFailure(
+            'markOverdueObjectives',
+            error,
+            tenantId,
+          );
+          throw error;
+        }
+      },
+    );
+  }
+
   // ─── 3. Objetivos en riesgo (diario a las 9am) ──────────────────────
 
   @Cron('0 9 * * *')

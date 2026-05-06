@@ -1,24 +1,42 @@
-import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  ForbiddenException,
+  BadRequestException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { Objective, ObjectiveStatus } from './entities/objective.entity';
 import { ObjectiveUpdate } from './entities/objective-update.entity';
 import { ObjectiveComment } from './entities/objective-comment.entity';
 import { KeyResult, KRStatus } from './entities/key-result.entity';
+import { ObjectiveRejection } from './entities/objective-rejection.entity';
+import { EvaluationObjectiveSnapshot } from '../evaluations/entities/evaluation-objective-snapshot.entity';
 import { User } from '../users/entities/user.entity';
-import { EvaluationCycle, CycleStatus } from '../evaluations/entities/evaluation-cycle.entity';
+import {
+  EvaluationCycle,
+  CycleStatus,
+} from '../evaluations/entities/evaluation-cycle.entity';
 import { CreateObjectiveDto } from './dto/create-objective.dto';
-import { UpdateObjectiveDto, CreateObjectiveUpdateDto } from './dto/update-objective.dto';
+import {
+  UpdateObjectiveDto,
+  CreateObjectiveUpdateDto,
+} from './dto/update-objective.dto';
 import { AuditService } from '../audit/audit.service';
 import { EmailService } from '../notifications/email.service';
 import { RecognitionService } from '../recognition/recognition.service';
 import { PointsSource } from '../recognition/entities/user-points.entity';
 import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationType } from '../notifications/entities/notification.entity';
 import { PushService } from '../notifications/push.service';
 import { buildPushMessage } from '../notifications/push-messages';
+import { assertManagerCanAccessUser } from '../../common/utils/validate-manager-scope';
 
 @Injectable()
 export class ObjectivesService {
+  private readonly logger = new Logger(ObjectivesService.name);
+
   constructor(
     @InjectRepository(Objective)
     private readonly objectiveRepo: Repository<Objective>,
@@ -28,6 +46,10 @@ export class ObjectivesService {
     private readonly commentRepo: Repository<ObjectiveComment>,
     @InjectRepository(KeyResult)
     private readonly keyResultRepo: Repository<KeyResult>,
+    @InjectRepository(ObjectiveRejection)
+    private readonly rejectionRepo: Repository<ObjectiveRejection>,
+    @InjectRepository(EvaluationObjectiveSnapshot)
+    private readonly objSnapshotRepo: Repository<EvaluationObjectiveSnapshot>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     @InjectRepository(EvaluationCycle)
@@ -47,22 +69,105 @@ export class ObjectivesService {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     if (new Date(dateStr) < today) {
-      throw new BadRequestException('La fecha objetivo no puede ser una fecha pasada');
+      throw new BadRequestException(
+        'La fecha objetivo no puede ser una fecha pasada',
+      );
     }
   }
 
   /** B7.2: Cycle must exist and not be closed */
-  private async validateCycleOpen(cycleId: string, tenantId: string): Promise<void> {
-    const cycle = await this.cycleRepo.findOne({ where: { id: cycleId, tenantId } });
-    if (!cycle) throw new BadRequestException('El ciclo de evaluación no existe');
+  private async validateCycleOpen(
+    cycleId: string,
+    tenantId: string,
+  ): Promise<void> {
+    const cycle = await this.cycleRepo.findOne({
+      where: { id: cycleId, tenantId },
+    });
+    if (!cycle)
+      throw new BadRequestException('El ciclo de evaluación no existe');
     if (cycle.status === CycleStatus.CLOSED) {
-      throw new BadRequestException('No se puede asignar un objetivo a un ciclo de evaluación cerrado');
+      throw new BadRequestException(
+        'No se puede asignar un objetivo a un ciclo de evaluación cerrado',
+      );
+    }
+  }
+
+  /**
+   * T2.1 — BUG-3 fix. Valida que la suma de pesos de los objetivos del usuario
+   * dentro de un mismo bucket de ciclo no exceda 100%.
+   *
+   * Bucketing: dos objetivos comparten bucket si tienen el mismo `(userId, cycleId)`.
+   * `cycleId=null` define el bucket "sin ciclo", independiente de cualquier ciclo
+   * concreto. Esto permite proponer un objetivo de peso 100% en Q2 aunque el
+   * usuario ya tenga 100% completado en Q1 — los buckets son independientes.
+   *
+   * Conteo:
+   *   - ABANDONED se excluye (objetivo cancelado, no compromete capacidad)
+   *   - DRAFT, PENDING_APPROVAL, ACTIVE, COMPLETED suman
+   *   - El `excludeId` opcional permite ignorar el objetivo que se está
+   *     actualizando (caso update/submit) para no contarlo dos veces
+   *
+   * Antes de T2.1 esta validación vivía inline en submitForApproval, no
+   * filtraba por cycleId, y no se ejecutaba en create/update — permitiendo
+   * crear DRAFTs con 200% que quedaban bloqueados al intentar enviarse.
+   *
+   * @throws BadRequestException si el total excedería 100%
+   */
+  private async validateWeightSum(params: {
+    tenantId: string;
+    userId: string;
+    cycleId: string | null | undefined;
+    candidateWeight: number;
+    excludeId?: string;
+  }): Promise<void> {
+    const { tenantId, userId, cycleId, candidateWeight, excludeId } = params;
+    if (!candidateWeight || candidateWeight <= 0) return; // peso 0 no aporta a la suma
+
+    const qb = this.objectiveRepo
+      .createQueryBuilder('o')
+      .where('o.tenantId = :tenantId', { tenantId })
+      .andWhere('o.userId = :userId', { userId })
+      // T7: ABANDONED y CANCELLED no consumen capacidad — el evaluado ya
+      // no compromete avance en ellos.
+      .andWhere('o.status NOT IN (:...excludedStatuses)', {
+        excludedStatuses: [
+          ObjectiveStatus.ABANDONED,
+          ObjectiveStatus.CANCELLED,
+        ],
+      });
+
+    if (cycleId) {
+      qb.andWhere('o.cycleId = :cycleId', { cycleId });
+    } else {
+      qb.andWhere('o.cycleId IS NULL');
+    }
+
+    if (excludeId) {
+      qb.andWhere('o.id != :excludeId', { excludeId });
+    }
+
+    const siblings = await qb.getMany();
+    const existingWeight = siblings.reduce(
+      (sum, o) => sum + Number(o.weight || 0),
+      0,
+    );
+    const totalWeight = existingWeight + Number(candidateWeight);
+
+    if (totalWeight > 100) {
+      const bucketLabel = cycleId ? 'este ciclo' : 'objetivos sin ciclo';
+      throw new BadRequestException(
+        `La suma de pesos de los objetivos del colaborador en ${bucketLabel} sería ${totalWeight}%. El total no puede superar 100%.`,
+      );
     }
   }
 
   // ─── CRUD ───────────────────────────────────────────────────────────────────
 
-  async create(tenantId: string, userId: string, dto: CreateObjectiveDto): Promise<Objective> {
+  async create(
+    tenantId: string,
+    userId: string,
+    dto: CreateObjectiveDto,
+  ): Promise<Objective> {
     // B7.1: targetDate must not be in the past
     this.validateTargetDate(dto.targetDate);
     // B7.2: cycleId must be an open cycle
@@ -70,6 +175,15 @@ export class ObjectivesService {
     // B3.15: Validate parent objective if provided
     if (dto.parentObjectiveId) {
       await this.validateParentObjective(tenantId, dto.parentObjectiveId);
+    }
+    // T2.2 — BUG-3: validar suma de pesos en el bucket de ciclo del candidato
+    if (dto.weight && dto.weight > 0) {
+      await this.validateWeightSum({
+        tenantId,
+        userId,
+        cycleId: dto.cycleId ?? null,
+        candidateWeight: dto.weight,
+      });
     }
 
     const obj = this.objectiveRepo.create({
@@ -86,19 +200,32 @@ export class ObjectivesService {
       progress: 0,
     });
     const saved = await this.objectiveRepo.save(obj);
-    this.auditService.log(tenantId, userId, 'objective.created', 'objective', saved.id, { title: dto.title, type: dto.type, assignedTo: userId }).catch(() => {});
+    this.auditService
+      .log(tenantId, userId, 'objective.created', 'objective', saved.id, {
+        title: dto.title,
+        type: dto.type,
+        assignedTo: userId,
+      })
+      .catch(() => {});
 
     // Send email to the objective owner
-    const owner = await this.userRepo.findOne({ where: { id: userId }, select: ['id', 'email', 'firstName'] });
+    const owner = await this.userRepo.findOne({
+      where: { id: userId },
+      select: ['id', 'email', 'firstName'],
+    });
     if (owner?.email) {
-      this.emailService.sendObjectiveAssigned(owner.email, {
-        firstName: owner.firstName,
-        objectiveTitle: dto.title,
-        objectiveType: dto.type || 'OKR',
-        targetDate: dto.targetDate ? new Date(dto.targetDate).toLocaleDateString('es-CL') : undefined,
-        tenantId,
-        userId: owner.id,
-      }).catch(() => {});
+      this.emailService
+        .sendObjectiveAssigned(owner.email, {
+          firstName: owner.firstName,
+          objectiveTitle: dto.title,
+          objectiveType: dto.type || 'OKR',
+          targetDate: dto.targetDate
+            ? new Date(dto.targetDate).toLocaleDateString('es-CL')
+            : undefined,
+          tenantId,
+          userId: owner.id,
+        })
+        .catch(() => {});
     }
 
     return saved;
@@ -116,8 +243,16 @@ export class ObjectivesService {
     return this.objectiveRepo
       .createQueryBuilder('o')
       .leftJoinAndSelect('o.user', 'user', 'user.tenant_id = o.tenant_id')
-      .leftJoinAndSelect('o.updates', 'updates', 'updates.tenant_id = o.tenant_id')
-      .leftJoinAndSelect('updates.creator', 'creator', 'creator.tenant_id = o.tenant_id')
+      .leftJoinAndSelect(
+        'o.updates',
+        'updates',
+        'updates.tenant_id = o.tenant_id',
+      )
+      .leftJoinAndSelect(
+        'updates.creator',
+        'creator',
+        'creator.tenant_id = o.tenant_id',
+      )
       .leftJoinAndSelect('o.keyResults', 'kr', 'kr.tenant_id = o.tenant_id')
       .where('o.tenantId = :tenantId', { tenantId })
       .orderBy('o.createdAt', 'DESC');
@@ -133,13 +268,19 @@ export class ObjectivesService {
   }
 
   /** Objectives of manager's direct reports + own (for manager) */
-  async findByManager(tenantId: string, managerId: string): Promise<Objective[]> {
+  async findByManager(
+    tenantId: string,
+    managerId: string,
+  ): Promise<Objective[]> {
     const subordinates = await this.userRepo.find({
       where: { tenantId, managerId, isActive: true },
       select: ['id', 'role'],
     });
     // Exclude tenant_admin from manager's team view — they are system admins, not operational subordinates
-    const userIds = [managerId, ...subordinates.filter((u) => u.role !== 'tenant_admin').map((u) => u.id)];
+    const userIds = [
+      managerId,
+      ...subordinates.filter((u) => u.role !== 'tenant_admin').map((u) => u.id),
+    ];
 
     return this.objectivesWithRelationsQb(tenantId)
       .andWhere('o.userId IN (:...userIds)', { userIds })
@@ -156,19 +297,143 @@ export class ObjectivesService {
   }
 
   /**
+   * T12 — Audit P2: listado paginado con filtros server-side.
+   *
+   * Reemplaza el patrón legacy `findAll(...).take(200)` + filtrado JS.
+   * Soporta paginación real (page + pageSize), búsqueda case-insensitive
+   * sobre title/owner, y filtros por status/type/cycleId/department.
+   *
+   * Scope por rol:
+   *   - super_admin / tenant_admin: todos los objetivos del tenant.
+   *     `opts.userId` filtra por owner si se pasa.
+   *   - manager: propios + reportes directos. `opts.userId` se ignora
+   *     (manager no puede ver objetivos de otros equipos via este filtro).
+   *   - employee / external: solo propios. `opts.userId` se ignora.
+   *
+   * Devuelve { data, total, page, pageSize, totalPages }. La cuenta es
+   * post-filtros pero pre-paginación (cuántos hay en total que matchean).
+   */
+  async listObjectives(
+    tenantId: string,
+    role: string,
+    currentUserId: string,
+    opts: {
+      page?: number;
+      pageSize?: number;
+      userId?: string;
+      status?: ObjectiveStatus;
+      type?: string;
+      cycleId?: string;
+      search?: string;
+      department?: string;
+    },
+  ): Promise<{
+    data: Objective[];
+    total: number;
+    page: number;
+    pageSize: number;
+    totalPages: number;
+  }> {
+    const page = Math.max(1, opts.page ?? 1);
+    const pageSize = Math.min(200, Math.max(1, opts.pageSize ?? 50));
+
+    const qb = this.objectivesWithRelationsQb(tenantId);
+
+    // ─── Role scope ────────────────────────────────────────────────────
+    if (role === 'employee' || role === 'external') {
+      qb.andWhere('o.userId = :selfUid', { selfUid: currentUserId });
+    } else if (role === 'manager') {
+      const subordinates = await this.userRepo.find({
+        where: { tenantId, managerId: currentUserId, isActive: true },
+        select: ['id', 'role'],
+      });
+      const userIds = [
+        currentUserId,
+        ...subordinates
+          .filter((u) => u.role !== 'tenant_admin')
+          .map((u) => u.id),
+      ];
+      qb.andWhere('o.userId IN (:...mgrScope)', { mgrScope: userIds });
+    } else if (opts.userId) {
+      qb.andWhere('o.userId = :filterUid', { filterUid: opts.userId });
+    }
+
+    // ─── Filters ──────────────────────────────────────────────────────
+    if (opts.status) {
+      qb.andWhere('o.status = :fStatus', { fStatus: opts.status });
+    }
+    if (opts.type) {
+      qb.andWhere('o.type = :fType', { fType: opts.type });
+    }
+    if (opts.cycleId) {
+      qb.andWhere('o.cycleId = :fCycle', { fCycle: opts.cycleId });
+    }
+    if (opts.department) {
+      qb.andWhere('user.department = :fDept', { fDept: opts.department });
+    }
+    if (opts.search) {
+      qb.andWhere(
+        `(LOWER(o.title) LIKE LOWER(:fSearch)
+          OR LOWER(COALESCE(user.firstName, '')) LIKE LOWER(:fSearch)
+          OR LOWER(COALESCE(user.lastName, '')) LIKE LOWER(:fSearch))`,
+        { fSearch: `%${opts.search}%` },
+      );
+    }
+
+    // ─── Total post-filtros, pre-paginación ────────────────────────────
+    // getCount() respeta WHERE pero ignora skip/take; nos da el total
+    // de matches independiente de la página actual.
+    const total = await qb.getCount();
+
+    qb.skip((page - 1) * pageSize).take(pageSize);
+    const data = await qb.getMany();
+
+    return {
+      data,
+      total,
+      page,
+      pageSize,
+      totalPages: Math.max(1, Math.ceil(total / pageSize)),
+    };
+  }
+
+  /**
    * B1.3: OKR history grouped by evaluation cycle / period.
-   * Returns closed/completed objectives with their Key Results, grouped by cycle.
+   *
+   * T9 — Audit P1 (Issue B): el reporte por período antes solo incluía
+   * objetivos terminales (COMPLETED, ABANDONED, CANCELLED). Esto dejaba
+   * fuera del histórico de Q1 a los objetivos que estaban en curso al
+   * cerrar Q1 y siguen activos hoy — la pregunta "¿qué objetivos tenía
+   * la organización en Q1?" no podía responderse correctamente.
+   *
+   * Con `includeActive=true` el reporte trae también ACTIVE / OVERDUE.
+   * Para esos:
+   *   - Si existe un cycle-wide snapshot del cierre del ciclo (Tarea 5),
+   *     prefiere los valores del snapshot (progress, status del cierre)
+   *     y marca `fromSnapshot: true`.
+   *   - Si no hay snapshot (ciclo abierto, o legacy sin snapshot),
+   *     muestra los valores live + `inProgress: true`.
+   * Los terminales siempre usan los valores live (ya son finales).
    */
   async getObjectiveHistory(
     tenantId: string,
     userId?: string,
     cycleId?: string,
+    includeActive: boolean = false,
   ) {
-    const qb = this.objectiveRepo.createQueryBuilder('o')
+    const baseStatuses = [
+      ObjectiveStatus.COMPLETED,
+      ObjectiveStatus.ABANDONED,
+      ObjectiveStatus.CANCELLED,
+    ];
+    const statuses = includeActive
+      ? [...baseStatuses, ObjectiveStatus.ACTIVE, ObjectiveStatus.OVERDUE]
+      : baseStatuses;
+
+    const qb = this.objectiveRepo
+      .createQueryBuilder('o')
       .where('o.tenantId = :tenantId', { tenantId })
-      .andWhere('o.status IN (:...statuses)', {
-        statuses: [ObjectiveStatus.COMPLETED, ObjectiveStatus.ABANDONED],
-      });
+      .andWhere('o.status IN (:...statuses)', { statuses });
 
     if (userId) {
       qb.andWhere('o.userId = :userId', { userId });
@@ -177,8 +442,11 @@ export class ObjectivesService {
       qb.andWhere('o.cycleId = :cycleId', { cycleId });
     }
 
-    qb.leftJoinAndSelect('o.user', 'user', 'user.tenant_id = o.tenant_id')
-      .orderBy('o.updatedAt', 'DESC');
+    qb.leftJoinAndSelect(
+      'o.user',
+      'user',
+      'user.tenant_id = o.tenant_id',
+    ).orderBy('o.updatedAt', 'DESC');
 
     const objectives = await qb.getMany();
 
@@ -211,28 +479,115 @@ export class ObjectivesService {
 
     // Load cycle names
     const cycleIds = [...groups.keys()].filter((k) => k !== 'sin_ciclo');
-    const cycles = cycleIds.length > 0
-      ? await this.cycleRepo.find({ where: { id: In(cycleIds) }, select: ['id', 'name', 'startDate', 'endDate', 'type', 'period'] })
-      : [];
+    const cycles =
+      cycleIds.length > 0
+        ? await this.cycleRepo.find({
+            where: { id: In(cycleIds) },
+            select: [
+              'id',
+              'name',
+              'startDate',
+              'endDate',
+              'type',
+              'period',
+              'status',
+            ],
+          })
+        : [];
     const cycleMap = new Map(cycles.map((c) => [c.id, c]));
+
+    // T9.2 — cargar snapshots cycle-wide de los ciclos cerrados, indexados
+    // por (cycleId, objectiveId). Para objetivos no terminales (ACTIVE/
+    // OVERDUE) preferiremos el snapshot del cierre si existe.
+    const closedCycleIds = cycles
+      .filter((c) => c.status === CycleStatus.CLOSED)
+      .map((c) => c.id);
+    const snapshotByObjective = new Map<string, EvaluationObjectiveSnapshot>();
+    if (closedCycleIds.length > 0) {
+      const snapshots = await this.objSnapshotRepo
+        .createQueryBuilder('s')
+        .where('s.tenantId = :tenantId', { tenantId })
+        .andWhere('s.cycleId IN (:...ids)', { ids: closedCycleIds })
+        .andWhere('s.assignmentId IS NULL')
+        .orderBy('s.capturedAt', 'DESC')
+        .getMany();
+      // Si hay duplicados, queda el más reciente (orden DESC)
+      for (const snap of snapshots) {
+        const key = `${snap.cycleId}::${snap.objectiveId}`;
+        if (!snapshotByObjective.has(key)) {
+          snapshotByObjective.set(key, snap);
+        }
+      }
+    }
 
     const periods = [...groups.entries()].map(([key, objs]) => {
       const cycle = cycleMap.get(key);
-      const totalProgress = objs.reduce((sum, o) => sum + (o.progress || 0), 0);
+      const cycleIsClosed = cycle?.status === CycleStatus.CLOSED;
+
+      // T9.2 — Para cada objetivo, decidir source: terminal usa live;
+      // active/overdue usa snapshot si el ciclo está cerrado y existe,
+      // sino live + inProgress flag.
+      const enrichedObjs = objs.map((o) => {
+        const snapKey = cycle ? `${cycle.id}::${o.id}` : null;
+        const snap = snapKey ? snapshotByObjective.get(snapKey) : undefined;
+        const isTerminal =
+          o.status === ObjectiveStatus.COMPLETED ||
+          o.status === ObjectiveStatus.ABANDONED ||
+          o.status === ObjectiveStatus.CANCELLED;
+        const isActiveAtCycleClose =
+          !isTerminal &&
+          (o.status === ObjectiveStatus.ACTIVE ||
+            o.status === ObjectiveStatus.OVERDUE);
+
+        if (snap && isActiveAtCycleClose && cycleIsClosed) {
+          // Foto al cierre del ciclo — preferida para in-progress en
+          // ciclos cerrados.
+          return {
+            ...o,
+            progress: snap.progress,
+            status: snap.objectiveStatus as ObjectiveStatus,
+            keyResults: snap.keyResultsJson ?? [],
+            fromSnapshot: true,
+            inProgress: true,
+            currentLiveStatus: o.status,
+            currentLiveProgress: o.progress,
+          };
+        }
+        return {
+          ...o,
+          keyResults: krByObjective.get(o.id) || [],
+          fromSnapshot: false,
+          inProgress: !isTerminal,
+        };
+      });
+
+      const totalProgress = enrichedObjs.reduce(
+        (sum, o) => sum + (o.progress || 0),
+        0,
+      );
       return {
         cycleId: key === 'sin_ciclo' ? null : key,
         cycleName: cycle?.name || 'Sin ciclo asignado',
         startDate: cycle?.startDate || null,
         endDate: cycle?.endDate || null,
         cycleType: cycle?.type || null,
-        totalObjectives: objs.length,
-        completedCount: objs.filter((o) => o.status === ObjectiveStatus.COMPLETED).length,
-        abandonedCount: objs.filter((o) => o.status === ObjectiveStatus.ABANDONED).length,
-        avgProgress: objs.length > 0 ? Math.round(totalProgress / objs.length) : 0,
-        objectives: objs.map((o) => ({
-          ...o,
-          keyResults: krByObjective.get(o.id) || [],
-        })),
+        cycleStatus: cycle?.status || null,
+        totalObjectives: enrichedObjs.length,
+        completedCount: enrichedObjs.filter(
+          (o) => o.status === ObjectiveStatus.COMPLETED,
+        ).length,
+        abandonedCount: enrichedObjs.filter(
+          (o) => o.status === ObjectiveStatus.ABANDONED,
+        ).length,
+        cancelledCount: enrichedObjs.filter(
+          (o) => o.status === ObjectiveStatus.CANCELLED,
+        ).length,
+        inProgressCount: enrichedObjs.filter((o) => o.inProgress).length,
+        avgProgress:
+          enrichedObjs.length > 0
+            ? Math.round(totalProgress / enrichedObjs.length)
+            : 0,
+        objectives: enrichedObjs,
       };
     });
 
@@ -259,27 +614,78 @@ export class ObjectivesService {
     return obj;
   }
 
-  async update(tenantId: string, id: string, dto: UpdateObjectiveDto): Promise<Objective> {
+  async update(
+    tenantId: string,
+    id: string,
+    dto: UpdateObjectiveDto,
+  ): Promise<Objective> {
     const obj = await this.findById(tenantId, id);
     // B7.3: Cannot modify completed or abandoned objectives
-    if (obj.status === ObjectiveStatus.COMPLETED || obj.status === ObjectiveStatus.ABANDONED) {
-      throw new BadRequestException('No se pueden modificar objetivos completados o abandonados');
+    if (
+      obj.status === ObjectiveStatus.COMPLETED ||
+      obj.status === ObjectiveStatus.ABANDONED ||
+      obj.status === ObjectiveStatus.CANCELLED
+    ) {
+      throw new BadRequestException(
+        'No se pueden modificar objetivos completados, cancelados o abandonados',
+      );
     }
     // B7.1: targetDate must not be in the past (only when field is being changed)
     if (dto.targetDate !== undefined) this.validateTargetDate(dto.targetDate);
     // B7.2: cycleId must be an open cycle (only when field is being changed)
-    if (dto.cycleId !== undefined && dto.cycleId) await this.validateCycleOpen(dto.cycleId, tenantId);
+    if (dto.cycleId !== undefined && dto.cycleId)
+      await this.validateCycleOpen(dto.cycleId, tenantId);
+    // T2.3 — BUG-3: si cambia weight o cycleId, validar contra el bucket
+    // resultante. Usa el cycleId nuevo si se está cambiando, y el peso nuevo
+    // si se está cambiando. excludeId=id para no contar el mismo objetivo.
+    if (dto.weight !== undefined || dto.cycleId !== undefined) {
+      const effectiveWeight =
+        dto.weight !== undefined ? dto.weight : Number(obj.weight || 0);
+      const effectiveCycleId =
+        dto.cycleId !== undefined
+          ? (dto.cycleId ?? null)
+          : (obj.cycleId ?? null);
+      if (effectiveWeight > 0) {
+        await this.validateWeightSum({
+          tenantId,
+          userId: obj.userId,
+          cycleId: effectiveCycleId,
+          candidateWeight: effectiveWeight,
+          excludeId: id,
+        });
+      }
+    }
     if (dto.title !== undefined) obj.title = dto.title;
     if (dto.description !== undefined) obj.description = dto.description;
     if (dto.type !== undefined) obj.type = dto.type;
     if (dto.status !== undefined) obj.status = dto.status;
-    if (dto.targetDate !== undefined) obj.targetDate = new Date(dto.targetDate);
+    if (dto.targetDate !== undefined) {
+      const newTargetDate = new Date(dto.targetDate);
+      // T6.3 — Audit P1: si el objetivo está OVERDUE y se extiende la fecha
+      // a hoy o futuro, vuelve a ACTIVE automáticamente. La validación
+      // validateTargetDate (B7.1) ya garantiza que dto.targetDate no es
+      // pasada, así que cualquier valor llegado aquí es ≥ hoy.
+      // Si dto.status también se setea explícitamente arriba, ese gana
+      // (admin override). El check `obj.status === OVERDUE` aplica al
+      // estado tras el assign de dto.status, así que solo dispara cuando
+      // el caller no forzó otro status.
+      obj.targetDate = newTargetDate;
+      if (obj.status === ObjectiveStatus.OVERDUE) {
+        obj.status = ObjectiveStatus.ACTIVE;
+      }
+    }
     if (dto.progress !== undefined) obj.progress = dto.progress;
     if (dto.weight !== undefined) obj.weight = dto.weight;
+    // T2.3 incidental fix: cycleId estaba en el DTO y se validaba, pero nunca
+    // se aplicaba al obj — los cambios de ciclo no persistían. Se aplica
+    // ahora para que la validación de pesos por bucket sea coherente.
+    if (dto.cycleId !== undefined) obj.cycleId = dto.cycleId;
     if (dto.parentObjectiveId !== undefined) {
       if (dto.parentObjectiveId) {
         if (dto.parentObjectiveId === id) {
-          throw new BadRequestException('Un objetivo no puede ser padre de sí mismo');
+          throw new BadRequestException(
+            'Un objetivo no puede ser padre de sí mismo',
+          );
         }
         await this.validateParentObjective(tenantId, dto.parentObjectiveId, id);
       }
@@ -291,49 +697,70 @@ export class ObjectivesService {
   async submitForApproval(tenantId: string, id: string): Promise<Objective> {
     const obj = await this.findById(tenantId, id);
     if (obj.status !== ObjectiveStatus.DRAFT) {
-      throw new BadRequestException('Solo objetivos en estado borrador pueden enviarse a aprobación');
+      throw new BadRequestException(
+        'Solo objetivos en estado borrador pueden enviarse a aprobación',
+      );
     }
 
-    // B2.9: Validate weight sum = 100% for all active/pending objectives of same user
-    if (obj.weight > 0) {
-      const userObjectives = await this.objectiveRepo.find({
-        where: { tenantId, userId: obj.userId },
+    // T2.4 — BUG-3: usa el helper compartido. Reemplaza la validación inline
+    // que (a) no filtraba por cycleId y (b) sumaba COMPLETED de todos los
+    // ciclos del usuario, bloqueando submits válidos en períodos nuevos.
+    if (Number(obj.weight) > 0) {
+      await this.validateWeightSum({
+        tenantId,
+        userId: obj.userId,
+        cycleId: obj.cycleId ?? null,
+        candidateWeight: Number(obj.weight),
+        excludeId: id,
       });
-      const totalWeight = userObjectives
-        .filter((o) => o.id !== id && o.status !== ObjectiveStatus.ABANDONED)
-        .reduce((sum, o) => sum + Number(o.weight || 0), Number(obj.weight));
-      if (totalWeight > 100) {
-        throw new BadRequestException(
-          `La suma de pesos de los objetivos del colaborador sería ${totalWeight}%. El total no puede superar 100%.`,
-        );
-      }
     }
 
     obj.status = ObjectiveStatus.PENDING_APPROVAL;
     obj.rejectionReason = null; // Clear previous rejection reason
     const saved = await this.objectiveRepo.save(obj);
-    this.auditService.log(tenantId, obj.userId, 'objective.submitted_for_approval', 'objective', id, { title: obj.title }).catch(() => {});
+    this.auditService
+      .log(
+        tenantId,
+        obj.userId,
+        'objective.submitted_for_approval',
+        'objective',
+        id,
+        { title: obj.title },
+      )
+      .catch(() => {});
 
     // Notify manager that an objective needs approval
-    const employee = await this.userRepo.findOne({ where: { id: obj.userId }, select: ['id', 'firstName', 'lastName', 'managerId'] });
+    const employee = await this.userRepo.findOne({
+      where: { id: obj.userId },
+      select: ['id', 'firstName', 'lastName', 'managerId'],
+    });
     if (employee?.managerId) {
-      const manager = await this.userRepo.findOne({ where: { id: employee.managerId }, select: ['id', 'email', 'firstName', 'language'] });
+      const manager = await this.userRepo.findOne({
+        where: { id: employee.managerId },
+        select: ['id', 'email', 'firstName', 'language'],
+      });
       if (manager?.email) {
-        this.emailService.sendObjectiveAssigned(manager.email, {
-          firstName: manager.firstName,
-          objectiveTitle: `[Pendiente de aprobación] ${obj.title}`,
-          objectiveType: obj.type || 'OKR',
-          assignedBy: `${employee.firstName} ${employee.lastName}`,
-          tenantId,
-          userId: manager.id,
-        }).catch(() => {});
+        this.emailService
+          .sendObjectiveAssigned(manager.email, {
+            firstName: manager.firstName,
+            objectiveTitle: `[Pendiente de aprobación] ${obj.title}`,
+            objectiveType: obj.type || 'OKR',
+            assignedBy: `${employee.firstName} ${employee.lastName}`,
+            tenantId,
+            userId: manager.id,
+          })
+          .catch(() => {});
       }
       // v3.0 Push al manager con el objetivo pendiente.
       if (manager) {
-        const pushMsg = buildPushMessage('objectivePendingApproval', manager.language ?? 'es', {
-          employee: `${employee.firstName} ${employee.lastName}`,
-          title: obj.title,
-        });
+        const pushMsg = buildPushMessage(
+          'objectivePendingApproval',
+          manager.language ?? 'es',
+          {
+            employee: `${employee.firstName} ${employee.lastName}`,
+            title: obj.title,
+          },
+        );
         this.pushService
           .sendToUser(
             manager.id,
@@ -352,69 +779,560 @@ export class ObjectivesService {
     return saved;
   }
 
-  async approve(tenantId: string | undefined, id: string, approvedBy?: string): Promise<Objective> {
+  /**
+   * T4.1 — BUG-10: aprobación en batch transaccional por-item.
+   *
+   * Cada id se procesa en su propio try/catch. Un fallo (objetivo no
+   * existe, no está en PENDING_APPROVAL, manager fuera de scope, etc.)
+   * NO aborta los siguientes — devuelve `{ approved, failed }` con el
+   * detalle. Esto reemplaza el loop secuencial cliente-side previo
+   * que ante un fallo en la mitad dejaba estado parcial sin reportarlo.
+   *
+   * No se envuelve en una transacción única intencionalmente: por diseño,
+   * cada aprobación es independiente y debe persistir si tiene éxito,
+   * aunque otra del mismo batch falle.
+   *
+   * Validación de scope idéntica al single-approve:
+   *   - super_admin / tenant_admin: aprueban cualquier objetivo del tenant
+   *   - manager: solo objetivos propios o de reportes directos
+   *     (assertManagerCanAccessUser per-item)
+   */
+  async bulkApprove(
+    tenantId: string | undefined,
+    ids: string[],
+    callerUserId: string,
+    callerRole: string,
+  ): Promise<{
+    approved: string[];
+    failed: Array<{ id: string; reason: string }>;
+  }> {
+    const approved: string[] = [];
+    const failed: Array<{ id: string; reason: string }> = [];
+
+    for (const id of ids) {
+      try {
+        // Manager scope check (mirrors controller's single-approve flow)
+        if (callerRole === 'manager') {
+          const objective = await this.findById(tenantId, id);
+          if (objective.userId !== callerUserId) {
+            await assertManagerCanAccessUser(
+              this.userRepo,
+              callerUserId,
+              callerRole,
+              objective.userId,
+              objective.tenantId,
+            );
+          }
+        }
+
+        await this.approve(tenantId, id, callerUserId);
+        approved.push(id);
+      } catch (err: unknown) {
+        const reason = err instanceof Error ? err.message : 'Error desconocido';
+        failed.push({ id, reason });
+      }
+    }
+
+    return { approved, failed };
+  }
+
+  async approve(
+    tenantId: string | undefined,
+    id: string,
+    approvedBy?: string,
+  ): Promise<Objective> {
     const obj = await this.findById(tenantId, id);
     const effectiveTenantId = obj.tenantId;
     if (obj.status !== ObjectiveStatus.PENDING_APPROVAL) {
-      throw new BadRequestException('Solo objetivos pendientes de aprobación pueden ser aprobados');
+      throw new BadRequestException(
+        'Solo objetivos pendientes de aprobación pueden ser aprobados',
+      );
     }
     obj.status = ObjectiveStatus.ACTIVE;
     obj.approvedBy = approvedBy || null;
     obj.approvedAt = new Date();
     obj.rejectionReason = null;
     const saved = await this.objectiveRepo.save(obj);
-    this.auditService.log(effectiveTenantId, approvedBy || obj.userId, 'objective.approved', 'objective', id, { title: obj.title, approvedBy }).catch(() => {});
+    this.auditService
+      .log(
+        effectiveTenantId,
+        approvedBy || obj.userId,
+        'objective.approved',
+        'objective',
+        id,
+        { title: obj.title, approvedBy },
+      )
+      .catch(() => {});
 
     // Notify objective owner that it was approved
-    const owner = await this.userRepo.findOne({ where: { id: obj.userId }, select: ['id', 'email', 'firstName'] });
+    const owner = await this.userRepo.findOne({
+      where: { id: obj.userId },
+      select: ['id', 'email', 'firstName'],
+    });
     if (owner?.email) {
-      this.emailService.sendObjectiveAssigned(owner.email, {
-        firstName: owner.firstName,
-        objectiveTitle: `[Aprobado] ${obj.title}`,
-        objectiveType: obj.type || 'OKR',
-        targetDate: obj.targetDate ? new Date(obj.targetDate).toLocaleDateString('es-CL') : undefined,
-        tenantId: effectiveTenantId,
-        userId: owner.id,
-      }).catch(() => {});
+      this.emailService
+        .sendObjectiveAssigned(owner.email, {
+          firstName: owner.firstName,
+          objectiveTitle: `[Aprobado] ${obj.title}`,
+          objectiveType: obj.type || 'OKR',
+          targetDate: obj.targetDate
+            ? new Date(obj.targetDate).toLocaleDateString('es-CL')
+            : undefined,
+          tenantId: effectiveTenantId,
+          userId: owner.id,
+        })
+        .catch(() => {});
     }
 
     return saved;
   }
 
-  async reject(tenantId: string | undefined, id: string, rejectedBy?: string, reason?: string): Promise<Objective> {
+  async reject(
+    tenantId: string | undefined,
+    id: string,
+    rejectedBy?: string,
+    reason?: string,
+  ): Promise<Objective> {
     const obj = await this.findById(tenantId, id);
     const effectiveTenantId = obj.tenantId;
     if (obj.status !== ObjectiveStatus.PENDING_APPROVAL) {
-      throw new BadRequestException('Solo objetivos pendientes de aprobación pueden ser rechazados');
+      throw new BadRequestException(
+        'Solo objetivos pendientes de aprobación pueden ser rechazados',
+      );
     }
     obj.status = ObjectiveStatus.DRAFT;
     obj.rejectionReason = reason || null;
     obj.approvedBy = null;
     obj.approvedAt = null;
     const saved = await this.objectiveRepo.save(obj);
-    this.auditService.log(effectiveTenantId, rejectedBy || obj.userId, 'objective.rejected', 'objective', id, { title: obj.title, rejectedBy, reason }).catch(() => {});
+
+    // T8.2 — Audit P1: persistir el rechazo como fila en
+    // objective_rejections para preservar el historial completo. La
+    // columna `rejection_reason` en `objectives` queda como
+    // denormalización del último rechazo (compat con UI legacy y
+    // listados rápidos).
+    if (rejectedBy) {
+      this.rejectionRepo
+        .save(
+          this.rejectionRepo.create({
+            tenantId: effectiveTenantId,
+            objectiveId: id,
+            rejectedBy,
+            reason: reason || null,
+            objectiveTitleSnapshot: obj.title,
+          }),
+        )
+        .catch((err: unknown) => {
+          const msg = err instanceof Error ? err.message : String(err);
+          this.logger.warn(
+            `Failed to persist objective rejection for ${id}: ${msg}`,
+          );
+        });
+    }
+
+    this.auditService
+      .log(
+        effectiveTenantId,
+        rejectedBy || obj.userId,
+        'objective.rejected',
+        'objective',
+        id,
+        { title: obj.title, rejectedBy, reason },
+      )
+      .catch(() => {});
 
     // Notify objective owner that it was rejected
-    const owner = await this.userRepo.findOne({ where: { id: obj.userId }, select: ['id', 'email', 'firstName'] });
+    const owner = await this.userRepo.findOne({
+      where: { id: obj.userId },
+      select: ['id', 'email', 'firstName'],
+    });
     if (owner?.email) {
-      this.emailService.sendObjectiveAssigned(owner.email, {
-        firstName: owner.firstName,
-        objectiveTitle: `[Rechazado] ${obj.title}`,
-        objectiveType: reason ? `Motivo: ${reason}` : 'Sin motivo especificado',
-        tenantId: effectiveTenantId,
-        userId: owner.id,
-      }).catch(() => {});
+      this.emailService
+        .sendObjectiveAssigned(owner.email, {
+          firstName: owner.firstName,
+          objectiveTitle: `[Rechazado] ${obj.title}`,
+          objectiveType: reason
+            ? `Motivo: ${reason}`
+            : 'Sin motivo especificado',
+          tenantId: effectiveTenantId,
+          userId: owner.id,
+        })
+        .catch(() => {});
     }
 
     return saved;
   }
 
+  /**
+   * T11 — Audit P2: carry-over de objetivos al ciclo siguiente.
+   * Para cada id válido crea un duplicado en el ciclo destino con
+   * progress=0, status=ACTIVE, `carriedFromObjectiveId` apuntando al
+   * source. Duplica los KRs (currentValue=baseValue, status=ACTIVE).
+   * Si `cancelSource=true`, cancela el source via `cancel()`.
+   * Devuelve { created, cancelled, failed[] } per-item — un fallo no
+   * aborta los demás (mismo patrón que bulkApprove de T4).
+   */
+  async carryOverObjectives(
+    tenantId: string,
+    actorUserId: string,
+    opts: {
+      objectiveIds: string[];
+      targetCycleId: string;
+      cancelSource?: boolean;
+      sourceCancelReason?: string;
+    },
+  ): Promise<{
+    created: Array<{ sourceId: string; newId: string }>;
+    cancelled: string[];
+    failed: Array<{ id: string; reason: string }>;
+  }> {
+    await this.validateCycleOpen(opts.targetCycleId, tenantId);
+
+    if (
+      opts.cancelSource &&
+      (!opts.sourceCancelReason || opts.sourceCancelReason.length < 5)
+    ) {
+      throw new BadRequestException(
+        'Si cancelSource=true, sourceCancelReason debe tener al menos 5 caracteres',
+      );
+    }
+
+    const created: Array<{ sourceId: string; newId: string }> = [];
+    const cancelled: string[] = [];
+    const failed: Array<{ id: string; reason: string }> = [];
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    for (const sourceId of opts.objectiveIds) {
+      try {
+        const source = await this.objectiveRepo.findOne({
+          where: { id: sourceId, tenantId },
+        });
+        if (!source) {
+          failed.push({ id: sourceId, reason: 'Objetivo no encontrado' });
+          continue;
+        }
+
+        if (
+          source.status === ObjectiveStatus.COMPLETED ||
+          source.status === ObjectiveStatus.CANCELLED ||
+          source.status === ObjectiveStatus.ABANDONED
+        ) {
+          failed.push({
+            id: sourceId,
+            reason: `Objetivo en estado terminal (${source.status}) no puede llevarse al próximo ciclo`,
+          });
+          continue;
+        }
+
+        // targetDate: solo conservar si es futura, sino null para que
+        // el owner la fije con el horizonte del nuevo ciclo.
+        const newTargetDate =
+          source.targetDate && new Date(source.targetDate) >= today
+            ? source.targetDate
+            : null;
+
+        const newObj = await this.objectiveRepo.save(
+          this.objectiveRepo.create({
+            tenantId,
+            userId: source.userId,
+            title: source.title,
+            description: source.description,
+            type: source.type,
+            cycleId: opts.targetCycleId,
+            weight: source.weight,
+            parentObjectiveId: source.parentObjectiveId,
+            targetDate: newTargetDate as Date | undefined,
+            status: ObjectiveStatus.ACTIVE,
+            progress: 0,
+            carriedFromObjectiveId: source.id,
+          }),
+        );
+
+        // Duplicar KRs si el source es OKR (con valores reset al base).
+        if (source.type === 'OKR') {
+          const sourceKrs = await this.keyResultRepo.find({
+            where: { tenantId, objectiveId: source.id },
+          });
+          for (const kr of sourceKrs) {
+            await this.keyResultRepo.save(
+              this.keyResultRepo.create({
+                tenantId,
+                objectiveId: newObj.id,
+                description: kr.description,
+                unit: kr.unit,
+                baseValue: kr.baseValue,
+                targetValue: kr.targetValue,
+                currentValue: kr.baseValue, // reset al base
+                status: KRStatus.ACTIVE,
+              }),
+            );
+          }
+        }
+
+        this.auditService
+          .log(
+            tenantId,
+            actorUserId,
+            'objective.carried_over',
+            'objective',
+            newObj.id,
+            {
+              sourceId: source.id,
+              sourceCycleId: source.cycleId,
+              targetCycleId: opts.targetCycleId,
+            },
+          )
+          .catch(() => {});
+
+        created.push({ sourceId: source.id, newId: newObj.id });
+
+        // Cancelar source si se pidió. Usa service.cancel() para preservar
+        // garantías de validación y audit (mismo flujo que UI manual).
+        if (opts.cancelSource) {
+          try {
+            await this.cancel(
+              tenantId,
+              source.id,
+              opts.sourceCancelReason as string,
+              actorUserId,
+            );
+            cancelled.push(source.id);
+          } catch (cancelErr: unknown) {
+            const msg =
+              cancelErr instanceof Error
+                ? cancelErr.message
+                : String(cancelErr);
+            failed.push({
+              id: source.id,
+              reason: `Carry-over creado pero cancelación del source falló: ${msg}`,
+            });
+          }
+        }
+      } catch (err: unknown) {
+        const reason = err instanceof Error ? err.message : 'Error desconocido';
+        failed.push({ id: sourceId, reason });
+      }
+    }
+
+    return { created, cancelled, failed };
+  }
+
+  /**
+   * T8.2 — Audit P1: lista el historial completo de rechazos de un
+   * objetivo, ordenado del más reciente al más antiguo. Cada fila
+   * incluye razón, autor (con datos básicos del user) y timestamp.
+   * Si el objetivo nunca fue rechazado, devuelve [].
+   */
+  async listRejectionHistory(
+    tenantId: string,
+    objectiveId: string,
+  ): Promise<ObjectiveRejection[]> {
+    return this.rejectionRepo.find({
+      where: { tenantId, objectiveId },
+      relations: ['rejector'],
+      order: { rejectedAt: 'DESC' },
+    });
+  }
+
+  /**
+   * T7.3 — Audit P1: ABANDONED queda reservado para soft-delete técnico
+   * admin (este endpoint), no para cancelaciones de negocio. Para
+   * cancelar por scope-change usar POST /:id/cancel (estado CANCELLED
+   * con razón obligatoria + cancelledBy + cancelledAt).
+   *
+   * El controller restringe este endpoint a `super_admin` y `tenant_admin`
+   * solamente — owner/manager no pueden disparar ABANDONED.
+   *
+   * El audit action 'objective.cancelled' se mantiene por compatibilidad
+   * con histórico, pero el evento real es un soft-delete admin.
+   */
   async remove(tenantId: string | undefined, id: string): Promise<void> {
     const obj = await this.findById(tenantId, id);
     const effectiveTenantId = obj.tenantId;
     obj.status = ObjectiveStatus.ABANDONED;
     await this.objectiveRepo.save(obj);
-    this.auditService.log(effectiveTenantId, obj.userId, 'objective.cancelled', 'objective', id, { title: obj.title }).catch(() => {});
+    this.auditService
+      .log(
+        effectiveTenantId,
+        obj.userId,
+        'objective.cancelled',
+        'objective',
+        id,
+        { title: obj.title },
+      )
+      .catch(() => {});
+  }
+
+  /**
+   * T7.2 — Audit P1: cancela un objetivo por decisión de negocio (cambio
+   * de estrategia, scope-change, re-org). Reemplaza el uso anterior de
+   * ABANDONED como cubo semántico — ahora ABANDONED queda solo para el
+   * soft-delete técnico admin (DELETE).
+   *
+   * Estado terminal: una vez CANCELLED, el objetivo no se puede
+   * reactivar (igual que COMPLETED). El owner debe crear uno nuevo si
+   * cambian de opinión.
+   *
+   * Reglas:
+   *   - Solo se puede cancelar desde DRAFT, PENDING_APPROVAL, ACTIVE u
+   *     OVERDUE. Bloqueado desde COMPLETED/ABANDONED/CANCELLED.
+   *   - Reason es obligatoria (validada por el DTO con MinLength=5).
+   *   - Trazabilidad: cancelledBy, cancelledAt, cancellationReason
+   *     quedan registrados en columnas dedicadas + audit log.
+   */
+  async cancel(
+    tenantId: string | undefined,
+    id: string,
+    reason: string,
+    cancelledBy: string,
+  ): Promise<Objective> {
+    const obj = await this.findById(tenantId, id);
+    const effectiveTenantId = obj.tenantId;
+
+    if (
+      obj.status === ObjectiveStatus.COMPLETED ||
+      obj.status === ObjectiveStatus.ABANDONED ||
+      obj.status === ObjectiveStatus.CANCELLED
+    ) {
+      throw new BadRequestException(
+        'No se puede cancelar un objetivo que ya está completado, abandonado o cancelado',
+      );
+    }
+
+    obj.status = ObjectiveStatus.CANCELLED;
+    obj.cancellationReason = reason;
+    obj.cancelledBy = cancelledBy;
+    obj.cancelledAt = new Date();
+    const saved = await this.objectiveRepo.save(obj);
+
+    this.auditService
+      .log(
+        effectiveTenantId,
+        cancelledBy,
+        'objective.cancelled_by_business',
+        'objective',
+        id,
+        { title: obj.title, reason, cancelledBy },
+      )
+      .catch(() => {});
+
+    return saved;
+  }
+
+  // ─── Completion (shared helper) ─────────────────────────────────────────────
+
+  /**
+   * Transitions an objective to COMPLETED status, persists it, and fires the
+   * standard completion side-effects:
+   *   - Audit log "objective.completed"
+   *   - +10 recognition points (G4)
+   *   - In-app notification to the owner
+   *   - Auto-badge check
+   *   - Email to the direct manager (best-effort)
+   *
+   * Idempotent: if the objective is already COMPLETED the helper returns
+   * without re-firing side-effects (no duplicate points, no duplicate emails).
+   *
+   * Caller responsibilities:
+   *   - Validate prerequisites (e.g. OKR with all KRs completed) before
+   *     invoking — the helper does NOT validate, it only completes.
+   *   - Trigger `propagateProgressToParent` afterwards if the cascading-OKR
+   *     hierarchy needs to be updated.
+   *
+   * Used by: addProgressUpdate (manual SMART/KPI/OKR-no-KR completion),
+   * recalculateProgressFromKRs (auto-completion when KRs reach 100%, T1.2),
+   * propagateProgressToParent (parent auto-completion when all children
+   * complete, Task 3).
+   */
+  private async completeObjective(
+    obj: Objective,
+    completedBy: string,
+  ): Promise<Objective> {
+    if (obj.status === ObjectiveStatus.COMPLETED) {
+      return obj; // idempotent: side-effects already fired on the original transition
+    }
+
+    obj.status = ObjectiveStatus.COMPLETED;
+    if (obj.progress < 100) {
+      obj.progress = 100;
+    }
+    const saved = await this.objectiveRepo.save(obj);
+
+    this.auditService
+      .log(
+        saved.tenantId,
+        completedBy,
+        'objective.completed',
+        'objective',
+        saved.id,
+        {
+          title: saved.title,
+          type: saved.type,
+          completedBy,
+        },
+      )
+      .catch(() => {});
+
+    // G4: +10 puntos al completar un objetivo
+    this.recognitionService
+      .addPoints(
+        saved.tenantId,
+        saved.userId,
+        10,
+        PointsSource.OBJECTIVE_COMPLETED,
+        `Objetivo "${saved.title}" completado`,
+        saved.id,
+      )
+      .catch(() => {});
+
+    // Notificación de logro al colaborador
+    this.notificationsService
+      .create({
+        tenantId: saved.tenantId,
+        userId: saved.userId,
+        type: NotificationType.GENERAL,
+        title: '🏆 ¡Objetivo cumplido!',
+        message: `Completaste tu objetivo "${saved.title}". +10 puntos sumados a tu perfil. ¡Sigue así!`,
+        metadata: { objectiveId: saved.id, objectiveCompleted: true },
+      })
+      .catch(() => {});
+
+    // Auto-badge check (por si hay badges que requieran N objetivos completados)
+    this.recognitionService
+      .checkAutoBadges(saved.tenantId, saved.userId)
+      .catch(() => {});
+
+    // Email al manager directo (best-effort)
+    try {
+      const employee = await this.userRepo.findOne({
+        where: { id: saved.userId },
+        select: ['id', 'firstName', 'lastName', 'managerId'],
+      });
+      if (employee?.managerId) {
+        const manager = await this.userRepo.findOne({
+          where: { id: employee.managerId },
+          select: ['id', 'email', 'firstName'],
+        });
+        if (manager?.email) {
+          this.emailService
+            .sendObjectiveCompleted(manager.email, {
+              managerName: manager.firstName,
+              employeeName: `${employee.firstName} ${employee.lastName}`,
+              objectiveTitle: saved.title,
+              objectiveType: saved.type || 'OKR',
+              tenantId: saved.tenantId,
+              userId: manager.id,
+            })
+            .catch(() => {});
+        }
+      }
+    } catch {
+      // best-effort: errores en lookups no propagan
+    }
+
+    return saved;
   }
 
   // ─── Progress ───────────────────────────────────────────────────────────────
@@ -427,15 +1345,26 @@ export class ObjectivesService {
   ): Promise<ObjectiveUpdate> {
     // Validate notes FIRST (no DB operation needed)
     if (!dto.notes || dto.notes.trim().length === 0) {
-      throw new BadRequestException('Debe indicar qué avance realizó para actualizar el progreso.');
+      throw new BadRequestException(
+        'Debe indicar qué avance realizó para actualizar el progreso.',
+      );
     }
 
     const obj = await this.findById(tenantId, objectiveId);
     if (obj.status === ObjectiveStatus.COMPLETED) {
-      throw new BadRequestException('Este objetivo ya está completado. No se puede actualizar el progreso');
+      throw new BadRequestException(
+        'Este objetivo ya está completado. No se puede actualizar el progreso',
+      );
     }
     if (obj.status === ObjectiveStatus.ABANDONED) {
-      throw new BadRequestException('No se puede actualizar el progreso de un objetivo abandonado');
+      throw new BadRequestException(
+        'No se puede actualizar el progreso de un objetivo abandonado',
+      );
+    }
+    if (obj.status === ObjectiveStatus.CANCELLED) {
+      throw new BadRequestException(
+        'No se puede actualizar el progreso de un objetivo cancelado',
+      );
     }
 
     // OKR with Key Results: progress is calculated automatically from KRs
@@ -446,28 +1375,43 @@ export class ObjectivesService {
       );
     }
 
+    const previousProgress = obj.progress;
     obj.progress = dto.progressValue;
+    let willComplete = false;
+
     if (dto.progressValue >= 100) {
       // OKR: must have KRs defined and all completed
       if (obj.type === 'OKR') {
         if (krs.length === 0) {
-          throw new BadRequestException('No se puede completar un OKR sin Resultados Clave definidos. Agregue al menos un KR.');
+          throw new BadRequestException(
+            'No se puede completar un OKR sin Resultados Clave definidos. Agregue al menos un KR.',
+          );
         }
-        const incompleteKrs = krs.filter((kr: any) => kr.status !== 'completed');
+        const incompleteKrs = krs.filter(
+          (kr: any) => kr.status !== 'completed',
+        );
         if (incompleteKrs.length > 0) {
           throw new BadRequestException(
             `No se puede completar: tiene ${incompleteKrs.length} Resultado(s) Clave pendiente(s). Complete los KRs primero.`,
           );
         }
       }
-      obj.status = ObjectiveStatus.COMPLETED;
+      willComplete = true;
     } else if (obj.status === ObjectiveStatus.DRAFT) {
       obj.status = ObjectiveStatus.ACTIVE;
     }
-    await this.objectiveRepo.save(obj);
 
-    // B3.15: Propagate progress to parent objective
-    await this.propagateProgressToParent(tenantId, objectiveId);
+    if (willComplete) {
+      // Helper sets status=COMPLETED, persists, and fires side-effects
+      // (audit, gamification, owner notification, manager email, auto-badges).
+      await this.completeObjective(obj, userId);
+    } else {
+      await this.objectiveRepo.save(obj);
+    }
+
+    // B3.15: Propagate progress to parent objective (T3.1: pasa userId
+    // como actor para audit del completion del padre si llega a 100%)
+    await this.propagateProgressToParent(tenantId, objectiveId, userId);
 
     const update = this.updateRepo.create({
       tenantId,
@@ -477,52 +1421,29 @@ export class ObjectivesService {
       createdBy: userId,
     });
     const saved = await this.updateRepo.save(update);
-    this.auditService.log(tenantId, userId, 'objective.progress_updated', 'objective', objectiveId, { title: obj.title, previousProgress: obj.progress, newProgress: dto.progressValue, notes: dto.notes }).catch(() => {});
-
-    // ── Gamificación: puntos + notificación al completar objetivo ──
-    if (obj.status === ObjectiveStatus.COMPLETED) {
-      // G4: +10 puntos al completar un objetivo
-      this.recognitionService.addPoints(
-        tenantId, obj.userId, 10, PointsSource.OBJECTIVE_COMPLETED,
-        `Objetivo "${obj.title}" completado`, objectiveId,
-      ).catch(() => {});
-
-      // Notificación de logro al colaborador
-      this.notificationsService.create({
+    this.auditService
+      .log(
         tenantId,
-        userId: obj.userId,
-        type: 'general' as any,
-        title: '🏆 ¡Objetivo cumplido!',
-        message: `Completaste tu objetivo "${obj.title}". +10 puntos sumados a tu perfil. ¡Sigue así!`,
-        metadata: { objectiveId, objectiveCompleted: true },
-      }).catch(() => {});
-
-      // Auto-badge check por si hay badges que requieran N objetivos completados
-      this.recognitionService.checkAutoBadges(tenantId, obj.userId).catch(() => {});
-    }
-
-    // Notify manager when objective is completed
-    if (dto.progressValue >= 100) {
-      const employee = await this.userRepo.findOne({ where: { id: obj.userId }, select: ['id', 'firstName', 'lastName', 'managerId'] });
-      if (employee?.managerId) {
-        const manager = await this.userRepo.findOne({ where: { id: employee.managerId }, select: ['id', 'email', 'firstName'] });
-        if (manager?.email) {
-          this.emailService.sendObjectiveCompleted(manager.email, {
-            managerName: manager.firstName,
-            employeeName: `${employee.firstName} ${employee.lastName}`,
-            objectiveTitle: obj.title,
-            objectiveType: obj.type || 'OKR',
-            tenantId,
-            userId: manager.id,
-          }).catch(() => {});
-        }
-      }
-    }
+        userId,
+        'objective.progress_updated',
+        'objective',
+        objectiveId,
+        {
+          title: obj.title,
+          previousProgress,
+          newProgress: dto.progressValue,
+          notes: dto.notes,
+        },
+      )
+      .catch(() => {});
 
     return saved;
   }
 
-  async getProgressHistory(tenantId: string, objectiveId: string): Promise<ObjectiveUpdate[]> {
+  async getProgressHistory(
+    tenantId: string,
+    objectiveId: string,
+  ): Promise<ObjectiveUpdate[]> {
     return this.updateRepo.find({
       where: { tenantId, objectiveId },
       relations: ['creator'],
@@ -531,52 +1452,63 @@ export class ObjectivesService {
   }
 
   // B2.11: Objectives at risk — considers both progress AND time elapsed
-  // An objective is at-risk if its progress is behind the expected pace
-  // Expected pace = (elapsed time / total time) * 100
-  // At-risk when: progress < expectedPace * 0.6 (40% behind expected) OR progress < 40% with no target date
-  async getAtRiskObjectives(tenantId: string, filterUserId?: string, role?: string, currentUserId?: string): Promise<Objective[]> {
-    // Fetch all active objectives first, then filter intelligently
+  //
+  // T13 — Audit P2: el cálculo de pace ahora corre en SQL en lugar de
+  // traer todos los activos a memoria y filtrar en JS. Beneficio:
+  //   - Postgres usa los índices y solo retorna at-risk
+  //   - Tenants con miles de objetivos activos dejan de degradar
+  //   - Memoria del proceso baja drásticamente (no carga todos los activos)
+  //
+  // Expresión SQL del threshold de at-risk:
+  //   - target_date IS NULL              → progress < 40 (threshold simple)
+  //   - target_date <= CURRENT_DATE      → progress < 100 (vencido = at-risk si no completado)
+  //   - target_date <= created_at::date  → progress < 100 (totalDuration <= 0 edge case)
+  //   - default                          → progress < pace * 0.6
+  //     donde pace = (elapsed / total_duration, capped to 1) * 100
+  async getAtRiskObjectives(
+    tenantId: string,
+    filterUserId?: string,
+    role?: string,
+    currentUserId?: string,
+  ): Promise<Objective[]> {
     const qb = this.objectiveRepo
       .createQueryBuilder('o')
       .leftJoinAndSelect('o.user', 'u', 'u.tenant_id = o.tenant_id')
       .where('o.tenantId = :tenantId', { tenantId })
-      .andWhere('o.status = :status', { status: ObjectiveStatus.ACTIVE });
+      .andWhere('o.status = :status', { status: ObjectiveStatus.ACTIVE })
+      // Filtro at-risk en SQL: el WHERE final solo deja pasar objetivos
+      // cuyo progress está por debajo del threshold calculado per-fila.
+      .andWhere(
+        `o.progress < (
+          CASE
+            WHEN o.target_date IS NULL THEN 40
+            WHEN o.target_date <= CURRENT_DATE THEN 100
+            WHEN o.target_date::timestamp <= o.created_at THEN 100
+            ELSE LEAST(
+              1.0,
+              EXTRACT(EPOCH FROM (NOW() - o.created_at)) /
+              NULLIF(EXTRACT(EPOCH FROM (o.target_date::timestamp - o.created_at)), 0)
+            ) * 100 * 0.6
+          END
+        )`,
+      );
 
     if (role === 'manager' && currentUserId) {
       // Manager: only see at-risk objectives for their direct reports + own
-      qb.andWhere('(o.userId = :mgr OR u.manager_id = :mgr)', { mgr: currentUserId });
+      qb.andWhere('(o.userId = :mgr OR u.manager_id = :mgr)', {
+        mgr: currentUserId,
+      });
     } else if (filterUserId) {
       qb.andWhere('o.userId = :filterUserId', { filterUserId });
     }
-    const activeObjectives = await qb.orderBy('o.progress', 'ASC').getMany();
 
-    const now = new Date();
-    return activeObjectives.filter((o) => {
-      if (!o.targetDate) {
-        // No target date: fallback to simple threshold
-        return o.progress < 40;
-      }
-
-      const createdAt = new Date(o.createdAt);
-      const targetDate = new Date(o.targetDate);
-      const totalDuration = targetDate.getTime() - createdAt.getTime();
-
-      if (totalDuration <= 0) {
-        // Target date already passed or same day → at risk if not done
-        return o.progress < 100;
-      }
-
-      const elapsed = now.getTime() - createdAt.getTime();
-      const timeRatio = Math.min(elapsed / totalDuration, 1); // 0..1
-      const expectedProgress = timeRatio * 100; // Expected % if linear pace
-
-      // At-risk if progress is less than 60% of what's expected at this point in time
-      return o.progress < expectedProgress * 0.6;
-    });
+    return qb.orderBy('o.progress', 'ASC').getMany();
   }
 
   async getCompletionStats(tenantId: string, userId: string) {
-    const total = await this.objectiveRepo.count({ where: { tenantId, userId } });
+    const total = await this.objectiveRepo.count({
+      where: { tenantId, userId },
+    });
     const completed = await this.objectiveRepo.count({
       where: { tenantId, userId, status: ObjectiveStatus.COMPLETED },
     });
@@ -595,7 +1527,15 @@ export class ObjectivesService {
     });
 
     if (subordinates.length === 0) {
-      return { members: [], totals: { totalMembers: 0, totalObjectives: 0, totalAtRisk: 0, avgProgress: 0 } };
+      return {
+        members: [],
+        totals: {
+          totalMembers: 0,
+          totalObjectives: 0,
+          totalAtRisk: 0,
+          avgProgress: 0,
+        },
+      };
     }
 
     const userIds = subordinates.map((u) => u.id);
@@ -615,13 +1555,23 @@ export class ObjectivesService {
 
     const summary = subordinates.map((user) => {
       const objectives = byUser.get(user.id) || [];
-      const active = objectives.filter((o) => o.status === ObjectiveStatus.ACTIVE);
-      const completed = objectives.filter((o) => o.status === ObjectiveStatus.COMPLETED);
+      const active = objectives.filter(
+        (o) => o.status === ObjectiveStatus.ACTIVE,
+      );
+      const completed = objectives.filter(
+        (o) => o.status === ObjectiveStatus.COMPLETED,
+      );
       const atRisk = active.filter((o) => o.progress < 40);
-      const totalWeight = active.reduce((sum, o) => sum + Number(o.weight || 0), 0);
-      const avgProgress = active.length > 0
-        ? Math.round(active.reduce((sum, o) => sum + o.progress, 0) / active.length)
-        : 0;
+      const totalWeight = active.reduce(
+        (sum, o) => sum + Number(o.weight || 0),
+        0,
+      );
+      const avgProgress =
+        active.length > 0
+          ? Math.round(
+              active.reduce((sum, o) => sum + o.progress, 0) / active.length,
+            )
+          : 0;
 
       return {
         userId: user.id,
@@ -641,9 +1591,12 @@ export class ObjectivesService {
       totalMembers: subordinates.length,
       totalObjectives: summary.reduce((s, m) => s + m.totalObjectives, 0),
       totalAtRisk: summary.reduce((s, m) => s + m.atRiskCount, 0),
-      avgProgress: summary.length > 0
-        ? Math.round(summary.reduce((s, m) => s + m.avgProgress, 0) / summary.length)
-        : 0,
+      avgProgress:
+        summary.length > 0
+          ? Math.round(
+              summary.reduce((s, m) => s + m.avgProgress, 0) / summary.length,
+            )
+          : 0,
     };
 
     return { members: summary, totals: teamTotals };
@@ -651,7 +1604,10 @@ export class ObjectivesService {
 
   // ─── Comments ───────────────────────────────────────────────────────────────
 
-  async listComments(tenantId: string, objectiveId: string): Promise<ObjectiveComment[]> {
+  async listComments(
+    tenantId: string,
+    objectiveId: string,
+  ): Promise<ObjectiveComment[]> {
     return this.commentRepo.find({
       where: { tenantId, objectiveId },
       relations: ['author'],
@@ -663,7 +1619,12 @@ export class ObjectivesService {
     tenantId: string,
     objectiveId: string,
     authorId: string,
-    data: { content: string; type?: string; attachmentUrl?: string; attachmentName?: string },
+    data: {
+      content: string;
+      type?: string;
+      attachmentUrl?: string;
+      attachmentName?: string;
+    },
   ): Promise<ObjectiveComment> {
     // Verify objective exists
     await this.findById(tenantId, objectiveId);
@@ -684,13 +1645,22 @@ export class ObjectivesService {
     }) as Promise<ObjectiveComment>;
   }
 
-  async deleteComment(tenantId: string, commentId: string, requesterId: string, requesterRole: string): Promise<void> {
-    const comment = await this.commentRepo.findOne({ where: { id: commentId, tenantId } });
+  async deleteComment(
+    tenantId: string,
+    commentId: string,
+    requesterId: string,
+    requesterRole: string,
+  ): Promise<void> {
+    const comment = await this.commentRepo.findOne({
+      where: { id: commentId, tenantId },
+    });
     if (!comment) throw new NotFoundException('Comentario no encontrado');
 
     // Only the author or tenant_admin can delete
     if (comment.authorId !== requesterId && requesterRole !== 'tenant_admin') {
-      throw new ForbiddenException('Solo el autor o el administrador puede eliminar este comentario');
+      throw new ForbiddenException(
+        'Solo el autor o el administrador puede eliminar este comentario',
+      );
     }
 
     await this.commentRepo.remove(comment);
@@ -703,15 +1673,22 @@ export class ObjectivesService {
    * Root objectives (parentObjectiveId = null) are at the top,
    * with children nested recursively.
    */
-  async getObjectiveTree(tenantId: string, role?: string, currentUserId?: string): Promise<any[]> {
-    const qb = this.objectiveRepo.createQueryBuilder('o')
+  async getObjectiveTree(
+    tenantId: string,
+    role?: string,
+    currentUserId?: string,
+  ): Promise<any[]> {
+    const qb = this.objectiveRepo
+      .createQueryBuilder('o')
       .leftJoinAndSelect('o.user', 'u')
       .where('o.tenantId = :tenantId', { tenantId })
       .orderBy('o.createdAt', 'ASC');
 
     // Manager: only see objectives from their team + own
     if (role === 'manager' && currentUserId) {
-      qb.andWhere('(o.userId = :mgr OR u.manager_id = :mgr)', { mgr: currentUserId });
+      qb.andWhere('(o.userId = :mgr OR u.manager_id = :mgr)', {
+        mgr: currentUserId,
+      });
     }
 
     const all = await qb.getMany();
@@ -729,7 +1706,9 @@ export class ObjectivesService {
         targetDate: obj.targetDate,
         parentObjectiveId: obj.parentObjectiveId,
         userId: obj.userId,
-        userName: obj.user ? `${obj.user.firstName} ${obj.user.lastName}` : null,
+        userName: obj.user
+          ? `${obj.user.firstName} ${obj.user.lastName}`
+          : null,
         userPosition: obj.user?.position || null,
         children: [],
       });
@@ -750,10 +1729,18 @@ export class ObjectivesService {
    * Validates that a parent objective exists, belongs to same tenant,
    * and doesn't create a circular reference.
    */
-  private async validateParentObjective(tenantId: string, parentId: string, currentId?: string): Promise<void> {
-    const parent = await this.objectiveRepo.findOne({ where: { id: parentId, tenantId } });
+  private async validateParentObjective(
+    tenantId: string,
+    parentId: string,
+    currentId?: string,
+  ): Promise<void> {
+    const parent = await this.objectiveRepo.findOne({
+      where: { id: parentId, tenantId },
+    });
     if (!parent) {
-      throw new BadRequestException('El objetivo padre no existe en esta organización');
+      throw new BadRequestException(
+        'El objetivo padre no existe en esta organización',
+      );
     }
 
     // Check for circular reference: walk up the chain
@@ -762,10 +1749,14 @@ export class ObjectivesService {
       const visited = new Set<string>([currentId]);
       while (checkId) {
         if (visited.has(checkId)) {
-          throw new BadRequestException('No se puede crear una referencia circular entre objetivos');
+          throw new BadRequestException(
+            'No se puede crear una referencia circular entre objetivos',
+          );
         }
         visited.add(checkId);
-        const ancestor = await this.objectiveRepo.findOne({ where: { id: checkId, tenantId } });
+        const ancestor = await this.objectiveRepo.findOne({
+          where: { id: checkId, tenantId },
+        });
         checkId = ancestor?.parentObjectiveId || null;
       }
     }
@@ -773,11 +1764,43 @@ export class ObjectivesService {
 
   /**
    * When a child objective updates its progress, recalculate the parent's
-   * progress as the weighted average of all its children.
+   * progress as the weighted average of all its children, recursively up
+   * the chain.
+   *
+   * T3.1 — BUG-9: además del recálculo de progress, dispara la auto-completion
+   * del padre cuando `parentProgress >= 100` y el padre está ACTIVE (helper
+   * compartido con Tarea 1). El completeObjective es idempotente: re-llamadas
+   * sobre un padre ya COMPLETED no re-disparan side-effects.
+   *
+   * T3.2 — Guard contra cadenas circulares latentes. validateParentObjective
+   * previene crear ciclos en runtime, pero data legacy (migraciones, fixes
+   * manuales) podrían tener A→B→A. El parámetro `visited` arranca vacío y
+   * acumula los IDs de padres visitados en la cadena; si reaparece uno,
+   * abortamos sin loop infinito.
+   *
+   * `actorUserId` se propaga a completeObjective como `completedBy`. Si no
+   * se pasa (paths internos sin contexto de usuario), cae al `userId` del
+   * owner del padre.
    */
-  async propagateProgressToParent(tenantId: string, objectiveId: string): Promise<void> {
-    const obj = await this.objectiveRepo.findOne({ where: { id: objectiveId, tenantId } });
+  async propagateProgressToParent(
+    tenantId: string,
+    objectiveId: string,
+    actorUserId?: string,
+    visited: Set<string> = new Set(),
+  ): Promise<void> {
+    const obj = await this.objectiveRepo.findOne({
+      where: { id: objectiveId, tenantId },
+    });
     if (!obj?.parentObjectiveId) return;
+
+    // T3.2: abortar si la cadena ya visitó este padre (ciclo legacy)
+    if (visited.has(obj.parentObjectiveId)) {
+      this.logger.warn(
+        `Circular parent chain detected at objective ${obj.parentObjectiveId} (tenant ${tenantId}); aborting propagation`,
+      );
+      return;
+    }
+    visited.add(obj.parentObjectiveId);
 
     const siblings = await this.objectiveRepo.find({
       where: { tenantId, parentObjectiveId: obj.parentObjectiveId },
@@ -785,13 +1808,19 @@ export class ObjectivesService {
 
     if (siblings.length === 0) return;
 
-    const totalWeight = siblings.reduce((sum, s) => sum + Number(s.weight || 0), 0);
+    const totalWeight = siblings.reduce(
+      (sum, s) => sum + Number(s.weight || 0),
+      0,
+    );
 
     let parentProgress: number;
     if (totalWeight > 0) {
       // Weighted average
       parentProgress = Math.round(
-        siblings.reduce((sum, s) => sum + (s.progress * Number(s.weight || 0)), 0) / totalWeight,
+        siblings.reduce(
+          (sum, s) => sum + s.progress * Number(s.weight || 0),
+          0,
+        ) / totalWeight,
       );
     } else {
       // Simple average if no weights
@@ -799,19 +1828,42 @@ export class ObjectivesService {
         siblings.reduce((sum, s) => sum + s.progress, 0) / siblings.length,
       );
     }
+    parentProgress = Math.min(100, parentProgress);
 
     await this.objectiveRepo.update(
       { id: obj.parentObjectiveId, tenantId },
-      { progress: Math.min(100, parentProgress) },
+      { progress: parentProgress },
     );
 
-    // Recurse up the chain
-    await this.propagateProgressToParent(tenantId, obj.parentObjectiveId);
+    // T3.1: si el padre alcanza 100% y está ACTIVE u OVERDUE, auto-completarlo
+    if (parentProgress >= 100) {
+      const parent = await this.objectiveRepo.findOne({
+        where: { id: obj.parentObjectiveId, tenantId },
+      });
+      if (
+        parent &&
+        (parent.status === ObjectiveStatus.ACTIVE ||
+          parent.status === ObjectiveStatus.OVERDUE)
+      ) {
+        await this.completeObjective(parent, actorUserId ?? parent.userId);
+      }
+    }
+
+    // Recurse up the chain (con el mismo visited set y actorUserId)
+    await this.propagateProgressToParent(
+      tenantId,
+      obj.parentObjectiveId,
+      actorUserId,
+      visited,
+    );
   }
 
   // ─── Key Results (B2.10) ──────────────────────────────────────────────────
 
-  async listKeyResults(tenantId: string, objectiveId: string): Promise<KeyResult[]> {
+  async listKeyResults(
+    tenantId: string,
+    objectiveId: string,
+  ): Promise<KeyResult[]> {
     return this.keyResultRepo.find({
       where: { tenantId, objectiveId },
       order: { createdAt: 'ASC' },
@@ -821,18 +1873,27 @@ export class ObjectivesService {
   async createKeyResult(
     tenantId: string,
     objectiveId: string,
-    data: { description: string; unit?: string; baseValue?: number; targetValue?: number },
+    data: {
+      description: string;
+      unit?: string;
+      baseValue?: number;
+      targetValue?: number;
+    },
   ): Promise<KeyResult> {
     await this.findById(tenantId, objectiveId);
     // B7.6: targetValue must be > 0
     const base = data.baseValue ?? 0;
     const target = data.targetValue ?? 100;
     if (target <= 0) {
-      throw new BadRequestException('El valor objetivo del KR debe ser mayor a 0');
+      throw new BadRequestException(
+        'El valor objetivo del KR debe ser mayor a 0',
+      );
     }
     // B7.7: targetValue must not equal baseValue (division by zero in progress calc)
     if (target === base) {
-      throw new BadRequestException('El valor objetivo no puede ser igual al valor base (causaría división por cero)');
+      throw new BadRequestException(
+        'El valor objetivo no puede ser igual al valor base (causaría división por cero)',
+      );
     }
     const kr = this.keyResultRepo.create({
       tenantId,
@@ -850,9 +1911,17 @@ export class ObjectivesService {
   async updateKeyResult(
     tenantId: string,
     krId: string,
-    data: { currentValue?: number; description?: string; targetValue?: number; status?: KRStatus },
+    data: {
+      currentValue?: number;
+      description?: string;
+      targetValue?: number;
+      status?: KRStatus;
+    },
+    actorUserId?: string,
   ): Promise<KeyResult> {
-    const kr = await this.keyResultRepo.findOne({ where: { id: krId, tenantId } });
+    const kr = await this.keyResultRepo.findOne({
+      where: { id: krId, tenantId },
+    });
     if (!kr) throw new NotFoundException('Key Result no encontrado');
     if (data.currentValue !== undefined) kr.currentValue = data.currentValue;
     if (data.description !== undefined) kr.description = data.description;
@@ -860,49 +1929,126 @@ export class ObjectivesService {
     if (data.status !== undefined) kr.status = data.status;
 
     // Auto-complete KR if currentValue >= targetValue
-    if (Number(kr.currentValue) >= Number(kr.targetValue) && kr.status === KRStatus.ACTIVE) {
+    if (
+      Number(kr.currentValue) >= Number(kr.targetValue) &&
+      kr.status === KRStatus.ACTIVE
+    ) {
       kr.status = KRStatus.COMPLETED;
     }
 
     const saved = await this.keyResultRepo.save(kr);
 
-    // Recalculate objective progress from KR completion
-    await this.recalculateProgressFromKRs(tenantId, kr.objectiveId);
+    // Recalculate objective progress from KR completion (and possibly auto-complete)
+    await this.recalculateProgressFromKRs(
+      tenantId,
+      kr.objectiveId,
+      actorUserId,
+    );
 
     return saved;
   }
 
-  async deleteKeyResult(tenantId: string, krId: string): Promise<void> {
-    const kr = await this.keyResultRepo.findOne({ where: { id: krId, tenantId } });
+  async deleteKeyResult(
+    tenantId: string,
+    krId: string,
+    actorUserId?: string,
+  ): Promise<void> {
+    const kr = await this.keyResultRepo.findOne({
+      where: { id: krId, tenantId },
+    });
     if (!kr) throw new NotFoundException('Key Result no encontrado');
     const objectiveId = kr.objectiveId;
     await this.keyResultRepo.remove(kr);
-    await this.recalculateProgressFromKRs(tenantId, objectiveId);
+    await this.recalculateProgressFromKRs(tenantId, objectiveId, actorUserId);
   }
 
-  private async recalculateProgressFromKRs(tenantId: string, objectiveId: string): Promise<void> {
-    const krs = await this.keyResultRepo.find({ where: { tenantId, objectiveId } });
+  /**
+   * Recalcula el progreso del objetivo a partir del estado actual de sus KRs.
+   *
+   * T1.2: además del cálculo de progress, dispara la auto-completion del
+   * objetivo cuando se cumplen TODAS estas condiciones simultáneamente:
+   *   1. avgProgress >= 100
+   *   2. Todos los KRs están en estado COMPLETED
+   *   3. El objetivo está en estado ACTIVE
+   *
+   * El doble check (progress + status de KRs) es defensivo: avgProgress
+   * podría llegar a 100 por redondeo aunque algún KR siga ACTIVE, y un KR
+   * podría tener `status=COMPLETED` con `currentValue>targetValue` (caso
+   * raro). Solo cuando ambas condiciones coinciden disparamos la
+   * transición — evita falsos positivos.
+   *
+   * `actorUserId` se usa como `completedBy` en el helper. Si no se pasa
+   * (callers internos como propagateProgressToParent — Tarea 3), cae al
+   * `userId` del owner del objetivo.
+   */
+  private async recalculateProgressFromKRs(
+    tenantId: string,
+    objectiveId: string,
+    actorUserId?: string,
+  ): Promise<void> {
+    const krs = await this.keyResultRepo.find({
+      where: { tenantId, objectiveId },
+    });
     if (krs.length === 0) return;
 
     const totalProgress = krs.reduce((sum, kr) => {
       const range = Number(kr.targetValue) - Number(kr.baseValue);
       if (range <= 0) return sum + (kr.status === KRStatus.COMPLETED ? 100 : 0);
-      const krProgress = Math.min(100, Math.max(0, ((Number(kr.currentValue) - Number(kr.baseValue)) / range) * 100));
+      const krProgress = Math.min(
+        100,
+        Math.max(
+          0,
+          ((Number(kr.currentValue) - Number(kr.baseValue)) / range) * 100,
+        ),
+      );
       return sum + krProgress;
     }, 0);
 
     const avgProgress = Math.round(totalProgress / krs.length);
-    await this.objectiveRepo.update({ id: objectiveId, tenantId }, { progress: avgProgress });
+    await this.objectiveRepo.update(
+      { id: objectiveId, tenantId },
+      { progress: avgProgress },
+    );
+
+    // T1.2: auto-complete objective when KRs reach 100% (fixes BUG-1)
+    const allCompleted = krs.every((kr) => kr.status === KRStatus.COMPLETED);
+    if (allCompleted && avgProgress >= 100) {
+      const obj = await this.objectiveRepo.findOne({
+        where: { id: objectiveId, tenantId },
+      });
+      // Complete from ACTIVE u OVERDUE (T6: vencido también puede cerrar
+      // con KRs completados). DRAFT/PENDING/ABANDONED no auto-completan.
+      // Helper es idempotente sobre objetivos ya COMPLETED.
+      if (
+        obj &&
+        (obj.status === ObjectiveStatus.ACTIVE ||
+          obj.status === ObjectiveStatus.OVERDUE)
+      ) {
+        await this.completeObjective(obj, actorUserId ?? obj.userId);
+      }
+    }
+
+    // T3.2 — BUG-9 bridge: propagar al padre tras recalcular desde KRs.
+    // Antes de este fix, las completaciones via KR no actualizaban el
+    // progress del padre — el cascading OKR solo funcionaba para
+    // SMART/KPI vía addProgressUpdate.
+    await this.propagateProgressToParent(tenantId, objectiveId, actorUserId);
   }
 
   // ─── Export ────────────────────────────────────────────────────────────
 
   private escapeCsv(val: any): string {
     const str = String(val ?? '');
-    return str.includes(',') || str.includes('"') || str.includes('\n') ? `"${str.replace(/"/g, '""')}"` : str;
+    return str.includes(',') || str.includes('"') || str.includes('\n')
+      ? `"${str.replace(/"/g, '""')}"`
+      : str;
   }
 
-  private async getExportData(tenantId: string, userId?: string, role?: string): Promise<any[]> {
+  private async getExportData(
+    tenantId: string,
+    userId?: string,
+    role?: string,
+  ): Promise<any[]> {
     if (role === 'employee' || role === 'external') {
       return this.findByUser(tenantId, userId!);
     }
@@ -912,33 +2058,73 @@ export class ObjectivesService {
     return this.findAll(tenantId);
   }
 
-  async exportObjectivesCsv(tenantId: string, userId?: string, role?: string): Promise<string> {
+  async exportObjectivesCsv(
+    tenantId: string,
+    userId?: string,
+    role?: string,
+  ): Promise<string> {
     const objectives = await this.getExportData(tenantId, userId, role);
     const rows: string[] = [];
-    rows.push('Título,Tipo,Estado,Progreso %,Peso,Fecha Meta,Responsable,Departamento');
-    const statusLabels: Record<string, string> = { draft: 'Borrador', pending_approval: 'Pendiente', active: 'Activo', completed: 'Completado', abandoned: 'Abandonado' };
+    rows.push(
+      'Título,Tipo,Estado,Progreso %,Peso,Fecha Meta,Responsable,Departamento',
+    );
+    const statusLabels: Record<string, string> = {
+      draft: 'Borrador',
+      pending_approval: 'Pendiente',
+      active: 'Activo',
+      overdue: 'Vencido',
+      completed: 'Completado',
+      cancelled: 'Cancelado',
+      abandoned: 'Abandonado',
+    };
     for (const obj of objectives) {
-      const userName = obj.user ? `${obj.user.firstName || ''} ${obj.user.lastName || ''}`.trim() : '';
+      const userName = obj.user
+        ? `${obj.user.firstName || ''} ${obj.user.lastName || ''}`.trim()
+        : '';
       const dept = obj.user?.department || '';
-      rows.push([
-        this.escapeCsv(obj.title), obj.type || 'OKR', statusLabels[obj.status] || obj.status,
-        obj.progress, obj.weight || 0,
-        obj.targetDate ? new Date(obj.targetDate).toLocaleDateString('es-CL') : '',
-        this.escapeCsv(userName), this.escapeCsv(dept),
-      ].join(','));
+      rows.push(
+        [
+          this.escapeCsv(obj.title),
+          obj.type || 'OKR',
+          statusLabels[obj.status] || obj.status,
+          obj.progress,
+          obj.weight || 0,
+          obj.targetDate
+            ? new Date(obj.targetDate).toLocaleDateString('es-CL')
+            : '',
+          this.escapeCsv(userName),
+          this.escapeCsv(dept),
+        ].join(','),
+      );
     }
     return '\uFEFF' + rows.join('\n');
   }
 
-  async exportObjectivesXlsx(tenantId: string, userId?: string, role?: string): Promise<Buffer> {
+  async exportObjectivesXlsx(
+    tenantId: string,
+    userId?: string,
+    role?: string,
+  ): Promise<Buffer> {
     const objectives = await this.getExportData(tenantId, userId, role);
-    const statusLabels: Record<string, string> = { draft: 'Borrador', pending_approval: 'Pendiente', active: 'Activo', completed: 'Completado', abandoned: 'Abandonado' };
+    const statusLabels: Record<string, string> = {
+      draft: 'Borrador',
+      pending_approval: 'Pendiente',
+      active: 'Activo',
+      overdue: 'Vencido',
+      completed: 'Completado',
+      cancelled: 'Cancelado',
+      abandoned: 'Abandonado',
+    };
 
     const ExcelJS = (await import('exceljs')).default;
     const wb = new ExcelJS.Workbook();
     const accent = { argb: 'FFC9933A' };
     const headerFont = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
-    const headerFill: any = { type: 'pattern', pattern: 'solid', fgColor: accent };
+    const headerFill: any = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: accent,
+    };
 
     // Sheet 1: Resumen
     const ws1 = wb.addWorksheet('Resumen');
@@ -947,9 +2133,19 @@ export class ObjectivesService {
     ws1.addRow([]);
     const total = objectives.length;
     const active = objectives.filter((o: any) => o.status === 'active').length;
-    const completed = objectives.filter((o: any) => o.status === 'completed').length;
-    const atRisk = objectives.filter((o: any) => o.status === 'active' && o.progress < 40).length;
-    const avgProgress = total > 0 ? Math.round(objectives.reduce((s: number, o: any) => s + (o.progress || 0), 0) / total) : 0;
+    const completed = objectives.filter(
+      (o: any) => o.status === 'completed',
+    ).length;
+    const atRisk = objectives.filter(
+      (o: any) => o.status === 'active' && o.progress < 40,
+    ).length;
+    const avgProgress =
+      total > 0
+        ? Math.round(
+            objectives.reduce((s: number, o: any) => s + (o.progress || 0), 0) /
+              total,
+          )
+        : 0;
     ws1.addRow(['Total objetivos', total]);
     ws1.addRow(['Activos', active]);
     ws1.addRow(['Completados', completed]);
@@ -960,27 +2156,65 @@ export class ObjectivesService {
     // Sheet 2: Detalle
     const ws2 = wb.addWorksheet('Objetivos');
     ws2.columns = [
-      { width: 35 }, { width: 10 }, { width: 14 }, { width: 12 },
-      { width: 10 }, { width: 14 }, { width: 22 }, { width: 18 },
+      { width: 35 },
+      { width: 10 },
+      { width: 14 },
+      { width: 12 },
+      { width: 10 },
+      { width: 14 },
+      { width: 22 },
+      { width: 18 },
     ];
-    const h2 = ws2.addRow(['Título', 'Tipo', 'Estado', 'Progreso %', 'Peso', 'Fecha Meta', 'Responsable', 'Departamento']);
-    h2.eachCell((cell) => { cell.font = headerFont; cell.fill = headerFill; });
+    const h2 = ws2.addRow([
+      'Título',
+      'Tipo',
+      'Estado',
+      'Progreso %',
+      'Peso',
+      'Fecha Meta',
+      'Responsable',
+      'Departamento',
+    ]);
+    h2.eachCell((cell) => {
+      cell.font = headerFont;
+      cell.fill = headerFill;
+    });
     for (const obj of objectives) {
-      const userName = obj.user ? `${obj.user.firstName || ''} ${obj.user.lastName || ''}`.trim() : '';
+      const userName = obj.user
+        ? `${obj.user.firstName || ''} ${obj.user.lastName || ''}`.trim()
+        : '';
       ws2.addRow([
-        obj.title, obj.type || 'OKR', statusLabels[obj.status] || obj.status,
-        obj.progress, obj.weight || 0,
-        obj.targetDate ? new Date(obj.targetDate).toLocaleDateString('es-CL') : '',
-        userName, obj.user?.department || '',
+        obj.title,
+        obj.type || 'OKR',
+        statusLabels[obj.status] || obj.status,
+        obj.progress,
+        obj.weight || 0,
+        obj.targetDate
+          ? new Date(obj.targetDate).toLocaleDateString('es-CL')
+          : '',
+        userName,
+        obj.user?.department || '',
       ]);
     }
 
     return Buffer.from(await wb.xlsx.writeBuffer());
   }
 
-  async exportObjectivesPdf(tenantId: string, userId?: string, role?: string): Promise<Buffer> {
+  async exportObjectivesPdf(
+    tenantId: string,
+    userId?: string,
+    role?: string,
+  ): Promise<Buffer> {
     const objectives = await this.getExportData(tenantId, userId, role);
-    const statusLabels: Record<string, string> = { draft: 'Borrador', pending_approval: 'Pendiente', active: 'Activo', completed: 'Completado', abandoned: 'Abandonado' };
+    const statusLabels: Record<string, string> = {
+      draft: 'Borrador',
+      pending_approval: 'Pendiente',
+      active: 'Activo',
+      overdue: 'Vencido',
+      completed: 'Completado',
+      cancelled: 'Cancelado',
+      abandoned: 'Abandonado',
+    };
 
     const { jsPDF } = await import('jspdf');
     const autoTable = (await import('jspdf-autotable')).default;
@@ -996,16 +2230,30 @@ export class ObjectivesService {
     doc.text('Objetivos / OKRs', margin, 16);
     doc.setFontSize(9);
     doc.setTextColor(201, 147, 58);
-    doc.text(`Exportado el ${new Date().toLocaleDateString('es-CL')}`, margin, 24);
+    doc.text(
+      `Exportado el ${new Date().toLocaleDateString('es-CL')}`,
+      margin,
+      24,
+    );
 
     let y = 38;
 
     // KPIs
     const total = objectives.length;
     const active = objectives.filter((o: any) => o.status === 'active').length;
-    const completedCount = objectives.filter((o: any) => o.status === 'completed').length;
-    const atRisk = objectives.filter((o: any) => o.status === 'active' && o.progress < 40).length;
-    const avgProgress = total > 0 ? Math.round(objectives.reduce((s: number, o: any) => s + (o.progress || 0), 0) / total) : 0;
+    const completedCount = objectives.filter(
+      (o: any) => o.status === 'completed',
+    ).length;
+    const atRisk = objectives.filter(
+      (o: any) => o.status === 'active' && o.progress < 40,
+    ).length;
+    const avgProgress =
+      total > 0
+        ? Math.round(
+            objectives.reduce((s: number, o: any) => s + (o.progress || 0), 0) /
+              total,
+          )
+        : 0;
 
     const kpis = [
       { label: 'Total', value: `${total}` },
@@ -1032,14 +2280,34 @@ export class ObjectivesService {
     autoTable(doc, {
       startY: y,
       margin: { left: margin, right: margin },
-      head: [['Título', 'Tipo', 'Estado', 'Progreso', 'Peso', 'Fecha Meta', 'Responsable']],
+      head: [
+        [
+          'Título',
+          'Tipo',
+          'Estado',
+          'Progreso',
+          'Peso',
+          'Fecha Meta',
+          'Responsable',
+        ],
+      ],
       body: objectives.map((o: any) => [
-        o.title, o.type || 'OKR', statusLabels[o.status] || o.status,
-        `${o.progress}%`, o.weight || 0,
+        o.title,
+        o.type || 'OKR',
+        statusLabels[o.status] || o.status,
+        `${o.progress}%`,
+        o.weight || 0,
         o.targetDate ? new Date(o.targetDate).toLocaleDateString('es-CL') : '-',
-        o.user ? `${o.user.firstName || ''} ${o.user.lastName || ''}`.trim() : '',
+        o.user
+          ? `${o.user.firstName || ''} ${o.user.lastName || ''}`.trim()
+          : '',
       ]),
-      headStyles: { fillColor: [201, 147, 58], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 7 },
+      headStyles: {
+        fillColor: [201, 147, 58],
+        textColor: [255, 255, 255],
+        fontStyle: 'bold',
+        fontSize: 7,
+      },
       bodyStyles: { fontSize: 7 },
       alternateRowStyles: { fillColor: [248, 250, 252] },
     });
@@ -1050,8 +2318,17 @@ export class ObjectivesService {
       doc.setPage(i);
       doc.setFontSize(7);
       doc.setTextColor(148, 163, 184);
-      doc.text(`Generado el ${new Date().toLocaleDateString('es-CL')} — Eva360`, margin, doc.internal.pageSize.getHeight() - 8);
-      doc.text(`Página ${i} de ${pageCount}`, pageW - margin, doc.internal.pageSize.getHeight() - 8, { align: 'right' });
+      doc.text(
+        `Generado el ${new Date().toLocaleDateString('es-CL')} — Eva360`,
+        margin,
+        doc.internal.pageSize.getHeight() - 8,
+      );
+      doc.text(
+        `Página ${i} de ${pageCount}`,
+        pageW - margin,
+        doc.internal.pageSize.getHeight() - 8,
+        { align: 'right' },
+      );
     }
 
     return Buffer.from(doc.output('arraybuffer'));
@@ -1070,25 +2347,44 @@ export class ObjectivesService {
     return result;
   }
 
-  async exportObjectivesTreeXlsx(tenantId: string, role?: string, userId?: string): Promise<Buffer> {
+  async exportObjectivesTreeXlsx(
+    tenantId: string,
+    role?: string,
+    userId?: string,
+  ): Promise<Buffer> {
     const tree = await this.getObjectiveTree(tenantId, role, userId);
     const flat = this.flattenTree(tree);
-    const statusLabels: Record<string, string> = { draft: 'Borrador', pending_approval: 'Pendiente', active: 'Activo', completed: 'Completado', abandoned: 'Abandonado' };
+    const statusLabels: Record<string, string> = {
+      draft: 'Borrador',
+      pending_approval: 'Pendiente',
+      active: 'Activo',
+      overdue: 'Vencido',
+      completed: 'Completado',
+      cancelled: 'Cancelado',
+      abandoned: 'Abandonado',
+    };
 
     const ExcelJS = (await import('exceljs')).default;
     const wb = new ExcelJS.Workbook();
     const accent = { argb: 'FFC9933A' };
     const headerFont = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
-    const headerFill: any = { type: 'pattern', pattern: 'solid', fgColor: accent };
+    const headerFill: any = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: accent,
+    };
 
     // Sheet 1: Resumen
     const ws1 = wb.addWorksheet('Resumen');
     ws1.columns = [{ width: 25 }, { width: 15 }];
-    ws1.addRow(['Objetivos / OKRs — Vista Árbol']).font = { bold: true, size: 14 };
+    ws1.addRow(['Objetivos / OKRs — Vista Árbol']).font = {
+      bold: true,
+      size: 14,
+    };
     ws1.addRow([]);
     const total = flat.length;
-    const active = flat.filter(o => o.status === 'active').length;
-    const completed = flat.filter(o => o.status === 'completed').length;
+    const active = flat.filter((o) => o.status === 'active').length;
+    const completed = flat.filter((o) => o.status === 'completed').length;
     const roots = tree.length;
     ws1.addRow(['Total objetivos', total]);
     ws1.addRow(['Objetivos raíz', roots]);
@@ -1099,19 +2395,42 @@ export class ObjectivesService {
     // Sheet 2: Árbol
     const ws2 = wb.addWorksheet('Árbol de Objetivos');
     ws2.columns = [
-      { width: 6 }, { width: 40 }, { width: 10 }, { width: 14 }, { width: 12 },
-      { width: 10 }, { width: 14 }, { width: 22 },
+      { width: 6 },
+      { width: 40 },
+      { width: 10 },
+      { width: 14 },
+      { width: 12 },
+      { width: 10 },
+      { width: 14 },
+      { width: 22 },
     ];
-    const h2 = ws2.addRow(['Nivel', 'Título', 'Tipo', 'Estado', 'Progreso %', 'Peso', 'Fecha Meta', 'Responsable']);
-    h2.eachCell((cell) => { cell.font = headerFont; cell.fill = headerFill; });
+    const h2 = ws2.addRow([
+      'Nivel',
+      'Título',
+      'Tipo',
+      'Estado',
+      'Progreso %',
+      'Peso',
+      'Fecha Meta',
+      'Responsable',
+    ]);
+    h2.eachCell((cell) => {
+      cell.font = headerFont;
+      cell.fill = headerFill;
+    });
     for (const obj of flat) {
       const indent = '  '.repeat(obj.depth);
       const prefix = obj.depth > 0 ? '└ ' : '';
       const row = ws2.addRow([
-        obj.depth, `${indent}${prefix}${obj.title}`,
-        obj.type || 'OKR', statusLabels[obj.status] || obj.status,
-        obj.progress, obj.weight || 0,
-        obj.targetDate ? new Date(obj.targetDate).toLocaleDateString('es-CL') : '',
+        obj.depth,
+        `${indent}${prefix}${obj.title}`,
+        obj.type || 'OKR',
+        statusLabels[obj.status] || obj.status,
+        obj.progress,
+        obj.weight || 0,
+        obj.targetDate
+          ? new Date(obj.targetDate).toLocaleDateString('es-CL')
+          : '',
         obj.userName || '',
       ]);
       if (obj.depth > 0) {
@@ -1122,10 +2441,22 @@ export class ObjectivesService {
     return Buffer.from(await wb.xlsx.writeBuffer());
   }
 
-  async exportObjectivesTreePdf(tenantId: string, role?: string, userId?: string): Promise<Buffer> {
+  async exportObjectivesTreePdf(
+    tenantId: string,
+    role?: string,
+    userId?: string,
+  ): Promise<Buffer> {
     const tree = await this.getObjectiveTree(tenantId, role, userId);
     const flat = this.flattenTree(tree);
-    const statusLabels: Record<string, string> = { draft: 'Borrador', pending_approval: 'Pendiente', active: 'Activo', completed: 'Completado', abandoned: 'Abandonado' };
+    const statusLabels: Record<string, string> = {
+      draft: 'Borrador',
+      pending_approval: 'Pendiente',
+      active: 'Activo',
+      overdue: 'Vencido',
+      completed: 'Completado',
+      cancelled: 'Cancelado',
+      abandoned: 'Abandonado',
+    };
 
     const { jsPDF } = await import('jspdf');
     const autoTable = (await import('jspdf-autotable')).default;
@@ -1141,14 +2472,18 @@ export class ObjectivesService {
     doc.text('Objetivos / OKRs — Vista Árbol', margin, 16);
     doc.setFontSize(9);
     doc.setTextColor(201, 147, 58);
-    doc.text(`Exportado el ${new Date().toLocaleDateString('es-CL')}`, margin, 24);
+    doc.text(
+      `Exportado el ${new Date().toLocaleDateString('es-CL')}`,
+      margin,
+      24,
+    );
 
     let y = 38;
 
     // KPIs
     const total = flat.length;
-    const active = flat.filter(o => o.status === 'active').length;
-    const completedCount = flat.filter(o => o.status === 'completed').length;
+    const active = flat.filter((o) => o.status === 'active').length;
+    const completedCount = flat.filter((o) => o.status === 'completed').length;
     const roots = tree.length;
 
     const kpis = [
@@ -1175,18 +2510,38 @@ export class ObjectivesService {
     autoTable(doc, {
       startY: y,
       margin: { left: margin, right: margin },
-      head: [['Título', 'Tipo', 'Estado', 'Progreso', 'Peso', 'Fecha Meta', 'Responsable']],
+      head: [
+        [
+          'Título',
+          'Tipo',
+          'Estado',
+          'Progreso',
+          'Peso',
+          'Fecha Meta',
+          'Responsable',
+        ],
+      ],
       body: flat.map((o: any) => {
         const indent = '  '.repeat(o.depth);
         const prefix = o.depth > 0 ? '└ ' : '';
         return [
-          `${indent}${prefix}${o.title}`, o.type || 'OKR', statusLabels[o.status] || o.status,
-          `${o.progress}%`, o.weight || 0,
-          o.targetDate ? new Date(o.targetDate).toLocaleDateString('es-CL') : '-',
+          `${indent}${prefix}${o.title}`,
+          o.type || 'OKR',
+          statusLabels[o.status] || o.status,
+          `${o.progress}%`,
+          o.weight || 0,
+          o.targetDate
+            ? new Date(o.targetDate).toLocaleDateString('es-CL')
+            : '-',
           o.userName || '',
         ];
       }),
-      headStyles: { fillColor: [201, 147, 58], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 7 },
+      headStyles: {
+        fillColor: [201, 147, 58],
+        textColor: [255, 255, 255],
+        fontStyle: 'bold',
+        fontSize: 7,
+      },
       bodyStyles: { fontSize: 7 },
       alternateRowStyles: { fillColor: [248, 250, 252] },
       didParseCell: (data: any) => {
@@ -1206,8 +2561,17 @@ export class ObjectivesService {
       doc.setPage(i);
       doc.setFontSize(7);
       doc.setTextColor(148, 163, 184);
-      doc.text(`Generado el ${new Date().toLocaleDateString('es-CL')} — Eva360`, margin, doc.internal.pageSize.getHeight() - 8);
-      doc.text(`Página ${i} de ${pageCount}`, pageW - margin, doc.internal.pageSize.getHeight() - 8, { align: 'right' });
+      doc.text(
+        `Generado el ${new Date().toLocaleDateString('es-CL')} — Eva360`,
+        margin,
+        doc.internal.pageSize.getHeight() - 8,
+      );
+      doc.text(
+        `Página ${i} de ${pageCount}`,
+        pageW - margin,
+        doc.internal.pageSize.getHeight() - 8,
+        { align: 'right' },
+      );
     }
 
     return Buffer.from(doc.output('arraybuffer'));
