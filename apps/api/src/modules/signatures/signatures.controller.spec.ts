@@ -32,6 +32,7 @@ describe('SignaturesController', () => {
       verifyIntegrity: jest.fn().mockResolvedValue({ integrity: 'valid' }),
       getSignatures: jest.fn().mockResolvedValue([]),
       getSignaturesByTenant: jest.fn().mockResolvedValue([]),
+      revokeSignature: jest.fn().mockResolvedValue({ id: 'sig-1', status: 'revoked' }),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -194,6 +195,28 @@ describe('SignaturesController', () => {
       expect(roles).not.toContain('manager');
       expect(roles).not.toContain('employee');
       expect(roles).not.toContain('external');
+    });
+
+    it('revokeSignature SOLO super_admin (G8)', () => {
+      const roles = rolesOf('revokeSignature');
+      expect(roles).toEqual(['super_admin']);
+    });
+  });
+
+  describe('revokeSignature (G8)', () => {
+    it('propaga tenantId, userId, role, signatureId, reason e IP', async () => {
+      const req: any = {
+        user: { tenantId, userId, role: 'super_admin' },
+        ip: '10.0.0.1', headers: {}, socket: { remoteAddress: '10.0.0.1' },
+      };
+      await controller.revokeSignature(
+        'sig-uuid', { reason: 'Razón válida con suficiente longitud' }, req,
+      );
+      expect(service.revokeSignature).toHaveBeenCalledWith(
+        tenantId, userId, 'super_admin', 'sig-uuid',
+        'Razón válida con suficiente longitud',
+        expect.any(String),
+      );
     });
   });
 });

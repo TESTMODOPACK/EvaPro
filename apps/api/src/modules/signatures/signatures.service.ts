@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, HttpException, HttpStatus } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ConflictException, HttpException, HttpStatus } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, LessThan, MoreThan, Repository } from 'typeorm';
 import * as crypto from 'crypto';
@@ -250,6 +250,61 @@ export class SignaturesService {
         await this.contractRepo.save(contract);
       }
     }
+
+    return saved;
+  }
+
+  // ─── G8 (TAREA 9): Revocación de firma ──────────────────────────────
+
+  /**
+   * Revoca una firma valida marcandola como status='revoked' con metadata
+   * de auditoria (quien, cuando, por que). NO elimina la fila — auditoria
+   * legal exige preservarla.
+   *
+   * Solo super_admin puede invocar (validacion en controller via @Roles).
+   * El service exige reason con min 20 chars para forzar justificacion seria.
+   */
+  async revokeSignature(
+    tenantId: string,
+    actorId: string,
+    actorRole: string,
+    signatureId: string,
+    reason: string,
+    ipAddress?: string,
+  ): Promise<DocumentSignature> {
+    if (actorRole !== 'super_admin') {
+      // Defense in depth — el RolesGuard ya filtra, pero validamos otra vez.
+      throw new BadRequestException('Solo super_admin puede revocar firmas');
+    }
+    const cleanReason = (reason ?? '').trim();
+    if (cleanReason.length < 20) {
+      throw new BadRequestException('La razón de revocación debe tener al menos 20 caracteres');
+    }
+    if (cleanReason.length > 2000) {
+      throw new BadRequestException('La razón no puede superar los 2000 caracteres');
+    }
+
+    const sig = await this.signatureRepo.findOne({ where: { id: signatureId, tenantId } });
+    if (!sig) throw new NotFoundException('Firma no encontrada');
+
+    if (sig.status === 'revoked') {
+      throw new ConflictException('La firma ya fue revocada anteriormente');
+    }
+
+    sig.status = 'revoked';
+    sig.revokedAt = new Date();
+    sig.revokedBy = actorId;
+    sig.revocationReason = cleanReason;
+    const saved = await this.signatureRepo.save(sig);
+
+    this.auditService.log(
+      tenantId, actorId, 'document.signature.revoked', 'signature', saved.id,
+      {
+        documentType: sig.documentType, documentId: sig.documentId,
+        originalSignedBy: sig.signedBy, reason: cleanReason,
+      },
+      ipAddress,
+    ).catch(() => {});
 
     return saved;
   }

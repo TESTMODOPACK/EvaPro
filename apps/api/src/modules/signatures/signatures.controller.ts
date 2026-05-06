@@ -93,4 +93,23 @@ export class SignaturesController {
   listAll(@Request() req: any) {
     return this.signaturesService.getSignaturesByTenant(req.user.tenantId);
   }
+
+  /**
+   * G8 (TAREA 9) — Revocación de firma. Solo super_admin.
+   * Body: { reason: string } con min 20 chars.
+   * La firma queda preservada en DB con status='revoked' + metadata
+   * (revokedAt, revokedBy, revocationReason) para auditoría legal.
+   */
+  @Post(':id/revoke')
+  @Roles('super_admin')
+  revokeSignature(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: { reason: string },
+    @Request() req: any,
+  ) {
+    return this.signaturesService.revokeSignature(
+      req.user.tenantId, req.user.userId, req.user.role,
+      id, dto?.reason, getClientIp(req),
+    );
+  }
 }

@@ -978,6 +978,91 @@ describe('SignaturesService', () => {
     });
   });
 
+  // ─── G8 (TAREA 9): revokeSignature ──────────────────────────────────
+
+  describe('revokeSignature (G8)', () => {
+    const sigId = fakeUuid(800);
+    const validReason = 'Firma revocada por solicitud judicial caso 123/2026';
+
+    it('marca firma como revoked con metadata (super_admin)', async () => {
+      const sig = {
+        id: sigId, tenantId, status: 'valid',
+        documentType: 'evaluation_response', documentId,
+        signedBy: fakeUuid(2), revokedAt: null, revokedBy: null,
+      };
+      signatureRepo.findOne.mockResolvedValue(sig);
+      signatureRepo.save.mockImplementation((s: any) => Promise.resolve(s));
+
+      const result: any = await service.revokeSignature(
+        tenantId, userId, 'super_admin', sigId, validReason, '127.0.0.1',
+      );
+
+      expect(result.status).toBe('revoked');
+      expect(result.revokedBy).toBe(userId);
+      expect(result.revokedAt).toBeInstanceOf(Date);
+      expect(result.revocationReason).toBe(validReason);
+
+      expect(auditService.log).toHaveBeenCalledWith(
+        tenantId, userId, 'document.signature.revoked', 'signature', sigId,
+        expect.objectContaining({ reason: validReason }),
+        '127.0.0.1',
+      );
+    });
+
+    it('rechaza si rol NO es super_admin (defense in depth)', async () => {
+      await expect(
+        service.revokeSignature(tenantId, userId, 'tenant_admin', sigId, validReason),
+      ).rejects.toThrow(/Solo super_admin/);
+      // No debe siquiera consultar la firma
+      expect(signatureRepo.findOne).not.toHaveBeenCalled();
+    });
+
+    it('rechaza reason < 20 caracteres', async () => {
+      await expect(
+        service.revokeSignature(tenantId, userId, 'super_admin', sigId, 'corto'),
+      ).rejects.toThrow(/al menos 20 caracteres/);
+    });
+
+    it('rechaza reason > 2000 caracteres', async () => {
+      await expect(
+        service.revokeSignature(tenantId, userId, 'super_admin', sigId, 'a'.repeat(2001)),
+      ).rejects.toThrow(/no puede superar los 2000/);
+    });
+
+    it('reason se trimea (whitespace solo no cuenta)', async () => {
+      await expect(
+        service.revokeSignature(tenantId, userId, 'super_admin', sigId, '   '.repeat(50)),
+      ).rejects.toThrow(/al menos 20 caracteres/);
+    });
+
+    it('lanza NotFoundException si la firma no existe', async () => {
+      signatureRepo.findOne.mockResolvedValue(null);
+      await expect(
+        service.revokeSignature(tenantId, userId, 'super_admin', sigId, validReason),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('lanza ConflictException si la firma ya está revocada', async () => {
+      signatureRepo.findOne.mockResolvedValue({
+        id: sigId, tenantId, status: 'revoked',
+      });
+      await expect(
+        service.revokeSignature(tenantId, userId, 'super_admin', sigId, validReason),
+      ).rejects.toThrow(/ya fue revocada/);
+    });
+
+    it('búsqueda de firma respeta multi-tenant', async () => {
+      signatureRepo.findOne.mockResolvedValue(null);
+      await expect(
+        service.revokeSignature(otherTenantId, userId, 'super_admin', sigId, validReason),
+      ).rejects.toThrow(NotFoundException);
+
+      expect(signatureRepo.findOne).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: sigId, tenantId: otherTenantId } }),
+      );
+    });
+  });
+
   // ─── getSignatures / getSignaturesByTenant / getSignaturesByUser ────
 
   describe('listings', () => {

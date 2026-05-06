@@ -131,4 +131,22 @@ export class DocumentSignature {
 
   @Column({ type: 'timestamptz', name: 'rerouted_at', nullable: true, comment: 'F-002 — Timestamp del reroute de firma' })
   reroutedAt: Date | null;
+
+  // ─── G8 (TAREA 9) — Revocación de firma ────────────────────────────
+  // Una firma revocada NO se elimina (auditoría legal exige preservarla).
+  // Solo super_admin puede revocar. La firma original sigue siendo
+  // visible en historial pero no cuenta para validaciones de cierre.
+
+  @Column({ type: 'timestamptz', name: 'revoked_at', nullable: true })
+  revokedAt: Date | null;
+
+  @Column({ type: 'uuid', name: 'revoked_by', nullable: true })
+  revokedBy: string | null;
+
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'revoked_by' })
+  revoker: User | null;
+
+  @Column({ type: 'text', name: 'revocation_reason', nullable: true })
+  revocationReason: string | null;
 }
