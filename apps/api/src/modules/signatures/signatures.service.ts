@@ -12,6 +12,8 @@ import { EvaluationAssignment } from '../evaluations/entities/evaluation-assignm
 import { DevelopmentPlan } from '../development/entities/development-plan.entity';
 import { DevelopmentAction } from '../development/entities/development-action.entity';
 import { Contract } from '../contracts/entities/contract.entity';
+import { CalibrationSession } from '../talent/entities/calibration-session.entity';
+import { CalibrationEntry } from '../talent/entities/calibration-entry.entity';
 import { EmailService } from '../notifications/email.service';
 import { AuditService } from '../audit/audit.service';
 import { SignatureAuthorizationService } from './services/signature-authorization.service';
@@ -53,6 +55,10 @@ export class SignaturesService {
     private readonly actionRepo: Repository<DevelopmentAction>,
     @InjectRepository(Contract)
     private readonly contractRepo: Repository<Contract>,
+    @InjectRepository(CalibrationSession)
+    private readonly calibrationRepo: Repository<CalibrationSession>,
+    @InjectRepository(CalibrationEntry)
+    private readonly calibrationEntryRepo: Repository<CalibrationEntry>,
     private readonly emailService: EmailService,
     private readonly auditService: AuditService,
     private readonly authorizationService: SignatureAuthorizationService,
@@ -391,7 +397,37 @@ export class SignaturesService {
         });
       }
       case 'calibration_session': {
-        return JSON.stringify({ id: documentId, type: 'calibration_session', tenantId });
+        // G10 (TAREA 11): hash sobre contenido REAL — antes era stub
+        // {id, type, tenantId} que daba integridad ficticia.
+        const session = await this.calibrationRepo.findOne({ where: { id: documentId, tenantId } });
+        if (!session) throw new NotFoundException('Sesión de calibración no encontrada');
+        const entries = await this.calibrationEntryRepo.find({
+          where: { sessionId: documentId },
+          order: { id: 'ASC' }, // orden estable para hash reproducible
+        });
+        return this.canonicalJson({
+          id: session.id,
+          name: session.name,
+          status: session.status,
+          departmentId: session.departmentId,
+          moderatorId: session.moderatorId,
+          minQuorum: session.minQuorum,
+          expectedDistribution: session.expectedDistribution,
+          notes: session.notes,
+          // entries en orden estable; cada uno serializado solo con campos
+          // de contenido (no timestamps de filas)
+          entries: entries.map((e) => ({
+            id: e.id,
+            userId: e.userId,
+            originalScore: e.originalScore,
+            adjustedScore: e.adjustedScore,
+            originalPotential: e.originalPotential,
+            adjustedPotential: e.adjustedPotential,
+            rationale: e.rationale,
+            status: e.status,
+            approvalStatus: e.approvalStatus,
+          })),
+        });
       }
       case 'contract': {
         const contract = await this.contractRepo.findOne({ where: { id: documentId, tenantId } });
@@ -419,8 +455,12 @@ export class SignaturesService {
       }
       case 'evaluation_response':
         return `Evaluación ${documentId.slice(0, 8)}`;
-      case 'calibration_session':
-        return `Sesión de Calibración ${documentId.slice(0, 8)}`;
+      case 'calibration_session': {
+        const session = await this.calibrationRepo.findOne({
+          where: { id: documentId, tenantId }, select: ['id', 'name'],
+        });
+        return session?.name || `Sesión de Calibración ${documentId.slice(0, 8)}`;
+      }
       case 'contract': {
         const contract = await this.contractRepo.findOne({ where: { id: documentId, tenantId }, select: ['id', 'title'] });
         return contract?.title || `Contrato ${documentId.slice(0, 8)}`;
@@ -439,5 +479,31 @@ export class SignaturesService {
       contract: 'Contrato',
     };
     return labels[type] || type;
+  }
+
+  /**
+   * G10 (TAREA 11) — Serialización canónica con orden de keys estable
+   * para hashes reproducibles. JSON.stringify default no garantiza orden,
+   * lo cual rompía la integridad cuando el motor JS reordenaba keys.
+   *
+   * - Objects: keys ordenadas alfabéticamente.
+   * - Arrays: orden preservado (el caller debe pre-ordenar).
+   * - Primitivos: tal cual.
+   * - null/undefined: null.
+   */
+  private canonicalJson(value: any): string {
+    return JSON.stringify(this.canonicalize(value));
+  }
+
+  private canonicalize(value: any): any {
+    if (value === null || value === undefined) return null;
+    if (Array.isArray(value)) return value.map((v) => this.canonicalize(v));
+    if (typeof value === 'object') {
+      const sortedKeys = Object.keys(value).sort();
+      const out: Record<string, any> = {};
+      for (const k of sortedKeys) out[k] = this.canonicalize(value[k]);
+      return out;
+    }
+    return value;
   }
 }

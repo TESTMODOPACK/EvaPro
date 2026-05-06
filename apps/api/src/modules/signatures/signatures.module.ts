@@ -10,6 +10,7 @@ import { DevelopmentPlan } from '../development/entities/development-plan.entity
 import { DevelopmentAction } from '../development/entities/development-action.entity';
 import { Contract } from '../contracts/entities/contract.entity';
 import { CalibrationSession } from '../talent/entities/calibration-session.entity';
+import { CalibrationEntry } from '../talent/entities/calibration-entry.entity';
 import { SignaturesService } from './signatures.service';
 import { SignaturesController } from './signatures.controller';
 import { SignatureAuthorizationService } from './services/signature-authorization.service';
@@ -22,7 +23,7 @@ import { AuditModule } from '../audit/audit.module';
       DocumentSignature, SignatureOtpToken, User,
       EvaluationCycle, EvaluationResponse, EvaluationAssignment,
       DevelopmentPlan, DevelopmentAction, Contract,
-      CalibrationSession,
+      CalibrationSession, CalibrationEntry,
     ]),
     NotificationsModule,
     AuditModule,

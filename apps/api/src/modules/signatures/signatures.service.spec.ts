@@ -33,6 +33,8 @@ import { EvaluationAssignment } from '../evaluations/entities/evaluation-assignm
 import { DevelopmentPlan } from '../development/entities/development-plan.entity';
 import { DevelopmentAction } from '../development/entities/development-action.entity';
 import { Contract } from '../contracts/entities/contract.entity';
+import { CalibrationSession } from '../talent/entities/calibration-session.entity';
+import { CalibrationEntry } from '../talent/entities/calibration-entry.entity';
 import { EmailService } from '../notifications/email.service';
 import { AuditService } from '../audit/audit.service';
 import {
@@ -54,6 +56,8 @@ describe('SignaturesService', () => {
   let planRepo: any;
   let actionRepo: any;
   let contractRepo: any;
+  let calibrationRepo: any;
+  let calibrationEntryRepo: any;
   let emailService: any;
   let auditService: any;
   let authorizationService: { assertCanSign: jest.Mock };
@@ -83,6 +87,8 @@ describe('SignaturesService', () => {
     planRepo = createMockRepository();
     actionRepo = createMockRepository();
     contractRepo = createMockRepository();
+    calibrationRepo = createMockRepository();
+    calibrationEntryRepo = createMockRepository();
     emailService = createMockEmailService();
     emailService.sendSignatureOtp = jest.fn().mockResolvedValue(undefined);
     auditService = createMockAuditService();
@@ -102,6 +108,8 @@ describe('SignaturesService', () => {
         { provide: getRepositoryToken(DevelopmentPlan), useValue: planRepo },
         { provide: getRepositoryToken(DevelopmentAction), useValue: actionRepo },
         { provide: getRepositoryToken(Contract), useValue: contractRepo },
+        { provide: getRepositoryToken(CalibrationSession), useValue: calibrationRepo },
+        { provide: getRepositoryToken(CalibrationEntry), useValue: calibrationEntryRepo },
         { provide: EmailService, useValue: emailService },
         { provide: AuditService, useValue: auditService },
         { provide: SignatureAuthorizationService, useValue: authorizationService },
@@ -663,6 +671,237 @@ describe('SignaturesService', () => {
       expect(contractRepo.save).toHaveBeenCalledWith(
         expect.objectContaining({ status: 'active' }),
       );
+    });
+  });
+
+  // ─── G10 (TAREA 11): hash real de calibration_session ──────────────
+
+  describe('calibration_session — hash real (G10)', () => {
+    const validOtp = '123456';
+
+    function activeCalibrationToken(codeHash: string) {
+      return {
+        id: fakeUuid(900), tenantId, userId,
+        documentType: 'calibration_session', documentId,
+        codeHash, expiresAt: new Date(Date.now() + 5 * 60 * 1000),
+        attempts: 0, consumedAt: null, createdAt: new Date(),
+      };
+    }
+
+    it('hash incluye contenido REAL (sesión + entries), no stub', async () => {
+      const codeHash = await bcrypt.hash(validOtp, 4);
+      userRepo.findOne.mockResolvedValue(createMockUser({ id: userId, tenantId }));
+      signatureRepo.findOne.mockResolvedValue(null);
+      otpRepo.findOne.mockResolvedValue(activeCalibrationToken(codeHash));
+      mockOtpUpdateBuilder(1);
+      calibrationRepo.findOne.mockResolvedValue({
+        id: documentId, name: 'Calib Q1', status: 'completed',
+        departmentId: fakeUuid(7), moderatorId: userId, minQuorum: 3,
+        expectedDistribution: { low: 10, midLow: 20, mid: 40, midHigh: 20, high: 10 },
+        notes: 'Notas de la sesión', tenantId,
+      });
+      calibrationEntryRepo.find.mockResolvedValue([
+        {
+          id: fakeUuid(11), userId: fakeUuid(101),
+          originalScore: 3.5, adjustedScore: 4.0,
+          originalPotential: 3.0, adjustedPotential: 3.5,
+          rationale: 'Mejora consistente', status: 'agreed',
+          approvalStatus: 'approved',
+        },
+      ]);
+
+      await service.verifyAndSign(
+        tenantId, userId, 'tenant_admin', 'calibration_session', documentId, validOtp,
+      );
+
+      const created = signatureRepo.create.mock.calls[0][0];
+      // El hash YA NO debe ser el del stub viejo {id, type, tenantId}
+      const oldStubHash = require('crypto').createHash('sha256')
+        .update(JSON.stringify({ id: documentId, type: 'calibration_session', tenantId }))
+        .digest('hex');
+      expect(created.documentHash).not.toBe(oldStubHash);
+      expect(created.documentHash).toMatch(/^[a-f0-9]{64}$/);
+    });
+
+    it('hash es determinístico (mismo contenido → mismo hash)', async () => {
+      const codeHash = await bcrypt.hash(validOtp, 4);
+      const sessionData = {
+        id: documentId, name: 'X', status: 'draft', departmentId: null,
+        moderatorId: userId, minQuorum: 3, expectedDistribution: null,
+        notes: null, tenantId,
+      };
+      const entries = [
+        { id: 'e1', userId: 'u1', originalScore: 3, adjustedScore: null,
+          originalPotential: null, adjustedPotential: null,
+          rationale: null, status: 'pending', approvalStatus: 'not_required' },
+      ];
+
+      // Primera firma
+      userRepo.findOne.mockResolvedValue(createMockUser({ id: userId, tenantId }));
+      signatureRepo.findOne.mockResolvedValue(null);
+      otpRepo.findOne.mockResolvedValue(activeCalibrationToken(codeHash));
+      mockOtpUpdateBuilder(1);
+      calibrationRepo.findOne.mockResolvedValue(sessionData);
+      calibrationEntryRepo.find.mockResolvedValue(entries);
+
+      await service.verifyAndSign(
+        tenantId, userId, 'tenant_admin', 'calibration_session', documentId, validOtp,
+      );
+      const hash1 = signatureRepo.create.mock.calls[0][0].documentHash;
+
+      // Limpiar y firmar de nuevo con mismo contenido (escenario de re-firma de otro user)
+      signatureRepo.create.mockClear();
+      const codeHash2 = await bcrypt.hash(validOtp, 4);
+      otpRepo.findOne.mockResolvedValue(activeCalibrationToken(codeHash2));
+      mockOtpUpdateBuilder(1);
+      await service.verifyAndSign(
+        tenantId, userId, 'tenant_admin', 'calibration_session', documentId, validOtp,
+      );
+      const hash2 = signatureRepo.create.mock.calls[0][0].documentHash;
+
+      expect(hash1).toBe(hash2);
+    });
+
+    it('hash cambia si UN campo de la sesión cambia', async () => {
+      const codeHash = await bcrypt.hash(validOtp, 4);
+      const baseEntries = [
+        { id: 'e1', userId: 'u1', originalScore: 3, adjustedScore: null,
+          originalPotential: null, adjustedPotential: null,
+          rationale: null, status: 'pending', approvalStatus: 'not_required' },
+      ];
+
+      // Hash 1: notes='A'
+      userRepo.findOne.mockResolvedValue(createMockUser({ id: userId, tenantId }));
+      signatureRepo.findOne.mockResolvedValue(null);
+      otpRepo.findOne.mockResolvedValue(activeCalibrationToken(codeHash));
+      mockOtpUpdateBuilder(1);
+      calibrationRepo.findOne.mockResolvedValue({
+        id: documentId, name: 'X', status: 'draft', departmentId: null,
+        moderatorId: userId, minQuorum: 3, expectedDistribution: null,
+        notes: 'A', tenantId,
+      });
+      calibrationEntryRepo.find.mockResolvedValue(baseEntries);
+
+      await service.verifyAndSign(
+        tenantId, userId, 'tenant_admin', 'calibration_session', documentId, validOtp,
+      );
+      const hash1 = signatureRepo.create.mock.calls[0][0].documentHash;
+
+      // Hash 2: notes='B'
+      signatureRepo.create.mockClear();
+      const codeHash2 = await bcrypt.hash(validOtp, 4);
+      otpRepo.findOne.mockResolvedValue(activeCalibrationToken(codeHash2));
+      mockOtpUpdateBuilder(1);
+      calibrationRepo.findOne.mockResolvedValue({
+        id: documentId, name: 'X', status: 'draft', departmentId: null,
+        moderatorId: userId, minQuorum: 3, expectedDistribution: null,
+        notes: 'B', tenantId,
+      });
+
+      await service.verifyAndSign(
+        tenantId, userId, 'tenant_admin', 'calibration_session', documentId, validOtp,
+      );
+      const hash2 = signatureRepo.create.mock.calls[0][0].documentHash;
+
+      expect(hash1).not.toBe(hash2);
+    });
+
+    it('hash cambia si una entry de la sesión cambia (adjustedScore)', async () => {
+      const codeHash = await bcrypt.hash(validOtp, 4);
+      const sessionData = {
+        id: documentId, name: 'X', status: 'completed', departmentId: null,
+        moderatorId: userId, minQuorum: 3, expectedDistribution: null,
+        notes: null, tenantId,
+      };
+
+      userRepo.findOne.mockResolvedValue(createMockUser({ id: userId, tenantId }));
+      signatureRepo.findOne.mockResolvedValue(null);
+      otpRepo.findOne.mockResolvedValue(activeCalibrationToken(codeHash));
+      mockOtpUpdateBuilder(1);
+      calibrationRepo.findOne.mockResolvedValue(sessionData);
+
+      // Hash 1: adjustedScore=4.0
+      calibrationEntryRepo.find.mockResolvedValue([
+        { id: 'e1', userId: 'u1', originalScore: 3, adjustedScore: 4.0,
+          originalPotential: null, adjustedPotential: null,
+          rationale: null, status: 'agreed', approvalStatus: 'not_required' },
+      ]);
+      await service.verifyAndSign(
+        tenantId, userId, 'tenant_admin', 'calibration_session', documentId, validOtp,
+      );
+      const hash1 = signatureRepo.create.mock.calls[0][0].documentHash;
+
+      // Hash 2: adjustedScore=4.5
+      signatureRepo.create.mockClear();
+      const codeHash2 = await bcrypt.hash(validOtp, 4);
+      otpRepo.findOne.mockResolvedValue(activeCalibrationToken(codeHash2));
+      mockOtpUpdateBuilder(1);
+      calibrationEntryRepo.find.mockResolvedValue([
+        { id: 'e1', userId: 'u1', originalScore: 3, adjustedScore: 4.5,
+          originalPotential: null, adjustedPotential: null,
+          rationale: null, status: 'agreed', approvalStatus: 'not_required' },
+      ]);
+      await service.verifyAndSign(
+        tenantId, userId, 'tenant_admin', 'calibration_session', documentId, validOtp,
+      );
+      const hash2 = signatureRepo.create.mock.calls[0][0].documentHash;
+
+      expect(hash1).not.toBe(hash2);
+    });
+
+    it('lanza NotFoundException si la sesión no existe en getDocumentContent', async () => {
+      const codeHash = await bcrypt.hash(validOtp, 4);
+      userRepo.findOne.mockResolvedValue(createMockUser({ id: userId, tenantId }));
+      signatureRepo.findOne.mockResolvedValue(null);
+      otpRepo.findOne.mockResolvedValue(activeCalibrationToken(codeHash));
+      mockOtpUpdateBuilder(1);
+      calibrationRepo.findOne.mockResolvedValue(null);
+
+      await expect(
+        service.verifyAndSign(
+          tenantId, userId, 'tenant_admin', 'calibration_session', documentId, validOtp,
+        ),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('canonicalJson: keys reordenadas dan el mismo hash (orden-invariante)', async () => {
+      // Esto valida que canonicalJson normaliza el orden de keys.
+      // Caso: si los repos retornan objetos con keys en orden distinto,
+      // el hash debe ser idéntico.
+      const codeHash = await bcrypt.hash(validOtp, 4);
+      userRepo.findOne.mockResolvedValue(createMockUser({ id: userId, tenantId }));
+      signatureRepo.findOne.mockResolvedValue(null);
+      otpRepo.findOne.mockResolvedValue(activeCalibrationToken(codeHash));
+      mockOtpUpdateBuilder(1);
+
+      // Mismos campos, distinto orden de keys
+      calibrationRepo.findOne.mockResolvedValueOnce({
+        notes: 'X', name: 'S', id: documentId, status: 'draft',
+        moderatorId: userId, departmentId: null, minQuorum: 3,
+        expectedDistribution: null, tenantId,
+      });
+      calibrationEntryRepo.find.mockResolvedValueOnce([]);
+      await service.verifyAndSign(
+        tenantId, userId, 'tenant_admin', 'calibration_session', documentId, validOtp,
+      );
+      const hash1 = signatureRepo.create.mock.calls[0][0].documentHash;
+
+      signatureRepo.create.mockClear();
+      const codeHash2 = await bcrypt.hash(validOtp, 4);
+      otpRepo.findOne.mockResolvedValue(activeCalibrationToken(codeHash2));
+      mockOtpUpdateBuilder(1);
+      calibrationRepo.findOne.mockResolvedValueOnce({
+        id: documentId, name: 'S', status: 'draft', departmentId: null,
+        moderatorId: userId, minQuorum: 3, expectedDistribution: null,
+        notes: 'X', tenantId,
+      });
+      calibrationEntryRepo.find.mockResolvedValueOnce([]);
+      await service.verifyAndSign(
+        tenantId, userId, 'tenant_admin', 'calibration_session', documentId, validOtp,
+      );
+      const hash2 = signatureRepo.create.mock.calls[0][0].documentHash;
+
+      expect(hash1).toBe(hash2);
     });
   });
 
