@@ -1,8 +1,10 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, HttpException, HttpStatus } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, LessThan, MoreThan, Repository } from 'typeorm';
 import * as crypto from 'crypto';
+import * as bcrypt from 'bcrypt';
 import { DocumentSignature } from './entities/document-signature.entity';
+import { SignatureOtpToken } from './entities/signature-otp-token.entity';
 import { User } from '../users/entities/user.entity';
 import { EvaluationCycle } from '../evaluations/entities/evaluation-cycle.entity';
 import { EvaluationResponse } from '../evaluations/entities/evaluation-response.entity';
@@ -15,12 +17,19 @@ import { AuditService } from '../audit/audit.service';
 import { SignatureAuthorizationService } from './services/signature-authorization.service';
 
 const OTP_EXPIRY_MINUTES = 10;
+// G9: rate limiting
+const MAX_ACTIVE_TOKENS_PER_USER_PER_HOUR = 3;
+const MAX_ATTEMPTS_PER_TOKEN = 5;
+// Bcrypt rounds: 10 da ~50ms hash; balance entre seguridad y latencia.
+const OTP_BCRYPT_ROUNDS = 10;
 
 @Injectable()
 export class SignaturesService {
   constructor(
     @InjectRepository(DocumentSignature)
     private readonly signatureRepo: Repository<DocumentSignature>,
+    @InjectRepository(SignatureOtpToken)
+    private readonly otpRepo: Repository<SignatureOtpToken>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     @InjectRepository(EvaluationCycle)
@@ -57,19 +66,41 @@ export class SignaturesService {
     // para firmar documentos ajenos.
     await this.authorizationService.assertCanSign(tenantId, userId, role, documentType, documentId);
 
+    // G9 audit fix: rate limiting — max 3 tokens activos del user en la
+    // última hora. Previene flood de OTPs (mail bombing, brute force prep).
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    const recentActiveCount = await this.otpRepo.count({
+      where: {
+        userId,
+        consumedAt: IsNull(),
+        expiresAt: MoreThan(new Date()),
+        createdAt: MoreThan(oneHourAgo),
+      },
+    });
+    if (recentActiveCount >= MAX_ACTIVE_TOKENS_PER_USER_PER_HOUR) {
+      throw new HttpException(
+        'Has solicitado demasiados códigos de verificación recientemente. Intenta nuevamente en una hora.',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
     // Validate document exists (idempotente con assertCanSign, sirve para nombre)
     const docName = await this.getDocumentName(tenantId, documentType, documentId);
 
-    // Generate cryptographically secure 6-digit OTP
+    // Generate cryptographically secure 6-digit OTP (plaintext SOLO para email)
     const code = String(crypto.randomInt(100000, 999999));
     const expires = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
 
-    // Store OTP in dedicated signature fields (not shared with password reset)
-    user.signatureOtp = code;
-    user.signatureOtpExpires = expires;
-    await this.userRepo.save(user);
+    // G9: hashear con bcrypt antes de persistir. Plaintext NUNCA toca DB.
+    const codeHash = await bcrypt.hash(code, OTP_BCRYPT_ROUNDS);
+    await this.otpRepo.save(
+      this.otpRepo.create({
+        tenantId, userId, documentType, documentId,
+        codeHash, expiresAt: expires,
+      }),
+    );
 
-    // Send OTP email
+    // Send OTP email (plaintext, una sola vez)
     await this.emailService.sendSignatureOtp(user.email, {
       firstName: user.firstName,
       documentType: this.getDocumentTypeLabel(documentType),
@@ -107,18 +138,47 @@ export class SignaturesService {
       throw new BadRequestException('Este documento ya fue firmado por ti.');
     }
 
-    // Verify OTP (dedicated signature fields)
-    if (!user.signatureOtp || user.signatureOtp !== otpCode) {
-      throw new BadRequestException('Código de verificación inválido');
-    }
-    if (!user.signatureOtpExpires || new Date() > user.signatureOtpExpires) {
-      throw new BadRequestException('El código de verificación ha expirado. Solicita uno nuevo.');
+    // G9: Buscar el token activo más reciente para (user, documentType, documentId).
+    const token = await this.otpRepo.findOne({
+      where: {
+        tenantId, userId, documentType, documentId,
+        consumedAt: IsNull(),
+        expiresAt: MoreThan(new Date()),
+      },
+      order: { createdAt: 'DESC' },
+    });
+    if (!token) {
+      // Mensaje genérico para no revelar si fue inválido / expirado / inexistente
+      throw new BadRequestException('Código de verificación inválido o expirado. Solicita uno nuevo.');
     }
 
-    // Clear OTP
-    user.signatureOtp = null;
-    user.signatureOtpExpires = null;
-    await this.userRepo.save(user);
+    // G9: defensa anti-bruteforce. Si llegó al cap, token bloqueado.
+    if (token.attempts >= MAX_ATTEMPTS_PER_TOKEN) {
+      throw new BadRequestException('Has agotado los intentos para este código. Solicita uno nuevo.');
+    }
+
+    // G9: incremento atómico de attempts ANTES de comparar (defensa contra
+    // race conditions concurrentes). Si dos verificaciones llegan a la vez,
+    // el WHERE attempts < MAX evita exceder el cap.
+    const updateRes = await this.otpRepo
+      .createQueryBuilder()
+      .update(SignatureOtpToken)
+      .set({ attempts: () => 'attempts + 1' })
+      .where('id = :id AND attempts < :max', { id: token.id, max: MAX_ATTEMPTS_PER_TOKEN })
+      .execute();
+    if (!updateRes.affected) {
+      // Otro request lo bloqueó entre nuestro findOne y update
+      throw new BadRequestException('Has agotado los intentos para este código. Solicita uno nuevo.');
+    }
+
+    // Comparación con bcrypt (constant time)
+    const matches = await bcrypt.compare(otpCode, token.codeHash);
+    if (!matches) {
+      throw new BadRequestException('Código de verificación inválido o expirado. Solicita uno nuevo.');
+    }
+
+    // OTP válido → marcar token como consumido (no reutilizable)
+    await this.otpRepo.update(token.id, { consumedAt: new Date() });
 
     // Generate document hash
     const documentContent = await this.getDocumentContent(tenantId, documentType, documentId);

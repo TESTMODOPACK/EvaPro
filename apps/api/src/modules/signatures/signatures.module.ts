@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { DocumentSignature } from './entities/document-signature.entity';
+import { SignatureOtpToken } from './entities/signature-otp-token.entity';
 import { User } from '../users/entities/user.entity';
 import { EvaluationCycle } from '../evaluations/entities/evaluation-cycle.entity';
 import { EvaluationResponse } from '../evaluations/entities/evaluation-response.entity';
@@ -18,7 +19,7 @@ import { AuditModule } from '../audit/audit.module';
 @Module({
   imports: [
     TypeOrmModule.forFeature([
-      DocumentSignature, User,
+      DocumentSignature, SignatureOtpToken, User,
       EvaluationCycle, EvaluationResponse, EvaluationAssignment,
       DevelopmentPlan, DevelopmentAction, Contract,
       CalibrationSession,
