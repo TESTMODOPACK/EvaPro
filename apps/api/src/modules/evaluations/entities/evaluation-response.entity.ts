@@ -42,6 +42,20 @@ export class EvaluationResponse {
   @Column({ type: 'timestamptz', nullable: true, name: 'submitted_at' })
   submittedAt: Date;
 
+  // ─── G6 (TAREA 12): timestamps de firma denormalizados ─────────────
+  // Permite queries directas "evaluación firmada por X rol" sin JOIN
+  // a document_signatures. signatures.service.verifyAndSign los
+  // actualiza al firmar; el backfill inicial se hace en la migración.
+
+  @Column({ type: 'timestamptz', nullable: true, name: 'author_signed_at' })
+  authorSignedAt: Date | null;
+
+  @Column({ type: 'timestamptz', nullable: true, name: 'recipient_signed_at' })
+  recipientSignedAt: Date | null;
+
+  @Column({ type: 'timestamptz', nullable: true, name: 'witnessed_at' })
+  witnessedAt: Date | null;
+
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
   createdAt: Date;
 }

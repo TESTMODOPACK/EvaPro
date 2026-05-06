@@ -1061,6 +1061,153 @@ describe('SignaturesService', () => {
     });
   });
 
+  // ─── G6 (TAREA 12): denormalización de signedAt en evaluation_response ──
+
+  describe('denormalize signedAt en evaluation_response (G6)', () => {
+    const validOtp = '123456';
+
+    function activeEvalResponseToken(codeHash: string) {
+      return {
+        id: fakeUuid(900), tenantId, userId,
+        documentType: 'evaluation_response', documentId,
+        codeHash, expiresAt: new Date(Date.now() + 5 * 60 * 1000),
+        attempts: 0, consumedAt: null, createdAt: new Date(),
+      };
+    }
+
+    it('AGREE como RECIPIENT: actualiza recipientSignedAt en evaluation_response', async () => {
+      const codeHash = await bcrypt.hash(validOtp, 4);
+      userRepo.findOne.mockResolvedValue(createMockUser({ id: userId, tenantId }));
+      signatureRepo.findOne.mockResolvedValue(null);
+      otpRepo.findOne.mockResolvedValue(activeEvalResponseToken(codeHash));
+      mockOtpUpdateBuilder(1);
+      responseRepo.findOne.mockResolvedValue({
+        id: documentId, assignmentId: fakeUuid(70), tenantId,
+        answers: {}, overallScore: 0, submittedAt: new Date(),
+      });
+
+      await service.verifyAndSign(
+        tenantId, userId, 'employee', 'evaluation_response', documentId, validOtp,
+      );
+
+      expect(responseRepo.update).toHaveBeenCalledWith(
+        { id: documentId, tenantId },
+        expect.objectContaining({ recipientSignedAt: expect.any(Date) }),
+      );
+    });
+
+    it('AGREE como AUTHOR: actualiza authorSignedAt', async () => {
+      const codeHash = await bcrypt.hash(validOtp, 4);
+      userRepo.findOne.mockResolvedValue(createMockUser({ id: userId, tenantId }));
+      signatureRepo.findOne.mockResolvedValue(null);
+      otpRepo.findOne.mockResolvedValue(activeEvalResponseToken(codeHash));
+      mockOtpUpdateBuilder(1);
+      responseRepo.findOne.mockResolvedValue({
+        id: documentId, assignmentId: fakeUuid(70), tenantId,
+        answers: {}, overallScore: 0, submittedAt: new Date(),
+      });
+
+      await service.verifyAndSign(
+        tenantId, userId, 'manager', 'evaluation_response', documentId, validOtp,
+        undefined, undefined, { signatureRole: 'author' as any },
+      );
+
+      expect(responseRepo.update).toHaveBeenCalledWith(
+        { id: documentId, tenantId },
+        expect.objectContaining({ authorSignedAt: expect.any(Date) }),
+      );
+    });
+
+    it('AGREE como EMPLOYER_WITNESS: actualiza witnessedAt', async () => {
+      const codeHash = await bcrypt.hash(validOtp, 4);
+      userRepo.findOne.mockResolvedValue(createMockUser({ id: userId, tenantId }));
+      signatureRepo.findOne.mockResolvedValue(null);
+      otpRepo.findOne.mockResolvedValue(activeEvalResponseToken(codeHash));
+      mockOtpUpdateBuilder(1);
+      responseRepo.findOne.mockResolvedValue({
+        id: documentId, assignmentId: fakeUuid(70), tenantId,
+        answers: {}, overallScore: 0, submittedAt: new Date(),
+      });
+
+      await service.verifyAndSign(
+        tenantId, userId, 'tenant_admin', 'evaluation_response', documentId, validOtp,
+        undefined, undefined, { signatureRole: 'employer_witness' as any },
+      );
+
+      expect(responseRepo.update).toHaveBeenCalledWith(
+        { id: documentId, tenantId },
+        expect.objectContaining({ witnessedAt: expect.any(Date) }),
+      );
+    });
+
+    it('DECLINE: NO actualiza ningún timestamp denormalizado', async () => {
+      const codeHash = await bcrypt.hash(validOtp, 4);
+      userRepo.findOne.mockResolvedValue(createMockUser({ id: userId, tenantId }));
+      signatureRepo.findOne.mockResolvedValue(null);
+      otpRepo.findOne.mockResolvedValue(activeEvalResponseToken(codeHash));
+      mockOtpUpdateBuilder(1);
+      responseRepo.findOne.mockResolvedValue({
+        id: documentId, assignmentId: fakeUuid(70), tenantId,
+        answers: {}, overallScore: 0, submittedAt: new Date(),
+      });
+
+      await service.verifyAndSign(
+        tenantId, userId, 'employee', 'evaluation_response', documentId, validOtp,
+        undefined,
+        { type: 'decline' as any, comment: 'No estoy de acuerdo con la calificación' },
+      );
+
+      // Ya había una llamada a update (por el flujo del response... wait,
+      // el assertCanSign llama responseRepo.findOne, no update)
+      // Verificar que UPDATE no fue llamado en absoluto sería ideal
+      const updateCalls = responseRepo.update.mock.calls;
+      const denormUpdate = updateCalls.find((c: any) =>
+        c[1].recipientSignedAt || c[1].authorSignedAt || c[1].witnessedAt,
+      );
+      expect(denormUpdate).toBeUndefined();
+    });
+
+    it('NO se llama update para documentType !== evaluation_response', async () => {
+      const codeHash = await bcrypt.hash(validOtp, 4);
+      userRepo.findOne.mockResolvedValue(createMockUser({ id: userId, tenantId }));
+      signatureRepo.findOne.mockResolvedValue(null);
+      otpRepo.findOne.mockResolvedValue({
+        id: fakeUuid(901), tenantId, userId,
+        documentType: 'evaluation_cycle', documentId,
+        codeHash, expiresAt: new Date(Date.now() + 5 * 60 * 1000),
+        attempts: 0, consumedAt: null, createdAt: new Date(),
+      });
+      mockOtpUpdateBuilder(1);
+      cycleRepo.findOne.mockResolvedValue({ id: documentId, name: 'X' });
+
+      await service.verifyAndSign(
+        tenantId, userId, 'tenant_admin', 'evaluation_cycle', documentId, validOtp,
+      );
+
+      expect(responseRepo.update).not.toHaveBeenCalled();
+    });
+
+    it('falla del update NO bloquea la creación de firma (best-effort)', async () => {
+      const codeHash = await bcrypt.hash(validOtp, 4);
+      userRepo.findOne.mockResolvedValue(createMockUser({ id: userId, tenantId }));
+      signatureRepo.findOne.mockResolvedValue(null);
+      otpRepo.findOne.mockResolvedValue(activeEvalResponseToken(codeHash));
+      mockOtpUpdateBuilder(1);
+      responseRepo.findOne.mockResolvedValue({
+        id: documentId, assignmentId: fakeUuid(70), tenantId,
+        answers: {}, overallScore: 0, submittedAt: new Date(),
+      });
+      responseRepo.update.mockRejectedValueOnce(new Error('DB temporarily down'));
+
+      // No debe lanzar — la firma ya fue creada
+      await expect(
+        service.verifyAndSign(
+          tenantId, userId, 'employee', 'evaluation_response', documentId, validOtp,
+        ),
+      ).resolves.toBeDefined();
+    });
+  });
+
   // ─── G3 (TAREA 6): hasSignatureWithRole ────────────────────────────
 
   describe('hasSignatureWithRole (G3)', () => {

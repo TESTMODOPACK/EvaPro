@@ -267,7 +267,47 @@ export class SignaturesService {
       }
     }
 
+    // G6 (TAREA 12): denormalizar timestamp en evaluation_response para
+    // queries rápidas "evaluación firmada por X rol" sin JOIN.
+    // Solo si fue afirmativa (decline no cuenta como firma de respaldo).
+    if (isAffirmative && documentType === 'evaluation_response') {
+      // Usar el signedAt de la firma persistida; si por algún motivo no
+      // viene (ej. mocks de test), fallback a Date.now().
+      const ts = saved.signedAt ?? new Date();
+      await this.updateEvaluationResponseSignedTimestamp(
+        tenantId, documentId, sigRole, ts,
+      );
+    }
+
     return saved;
+  }
+
+  /**
+   * G6 (TAREA 12) — actualiza el timestamp denormalizado en
+   * evaluation_responses según el signatureRole de la firma.
+   * Llamado en background; un fallo NO debe bloquear la firma.
+   */
+  private async updateEvaluationResponseSignedTimestamp(
+    tenantId: string,
+    documentId: string,
+    sigRole: SignatureRole,
+    signedAt: Date,
+  ): Promise<void> {
+    const fieldMap: Record<SignatureRole, string> = {
+      [SignatureRole.AUTHOR]: 'authorSignedAt',
+      [SignatureRole.RECIPIENT]: 'recipientSignedAt',
+      [SignatureRole.EMPLOYER_WITNESS]: 'witnessedAt',
+    };
+    const field = fieldMap[sigRole];
+    if (!field) return;
+    try {
+      await this.responseRepo.update(
+        { id: documentId, tenantId },
+        { [field]: signedAt } as any,
+      );
+    } catch {
+      // Best-effort; firma ya está creada y es la fuente de verdad.
+    }
   }
 
   // ─── G3 (TAREA 6): consultas por signatureRole ──────────────────────
