@@ -147,6 +147,15 @@ export interface TenantSettings {
   aiEnabled?: boolean;
   enpsEnabled?: boolean;
 
+  /**
+   * G3 (TAREA 6) — Si está activo, requiere co-firma del tenant_admin
+   * (signatureRole=employer_witness) además de la firma del empleado
+   * para considerar una evaluación cerrada. Cumplimiento legal en
+   * jurisdicciones que exigen firma del empleador (Chile, etc).
+   * Default: false (compat con tenants existentes).
+   */
+  requireEmployerWitness?: boolean;
+
   // Feedback module config
   feedbackConfig?: {
     scope?: 'all' | 'department' | 'team';

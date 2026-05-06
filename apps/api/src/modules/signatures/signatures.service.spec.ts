@@ -1061,6 +1061,52 @@ describe('SignaturesService', () => {
     });
   });
 
+  // ─── G3 (TAREA 6): hasSignatureWithRole ────────────────────────────
+
+  describe('hasSignatureWithRole (G3)', () => {
+    it('devuelve true cuando existe firma valida con el rol', async () => {
+      signatureRepo.count.mockResolvedValue(1);
+      const result = await service.hasSignatureWithRole(
+        tenantId, 'evaluation_response', documentId, 'employer_witness' as any,
+      );
+      expect(result).toBe(true);
+      expect(signatureRepo.count).toHaveBeenCalledWith({
+        where: {
+          tenantId, documentType: 'evaluation_response', documentId,
+          status: 'valid', signatureRole: 'employer_witness',
+        },
+      });
+    });
+
+    it('devuelve false cuando no existe firma con el rol', async () => {
+      signatureRepo.count.mockResolvedValue(0);
+      const result = await service.hasSignatureWithRole(
+        tenantId, 'evaluation_response', documentId, 'employer_witness' as any,
+      );
+      expect(result).toBe(false);
+    });
+
+    it('respeta multi-tenant', async () => {
+      signatureRepo.count.mockResolvedValue(0);
+      await service.hasSignatureWithRole(
+        otherTenantId, 'evaluation_response', documentId, 'author' as any,
+      );
+      expect(signatureRepo.count).toHaveBeenCalledWith({
+        where: expect.objectContaining({ tenantId: otherTenantId }),
+      });
+    });
+
+    it('NO cuenta firmas revocadas (solo valid)', async () => {
+      signatureRepo.count.mockResolvedValue(0);
+      await service.hasSignatureWithRole(
+        tenantId, 'evaluation_response', documentId, 'employer_witness' as any,
+      );
+      expect(signatureRepo.count).toHaveBeenCalledWith({
+        where: expect.objectContaining({ status: 'valid' }),
+      });
+    });
+  });
+
   // ─── G8 (TAREA 9): revokeSignature ──────────────────────────────────
 
   describe('revokeSignature (G8)', () => {

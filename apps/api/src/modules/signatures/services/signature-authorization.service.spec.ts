@@ -417,6 +417,89 @@ describe('SignatureAuthorizationService', () => {
     });
   });
 
+  // ─── G3 (TAREA 6): signatureRole=EMPLOYER_WITNESS ──────────────────
+
+  describe('signatureRole=EMPLOYER_WITNESS (G3)', () => {
+    it('tenant_admin puede firmar como employer_witness', async () => {
+      responseRepo.findOne.mockResolvedValue({
+        id: DOC_ID, assignmentId: ASSIGNMENT_ID, tenantId: TENANT_A,
+      } as any);
+
+      await expect(
+        service.assertCanSign(
+          TENANT_A, USER_OWNER, 'tenant_admin', 'evaluation_response', DOC_ID,
+          'employer_witness' as any,
+        ),
+      ).resolves.toBeUndefined();
+
+      // No consulta assignment porque tenant_admin solo necesita ser tenant_admin
+      expect(assignmentRepo.findOne).not.toHaveBeenCalled();
+    });
+
+    it('manager NO puede firmar como employer_witness', async () => {
+      responseRepo.findOne.mockResolvedValue({
+        id: DOC_ID, assignmentId: ASSIGNMENT_ID, tenantId: TENANT_A,
+      } as any);
+
+      await expect(
+        service.assertCanSign(
+          TENANT_A, USER_OWNER, 'manager', 'evaluation_response', DOC_ID,
+          'employer_witness' as any,
+        ),
+      ).rejects.toThrow(/Solo tenant_admin/);
+    });
+
+    it('employee NO puede firmar como employer_witness', async () => {
+      responseRepo.findOne.mockResolvedValue({
+        id: DOC_ID, assignmentId: ASSIGNMENT_ID, tenantId: TENANT_A,
+      } as any);
+
+      await expect(
+        service.assertCanSign(
+          TENANT_A, USER_OWNER, 'employee', 'evaluation_response', DOC_ID,
+          'employer_witness' as any,
+        ),
+      ).rejects.toThrow(/Solo tenant_admin/);
+    });
+
+    it('external NO puede firmar como employer_witness', async () => {
+      responseRepo.findOne.mockResolvedValue({
+        id: DOC_ID, assignmentId: ASSIGNMENT_ID, tenantId: TENANT_A,
+      } as any);
+
+      await expect(
+        service.assertCanSign(
+          TENANT_A, USER_OWNER, 'external', 'evaluation_response', DOC_ID,
+          'employer_witness' as any,
+        ),
+      ).rejects.toThrow(/Solo tenant_admin/);
+    });
+
+    it('super_admin permitido como bypass forensic', async () => {
+      responseRepo.findOne.mockResolvedValue({
+        id: DOC_ID, assignmentId: ASSIGNMENT_ID, tenantId: TENANT_A,
+      } as any);
+
+      await expect(
+        service.assertCanSign(
+          TENANT_A, USER_OWNER, 'super_admin', 'evaluation_response', DOC_ID,
+          'employer_witness' as any,
+        ),
+      ).resolves.toBeUndefined();
+    });
+
+    it('NotFoundException si la respuesta no existe', async () => {
+      responseRepo.findOne.mockResolvedValue(null);
+
+      await expect(
+        service.assertCanSign(
+          TENANT_A, USER_OWNER, 'tenant_admin', 'evaluation_response', DOC_ID,
+          'employer_witness' as any,
+        ),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
   // ─── G2 (TAREA 5): signatureRole=AUTHOR en evaluation_response ─────
 
   describe('signatureRole=AUTHOR (G2)', () => {

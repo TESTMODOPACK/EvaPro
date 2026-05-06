@@ -270,6 +270,32 @@ export class SignaturesService {
     return saved;
   }
 
+  // ─── G3 (TAREA 6): consultas por signatureRole ──────────────────────
+
+  /**
+   * Devuelve true si el documento tiene una firma valida con el rol
+   * solicitado. Usado por evaluations.service para validar que un
+   * ciclo no se cierra sin la firma correspondiente cuando
+   * tenant.settings.requireEmployerWitness === true.
+   *
+   * Multi-tenant: filtra por tenantId.
+   */
+  async hasSignatureWithRole(
+    tenantId: string,
+    documentType: string,
+    documentId: string,
+    signatureRole: SignatureRole,
+  ): Promise<boolean> {
+    const count = await this.signatureRepo.count({
+      where: {
+        tenantId, documentType, documentId,
+        status: 'valid',
+        signatureRole,
+      },
+    });
+    return count > 0;
+  }
+
   // ─── G8 (TAREA 9): Revocación de firma ──────────────────────────────
 
   /**
