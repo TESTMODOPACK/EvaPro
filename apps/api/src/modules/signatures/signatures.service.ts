@@ -13,6 +13,7 @@ import { Contract } from '../contracts/entities/contract.entity';
 import { EmailService } from '../notifications/email.service';
 import { AuditService } from '../audit/audit.service';
 import { EvaluationsService } from '../evaluations/evaluations.service';
+import { SignatureAuthorizationService } from './services/signature-authorization.service';
 
 const OTP_EXPIRY_MINUTES = 10;
 
@@ -38,6 +39,7 @@ export class SignaturesService {
     private readonly emailService: EmailService,
     private readonly auditService: AuditService,
     private readonly evaluationsService: EvaluationsService,
+    private readonly authorizationService: SignatureAuthorizationService,
   ) {}
 
   // ─── Request Signature (send OTP) ───────────────────────────────────
