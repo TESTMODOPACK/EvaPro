@@ -14,7 +14,7 @@ export class SignaturesController {
 
   /** Request OTP to sign a document */
   @Post('request')
-  @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
+  @Roles('super_admin', 'tenant_admin', 'manager', 'employee', 'external')
   requestSignature(
     @Request() req: any,
     @Body() dto: { documentType: string; documentId: string },
@@ -27,7 +27,7 @@ export class SignaturesController {
 
   /** Verify OTP and sign the document */
   @Post('verify')
-  @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
+  @Roles('super_admin', 'tenant_admin', 'manager', 'employee', 'external')
   verifyAndSign(
     @Request() req: any,
     @Body() dto: {
@@ -51,9 +51,9 @@ export class SignaturesController {
     );
   }
 
-  /** List my own signatures (all roles) */
+  /** List my own signatures (all roles, including external) */
   @Get('mine')
-  @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
+  @Roles('super_admin', 'tenant_admin', 'manager', 'employee', 'external')
   listMine(@Request() req: any) {
     return this.signaturesService.getSignaturesByUser(req.user.tenantId, req.user.userId);
   }

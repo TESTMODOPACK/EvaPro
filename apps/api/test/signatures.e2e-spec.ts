@@ -131,13 +131,27 @@ describe('Signatures (e2e)', () => {
     await request(app.getHttpServer()).get('/signatures').expect(403);
   });
 
-  it('POST /signatures/request → 403 para rol external', async () => {
+  it('POST /signatures/request → 201 para rol external (G4)', async () => {
     userState.role = 'external';
     await request(app.getHttpServer())
       .post('/signatures/request')
       .send({ documentType: 'evaluation_response', documentId: DOC_ID })
+      .expect(201);
+    expect(service.requestSignature).toHaveBeenCalledWith(
+      TENANT_A, USER_A, 'external', 'evaluation_response', DOC_ID,
+    );
+  });
+
+  it('GET /signatures/team → 403 para external (sin equipo)', async () => {
+    userState.role = 'external';
+    await request(app.getHttpServer()).get('/signatures/team').expect(403);
+  });
+
+  it('GET /signatures/verify/:id → 403 para external (no acceso forense)', async () => {
+    userState.role = 'external';
+    await request(app.getHttpServer())
+      .get(`/signatures/verify/${DOC_ID}`)
       .expect(403);
-    expect(service.requestSignature).not.toHaveBeenCalled();
   });
 
   it('GET /signatures/team → 403 para employee', async () => {

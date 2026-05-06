@@ -155,21 +155,23 @@ describe('SignaturesController', () => {
       return reflector.get<string[]>(ROLES_KEY, controller[method]) || [];
     }
 
-    it('requestSignature exige super_admin/tenant_admin/manager/employee (NO external)', () => {
+    it('requestSignature permite super_admin/tenant_admin/manager/employee/external (G4)', () => {
       const roles = rolesOf('requestSignature');
-      expect(roles).toEqual(expect.arrayContaining(['super_admin', 'tenant_admin', 'manager', 'employee']));
-      expect(roles).not.toContain('external');
+      expect(roles).toEqual(expect.arrayContaining([
+        'super_admin', 'tenant_admin', 'manager', 'employee', 'external',
+      ]));
     });
 
-    it('verifyAndSign exige super_admin/tenant_admin/manager/employee (NO external)', () => {
+    it('verifyAndSign permite super_admin/tenant_admin/manager/employee/external (G4)', () => {
       const roles = rolesOf('verifyAndSign');
-      expect(roles).toEqual(expect.arrayContaining(['super_admin', 'tenant_admin', 'manager', 'employee']));
-      expect(roles).not.toContain('external');
+      expect(roles).toEqual(expect.arrayContaining([
+        'super_admin', 'tenant_admin', 'manager', 'employee', 'external',
+      ]));
     });
 
-    it('listMine permite super_admin/tenant_admin/manager/employee (NO external)', () => {
+    it('listMine permite super_admin/tenant_admin/manager/employee/external (G4)', () => {
       const roles = rolesOf('listMine');
-      expect(roles).not.toContain('external');
+      expect(roles).toContain('external');
     });
 
     it('listTeam exige super_admin/tenant_admin/manager (NO employee, NO external)', () => {
