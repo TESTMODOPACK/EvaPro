@@ -377,7 +377,7 @@ export default function ResultadosEncuestaPage() {
           {/* eNPS Pie */}
           {enps && enps.total > 0 && (
             <div className="card" style={{ padding: '1.25rem' }}>
-              <h3 style={{ margin: '0 0 0.5rem', fontSize: '1rem', fontWeight: 600 }}>Distribución eNPS (Employee Net Promoter Score)</h3>
+              <h3 style={{ margin: '0 0 0.5rem', fontSize: '1rem', fontWeight: 600 }}>Distribución eNPS (Índice de Recomendación del Colaborador)</h3>
               <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '1rem', lineHeight: 1.5 }}>
                 El <strong>eNPS</strong> mide qué tan probable es que los colaboradores recomienden la organización como lugar de trabajo.
                 Se calcula como <strong>% Promotores − % Detractores</strong>. Rango: <strong>−100 a +100</strong>.
