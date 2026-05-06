@@ -108,6 +108,7 @@ describe('Signatures (e2e)', () => {
     expect(service.verifyAndSign).toHaveBeenCalledWith(
       TENANT_A, USER_A, 'employee', 'evaluation_response', DOC_ID, '123456',
       expect.any(String),
+      undefined, // sin acknowledgment → default 'agree' en el service (G5)
     );
   });
 

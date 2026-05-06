@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, LessThan, MoreThan, Repository } from 'typeorm';
 import * as crypto from 'crypto';
 import * as bcrypt from 'bcrypt';
-import { DocumentSignature } from './entities/document-signature.entity';
+import { AcknowledgmentType, DocumentSignature, SignatureRole } from './entities/document-signature.entity';
 import { SignatureOtpToken } from './entities/signature-otp-token.entity';
 import { User } from '../users/entities/user.entity';
 import { EvaluationCycle } from '../evaluations/entities/evaluation-cycle.entity';
@@ -22,6 +22,15 @@ const MAX_ACTIVE_TOKENS_PER_USER_PER_HOUR = 3;
 const MAX_ATTEMPTS_PER_TOKEN = 5;
 // Bcrypt rounds: 10 da ~50ms hash; balance entre seguridad y latencia.
 const OTP_BCRYPT_ROUNDS = 10;
+// G5 (TAREA 7): comentario obligatorio cuando acknowledgmentType !== 'agree'.
+const ACK_COMMENT_MIN_LENGTH = 10;
+const ACK_COMMENT_MAX_LENGTH = 2000;
+
+/** TAREA 7 / G5 — opciones de acknowledgment al firmar. */
+export interface AcknowledgmentOptions {
+  type?: AcknowledgmentType;
+  comment?: string;
+}
 
 @Injectable()
 export class SignaturesService {
@@ -122,7 +131,13 @@ export class SignaturesService {
     documentId: string,
     otpCode: string,
     ipAddress?: string,
+    acknowledgment?: AcknowledgmentOptions,
   ): Promise<DocumentSignature> {
+    // G5 (TAREA 7): validar acknowledgment antes de cualquier side-effect
+    const ackType = acknowledgment?.type ?? AcknowledgmentType.AGREE;
+    const ackComment = acknowledgment?.comment?.trim() || null;
+    this.validateAcknowledgment(ackType, ackComment);
+
     const user = await this.userRepo.findOne({ where: { id: userId, tenantId } });
     if (!user) throw new NotFoundException('Usuario no encontrado');
 
@@ -196,18 +211,33 @@ export class SignaturesService {
       signerIp: ipAddress || null,
       verificationMethod: 'otp_email',
       status: 'valid',
+      // G5 (TAREA 7): registrar acknowledgmentType + comment.
+      // signatureRole queda en RECIPIENT (default); endpoints específicos
+      // (TAREA 5 author / TAREA 6 employer_witness) lo overridean.
+      signatureRole: SignatureRole.RECIPIENT,
+      acknowledgmentType: ackType,
+      acknowledgmentComment: ackComment,
     });
     const saved = await this.signatureRepo.save(signature);
 
-    // Audit log
+    // Audit log (incluye acknowledgmentType para trazabilidad legal)
     this.auditService.log(
       tenantId, userId, 'document.signed', 'signature', saved.id,
-      { documentType, documentId, documentHash, verificationMethod: 'otp_email' },
+      {
+        documentType, documentId, documentHash,
+        verificationMethod: 'otp_email',
+        acknowledgmentType: ackType,
+        hasComment: !!ackComment,
+      },
       ipAddress,
     ).catch(() => {});
 
-    // Auto-activate contract after signature
-    if (documentType === 'contract') {
+    // G5 (TAREA 7): si fue DECLINE, NO transicionar estados del documento.
+    // El contrato queda como pending_signature; el rechazo queda registrado
+    // en la firma como evidencia legal. Solo AGREE / AGREE_WITH_COMMENTS
+    // disparan la auto-activación.
+    const isAffirmative = ackType !== AcknowledgmentType.DECLINE;
+    if (isAffirmative && documentType === 'contract') {
       const contract = await this.contractRepo.findOne({ where: { id: documentId, tenantId } });
       if (contract && contract.status === 'pending_signature') {
         contract.status = 'active';
@@ -216,6 +246,32 @@ export class SignaturesService {
     }
 
     return saved;
+  }
+
+  /**
+   * G5 (TAREA 7) — valida la combinación acknowledgmentType + comment.
+   *
+   *  - 'agree' acepta comment vacío.
+   *  - 'agree_with_comments' y 'decline' EXIGEN comment con min/max length.
+   */
+  private validateAcknowledgment(type: AcknowledgmentType, comment: string | null) {
+    if (!Object.values(AcknowledgmentType).includes(type)) {
+      throw new BadRequestException('Tipo de reconocimiento inválido');
+    }
+    if (type === AcknowledgmentType.AGREE) {
+      // comment opcional; ignoramos si vino
+      return;
+    }
+    if (!comment || comment.length < ACK_COMMENT_MIN_LENGTH) {
+      throw new BadRequestException(
+        `Para "${type}" debes incluir un comentario de al menos ${ACK_COMMENT_MIN_LENGTH} caracteres.`,
+      );
+    }
+    if (comment.length > ACK_COMMENT_MAX_LENGTH) {
+      throw new BadRequestException(
+        `El comentario no puede superar los ${ACK_COMMENT_MAX_LENGTH} caracteres.`,
+      );
+    }
   }
 
   // ─── List Signatures ────────────────────────────────────────────────

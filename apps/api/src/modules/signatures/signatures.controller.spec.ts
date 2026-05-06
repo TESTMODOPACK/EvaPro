@@ -67,13 +67,32 @@ describe('SignaturesController', () => {
         documentId,
         code: '123456',
       });
+      // 8 args: tenantId, userId, role, docType, docId, code, ip, ackOptions?
       expect(service.verifyAndSign).toHaveBeenCalledWith(
         tenantId, userId, 'employee', 'evaluation_response', documentId, '123456',
         expect.any(String),
+        undefined, // sin acknowledgment → default 'agree' en el service
       );
-      // El último arg debe ser una IP no vacía (puede ser ::1, 127.0.0.1, o la del header)
       const ipArg = service.verifyAndSign.mock.calls[0][6];
       expect(ipArg).toBeTruthy();
+    });
+
+    it('propaga acknowledgmentType + comment cuando se envían (G5)', async () => {
+      const req: any = {
+        user: { tenantId, userId, role: 'employee' },
+        ip: '192.168.1.50', headers: {}, socket: { remoteAddress: '192.168.1.50' },
+      };
+      await controller.verifyAndSign(req, {
+        documentType: 'evaluation_response',
+        documentId, code: '123456',
+        acknowledgmentType: 'decline',
+        acknowledgmentComment: 'No estoy de acuerdo con la calificación',
+      });
+      const call = service.verifyAndSign.mock.calls[0];
+      expect(call[7]).toEqual({
+        type: 'decline',
+        comment: 'No estoy de acuerdo con la calificación',
+      });
     });
   });
 

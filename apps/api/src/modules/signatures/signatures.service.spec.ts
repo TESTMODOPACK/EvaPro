@@ -476,6 +476,174 @@ describe('SignaturesService', () => {
       );
     });
 
+    // ─── G5 (TAREA 7): acknowledgmentType + comment ────────────────────
+
+    describe('acknowledgmentType (G5)', () => {
+      it('default = AGREE cuando no se pasa acknowledgment (compat)', async () => {
+        userRepo.findOne.mockResolvedValue(createMockUser({ id: userId, tenantId }));
+        signatureRepo.findOne.mockResolvedValue(null);
+        otpRepo.findOne.mockResolvedValue(activeToken());
+        mockOtpUpdateBuilder(1);
+        cycleRepo.findOne.mockResolvedValue({ id: documentId, name: 'X' });
+
+        await service.verifyAndSign(
+          tenantId, userId, 'tenant_admin', 'evaluation_cycle', documentId, validOtp,
+        );
+
+        expect(signatureRepo.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            acknowledgmentType: 'agree',
+            acknowledgmentComment: null,
+            signatureRole: 'recipient',
+          }),
+        );
+      });
+
+      it('AGREE con comment ignora el comment (no es required ni se persiste como decline)', async () => {
+        userRepo.findOne.mockResolvedValue(createMockUser({ id: userId, tenantId }));
+        signatureRepo.findOne.mockResolvedValue(null);
+        otpRepo.findOne.mockResolvedValue(activeToken());
+        mockOtpUpdateBuilder(1);
+        cycleRepo.findOne.mockResolvedValue({ id: documentId, name: 'X' });
+
+        await service.verifyAndSign(
+          tenantId, userId, 'tenant_admin', 'evaluation_cycle', documentId, validOtp,
+          undefined, { type: 'agree' as any, comment: 'comentario opcional largo aquí' },
+        );
+
+        expect(signatureRepo.create).toHaveBeenCalledWith(
+          expect.objectContaining({ acknowledgmentType: 'agree' }),
+        );
+      });
+
+      it('AGREE_WITH_COMMENTS: persiste comment + tipo correcto', async () => {
+        userRepo.findOne.mockResolvedValue(createMockUser({ id: userId, tenantId }));
+        signatureRepo.findOne.mockResolvedValue(null);
+        otpRepo.findOne.mockResolvedValue(activeToken());
+        mockOtpUpdateBuilder(1);
+        cycleRepo.findOne.mockResolvedValue({ id: documentId, name: 'X' });
+
+        const longComment = 'Estoy de acuerdo pero tengo observaciones sobre la sección 3.';
+        await service.verifyAndSign(
+          tenantId, userId, 'tenant_admin', 'evaluation_cycle', documentId, validOtp,
+          undefined, { type: 'agree_with_comments' as any, comment: longComment },
+        );
+
+        expect(signatureRepo.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            acknowledgmentType: 'agree_with_comments',
+            acknowledgmentComment: longComment,
+          }),
+        );
+      });
+
+      it('AGREE_WITH_COMMENTS sin comment → BadRequestException', async () => {
+        userRepo.findOne.mockResolvedValue(createMockUser({ id: userId, tenantId }));
+
+        await expect(
+          service.verifyAndSign(
+            tenantId, userId, 'tenant_admin', 'evaluation_cycle', documentId, validOtp,
+            undefined, { type: 'agree_with_comments' as any },
+          ),
+        ).rejects.toThrow(BadRequestException);
+      });
+
+      it('DECLINE con comment: registra rechazo, NO transiciona contrato', async () => {
+        userRepo.findOne.mockResolvedValue(createMockUser({ id: userId, tenantId }));
+        signatureRepo.findOne.mockResolvedValue(null);
+        otpRepo.findOne.mockResolvedValue(activeToken({ documentType: 'contract' }));
+        mockOtpUpdateBuilder(1);
+        const contract = {
+          id: documentId, type: 'employment', title: 'C',
+          content: 'X', effectiveDate: '2026-01-01', version: 1, tenantId,
+          status: 'pending_signature',
+        };
+        contractRepo.findOne.mockResolvedValue(contract);
+
+        await service.verifyAndSign(
+          tenantId, userId, 'tenant_admin', 'contract', documentId, validOtp,
+          undefined,
+          { type: 'decline' as any, comment: 'No estoy de acuerdo con la cláusula 5' },
+        );
+
+        // Firma se crea con type=decline
+        expect(signatureRepo.create).toHaveBeenCalledWith(
+          expect.objectContaining({ acknowledgmentType: 'decline' }),
+        );
+        // Pero el contrato NO se activa (queda en pending_signature)
+        expect(contractRepo.save).not.toHaveBeenCalled();
+      });
+
+      it('DECLINE sin comment → BadRequestException', async () => {
+        userRepo.findOne.mockResolvedValue(createMockUser({ id: userId, tenantId }));
+
+        await expect(
+          service.verifyAndSign(
+            tenantId, userId, 'tenant_admin', 'evaluation_cycle', documentId, validOtp,
+            undefined, { type: 'decline' as any, comment: 'no' /* < 10 chars */ },
+          ),
+        ).rejects.toThrow(/al menos 10 caracteres/i);
+      });
+
+      it('comment > 2000 chars → BadRequestException', async () => {
+        userRepo.findOne.mockResolvedValue(createMockUser({ id: userId, tenantId }));
+
+        const huge = 'a'.repeat(2001);
+        await expect(
+          service.verifyAndSign(
+            tenantId, userId, 'tenant_admin', 'evaluation_cycle', documentId, validOtp,
+            undefined, { type: 'agree_with_comments' as any, comment: huge },
+          ),
+        ).rejects.toThrow(/no puede superar los 2000/i);
+      });
+
+      it('acknowledgmentType inválido → BadRequestException', async () => {
+        userRepo.findOne.mockResolvedValue(createMockUser({ id: userId, tenantId }));
+
+        await expect(
+          service.verifyAndSign(
+            tenantId, userId, 'tenant_admin', 'evaluation_cycle', documentId, validOtp,
+            undefined, { type: 'whatever' as any, comment: 'foo bar baz qux' },
+          ),
+        ).rejects.toThrow(/Tipo de reconocimiento inválido/);
+      });
+
+      it('audit log incluye acknowledgmentType + hasComment', async () => {
+        userRepo.findOne.mockResolvedValue(createMockUser({ id: userId, tenantId }));
+        signatureRepo.findOne.mockResolvedValue(null);
+        otpRepo.findOne.mockResolvedValue(activeToken());
+        mockOtpUpdateBuilder(1);
+        cycleRepo.findOne.mockResolvedValue({ id: documentId, name: 'X' });
+        signatureRepo.save.mockImplementation((s: any) => Promise.resolve({ ...s, id: 'sig-1' }));
+
+        await service.verifyAndSign(
+          tenantId, userId, 'tenant_admin', 'evaluation_cycle', documentId, validOtp,
+          undefined,
+          { type: 'agree_with_comments' as any, comment: 'observación importante aquí' },
+        );
+
+        expect(auditService.log).toHaveBeenCalledWith(
+          tenantId, userId, 'document.signed', 'signature', 'sig-1',
+          expect.objectContaining({
+            acknowledgmentType: 'agree_with_comments',
+            hasComment: true,
+          }),
+          undefined,
+        );
+      });
+
+      it('comment se trimea (whitespace no cuenta para min length)', async () => {
+        userRepo.findOne.mockResolvedValue(createMockUser({ id: userId, tenantId }));
+
+        await expect(
+          service.verifyAndSign(
+            tenantId, userId, 'tenant_admin', 'evaluation_cycle', documentId, validOtp,
+            undefined, { type: 'decline' as any, comment: '         ' /* solo spaces */ },
+          ),
+        ).rejects.toThrow(BadRequestException);
+      });
+    });
+
     it('auto-activa contrato pending_signature → active al firmar', async () => {
       userRepo.findOne.mockResolvedValue(createMockUser({ id: userId, tenantId }));
       signatureRepo.findOne.mockResolvedValue(null);
