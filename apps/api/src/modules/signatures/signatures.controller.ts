@@ -20,7 +20,8 @@ export class SignaturesController {
     @Body() dto: { documentType: string; documentId: string },
   ) {
     return this.signaturesService.requestSignature(
-      req.user.tenantId, req.user.userId, dto.documentType, dto.documentId,
+      req.user.tenantId, req.user.userId, req.user.role,
+      dto.documentType, dto.documentId,
     );
   }
 
@@ -34,7 +35,8 @@ export class SignaturesController {
     // P2.6 (bonus cleanup): usar getClientIp central (trust proxy-safe) en
     // vez de leer el header directo (spoofable sin trust proxy).
     return this.signaturesService.verifyAndSign(
-      req.user.tenantId, req.user.userId, dto.documentType, dto.documentId, dto.code,
+      req.user.tenantId, req.user.userId, req.user.role,
+      dto.documentType, dto.documentId, dto.code,
       getClientIp(req),
     );
   }

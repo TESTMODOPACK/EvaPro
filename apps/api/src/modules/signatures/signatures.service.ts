@@ -42,11 +42,22 @@ export class SignaturesService {
 
   // ─── Request Signature (send OTP) ───────────────────────────────────
 
-  async requestSignature(tenantId: string, userId: string, documentType: string, documentId: string) {
+  async requestSignature(
+    tenantId: string,
+    userId: string,
+    role: string,
+    documentType: string,
+    documentId: string,
+  ) {
     const user = await this.userRepo.findOne({ where: { id: userId, tenantId } });
     if (!user) throw new NotFoundException('Usuario no encontrado');
 
-    // Validate document exists
+    // G1 audit fix: validar autorización del firmante sobre este documento
+    // antes de emitir OTP. Sin esto cualquier usuario podía solicitar OTP
+    // para firmar documentos ajenos.
+    await this.authorizationService.assertCanSign(tenantId, userId, role, documentType, documentId);
+
+    // Validate document exists (idempotente con assertCanSign, sirve para nombre)
     const docName = await this.getDocumentName(tenantId, documentType, documentId);
 
     // Generate cryptographically secure 6-digit OTP
@@ -75,6 +86,7 @@ export class SignaturesService {
   async verifyAndSign(
     tenantId: string,
     userId: string,
+    role: string,
     documentType: string,
     documentId: string,
     otpCode: string,
@@ -82,6 +94,10 @@ export class SignaturesService {
   ): Promise<DocumentSignature> {
     const user = await this.userRepo.findOne({ where: { id: userId, tenantId } });
     if (!user) throw new NotFoundException('Usuario no encontrado');
+
+    // G1 audit fix: defense in depth — re-validar autorización al firmar,
+    // por si el documento fue eliminado/transferido entre request y verify.
+    await this.authorizationService.assertCanSign(tenantId, userId, role, documentType, documentId);
 
     // Check for existing valid signature (prevent duplicates)
     const existing = await this.signatureRepo.findOne({

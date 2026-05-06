@@ -8,8 +8,10 @@ import { EvaluationAssignment } from '../evaluations/entities/evaluation-assignm
 import { DevelopmentPlan } from '../development/entities/development-plan.entity';
 import { DevelopmentAction } from '../development/entities/development-action.entity';
 import { Contract } from '../contracts/entities/contract.entity';
+import { CalibrationSession } from '../talent/entities/calibration-session.entity';
 import { SignaturesService } from './signatures.service';
 import { SignaturesController } from './signatures.controller';
+import { SignatureAuthorizationService } from './services/signature-authorization.service';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { AuditModule } from '../audit/audit.module';
 import { EvaluationsModule } from '../evaluations/evaluations.module';
@@ -20,6 +22,7 @@ import { EvaluationsModule } from '../evaluations/evaluations.module';
       DocumentSignature, User,
       EvaluationCycle, EvaluationResponse, EvaluationAssignment,
       DevelopmentPlan, DevelopmentAction, Contract,
+      CalibrationSession,
     ]),
     NotificationsModule,
     AuditModule,
@@ -29,7 +32,7 @@ import { EvaluationsModule } from '../evaluations/evaluations.module';
     EvaluationsModule,
   ],
   controllers: [SignaturesController],
-  providers: [SignaturesService],
-  exports: [SignaturesService],
+  providers: [SignaturesService, SignatureAuthorizationService],
+  exports: [SignaturesService, SignatureAuthorizationService],
 })
 export class SignaturesModule {}
