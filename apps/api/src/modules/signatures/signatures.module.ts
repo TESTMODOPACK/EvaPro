@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { DocumentSignature } from './entities/document-signature.entity';
 import { SignatureOtpToken } from './entities/signature-otp-token.entity';
+import { SignatureReminderSent } from './entities/signature-reminder-sent.entity';
 import { User } from '../users/entities/user.entity';
 import { EvaluationCycle } from '../evaluations/entities/evaluation-cycle.entity';
 import { EvaluationResponse } from '../evaluations/entities/evaluation-response.entity';
@@ -14,13 +15,14 @@ import { CalibrationEntry } from '../talent/entities/calibration-entry.entity';
 import { SignaturesService } from './signatures.service';
 import { SignaturesController } from './signatures.controller';
 import { SignatureAuthorizationService } from './services/signature-authorization.service';
+import { SignatureRemindersService } from './services/signature-reminders.service';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { AuditModule } from '../audit/audit.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([
-      DocumentSignature, SignatureOtpToken, User,
+      DocumentSignature, SignatureOtpToken, SignatureReminderSent, User,
       EvaluationCycle, EvaluationResponse, EvaluationAssignment,
       DevelopmentPlan, DevelopmentAction, Contract,
       CalibrationSession, CalibrationEntry,
@@ -29,7 +31,7 @@ import { AuditModule } from '../audit/audit.module';
     AuditModule,
   ],
   controllers: [SignaturesController],
-  providers: [SignaturesService, SignatureAuthorizationService],
-  exports: [SignaturesService, SignatureAuthorizationService],
+  providers: [SignaturesService, SignatureAuthorizationService, SignatureRemindersService],
+  exports: [SignaturesService, SignatureAuthorizationService, SignatureRemindersService],
 })
 export class SignaturesModule {}
