@@ -46,11 +46,25 @@ describe('SignaturesController', () => {
   // ─── Propagación de role del JWT al service (G1) ────────────────────
 
   describe('requestSignature', () => {
-    it('propaga tenantId, userId y role del JWT', async () => {
+    it('propaga tenantId, userId y role del JWT (signAs undefined por default)', async () => {
       const req: any = { user: { tenantId, userId, role: 'manager' } };
       await controller.requestSignature(req, { documentType: 'evaluation_response', documentId });
       expect(service.requestSignature).toHaveBeenCalledWith(
         tenantId, userId, 'manager', 'evaluation_response', documentId,
+        undefined, // signAs?: { signatureRole? }
+      );
+    });
+
+    it('propaga signatureRole=author cuando se envía en el body (G2)', async () => {
+      const req: any = { user: { tenantId, userId, role: 'manager' } };
+      await controller.requestSignature(req, {
+        documentType: 'evaluation_response',
+        documentId,
+        signatureRole: 'author',
+      });
+      expect(service.requestSignature).toHaveBeenCalledWith(
+        tenantId, userId, 'manager', 'evaluation_response', documentId,
+        { signatureRole: 'author' },
       );
     });
   });
@@ -68,14 +82,29 @@ describe('SignaturesController', () => {
         documentId,
         code: '123456',
       });
-      // 8 args: tenantId, userId, role, docType, docId, code, ip, ackOptions?
+      // 9 args: tenantId, userId, role, docType, docId, code, ip, ackOptions?, signAs?
       expect(service.verifyAndSign).toHaveBeenCalledWith(
         tenantId, userId, 'employee', 'evaluation_response', documentId, '123456',
         expect.any(String),
         undefined, // sin acknowledgment → default 'agree' en el service
+        undefined, // sin signAs → default RECIPIENT
       );
       const ipArg = service.verifyAndSign.mock.calls[0][6];
       expect(ipArg).toBeTruthy();
+    });
+
+    it('propaga signatureRole=author en verify (G2)', async () => {
+      const req: any = {
+        user: { tenantId, userId, role: 'manager' },
+        ip: '10.0.0.1', headers: {}, socket: { remoteAddress: '10.0.0.1' },
+      };
+      await controller.verifyAndSign(req, {
+        documentType: 'evaluation_response',
+        documentId, code: '123456',
+        signatureRole: 'author',
+      });
+      const call = service.verifyAndSign.mock.calls[0];
+      expect(call[8]).toEqual({ signatureRole: 'author' });
     });
 
     it('propaga acknowledgmentType + comment cuando se envían (G5)', async () => {

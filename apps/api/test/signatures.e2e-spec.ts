@@ -95,6 +95,7 @@ describe('Signatures (e2e)', () => {
     expect(res.body).toMatchObject({ message: expect.any(String), expiryMinutes: 10 });
     expect(service.requestSignature).toHaveBeenCalledWith(
       TENANT_A, USER_A, 'manager', 'evaluation_response', DOC_ID,
+      undefined, // signAs?: { signatureRole? }
     );
   });
 
@@ -109,6 +110,7 @@ describe('Signatures (e2e)', () => {
       TENANT_A, USER_A, 'employee', 'evaluation_response', DOC_ID, '123456',
       expect.any(String),
       undefined, // sin acknowledgment → default 'agree' en el service (G5)
+      undefined, // sin signAs → default RECIPIENT (G2)
     );
   });
 
@@ -139,6 +141,7 @@ describe('Signatures (e2e)', () => {
       .expect(201);
     expect(service.requestSignature).toHaveBeenCalledWith(
       TENANT_A, USER_A, 'external', 'evaluation_response', DOC_ID,
+      undefined,
     );
   });
 

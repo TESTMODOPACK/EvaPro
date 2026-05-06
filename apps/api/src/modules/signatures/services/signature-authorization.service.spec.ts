@@ -417,6 +417,99 @@ describe('SignatureAuthorizationService', () => {
     });
   });
 
+  // ─── G2 (TAREA 5): signatureRole=AUTHOR en evaluation_response ─────
+
+  describe('signatureRole=AUTHOR (G2)', () => {
+    it('manager evaluator firma su evaluación emitida → OK', async () => {
+      responseRepo.findOne.mockResolvedValue({
+        id: DOC_ID, assignmentId: ASSIGNMENT_ID, tenantId: TENANT_A,
+      } as any);
+      assignmentRepo.findOne.mockResolvedValue({
+        id: ASSIGNMENT_ID, evaluatorId: USER_OWNER, evaluateeId: USER_OTHER, tenantId: TENANT_A,
+      } as any);
+
+      await expect(
+        service.assertCanSign(
+          TENANT_A, USER_OWNER, 'manager', 'evaluation_response', DOC_ID,
+          'author' as any,
+        ),
+      ).resolves.toBeUndefined();
+    });
+
+    it('external evaluator firma su evaluación emitida → OK', async () => {
+      responseRepo.findOne.mockResolvedValue({
+        id: DOC_ID, assignmentId: ASSIGNMENT_ID, tenantId: TENANT_A,
+      } as any);
+      assignmentRepo.findOne.mockResolvedValue({
+        id: ASSIGNMENT_ID, evaluatorId: USER_OWNER, evaluateeId: USER_OTHER, tenantId: TENANT_A,
+      } as any);
+
+      await expect(
+        service.assertCanSign(
+          TENANT_A, USER_OWNER, 'external', 'evaluation_response', DOC_ID,
+          'author' as any,
+        ),
+      ).resolves.toBeUndefined();
+    });
+
+    it('manager NO evaluator → ForbiddenException', async () => {
+      responseRepo.findOne.mockResolvedValue({
+        id: DOC_ID, assignmentId: ASSIGNMENT_ID, tenantId: TENANT_A,
+      } as any);
+      assignmentRepo.findOne.mockResolvedValue({
+        id: ASSIGNMENT_ID, evaluatorId: USER_OTHER, evaluateeId: 'someone-else', tenantId: TENANT_A,
+      } as any);
+
+      await expect(
+        service.assertCanSign(
+          TENANT_A, USER_OWNER, 'manager', 'evaluation_response', DOC_ID,
+          'author' as any,
+        ),
+      ).rejects.toThrow(/Solo el evaluador original/);
+    });
+
+    it('employee NO puede firmar como author (rol no permitido)', async () => {
+      responseRepo.findOne.mockResolvedValue({
+        id: DOC_ID, assignmentId: ASSIGNMENT_ID, tenantId: TENANT_A,
+      } as any);
+      assignmentRepo.findOne.mockResolvedValue({
+        id: ASSIGNMENT_ID, evaluatorId: USER_OWNER, evaluateeId: USER_OTHER, tenantId: TENANT_A,
+      } as any);
+
+      await expect(
+        service.assertCanSign(
+          TENANT_A, USER_OWNER, 'employee', 'evaluation_response', DOC_ID,
+          'author' as any,
+        ),
+      ).rejects.toThrow(/no puede firmar como autor/);
+    });
+
+    it('signatureRole inválido → BadRequestException', async () => {
+      await expect(
+        service.assertCanSign(
+          TENANT_A, USER_OWNER, 'manager', 'evaluation_response', DOC_ID,
+          'foo_bar' as any,
+        ),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('default sigRole=RECIPIENT cuando no se pasa (compat histórica)', async () => {
+      responseRepo.findOne.mockResolvedValue({
+        id: DOC_ID, assignmentId: ASSIGNMENT_ID, tenantId: TENANT_A,
+      } as any);
+      assignmentRepo.findOne.mockResolvedValue({
+        id: ASSIGNMENT_ID, evaluateeId: USER_OWNER, tenantId: TENANT_A,
+      } as any);
+
+      // Sin signatureRole → debe validarse como RECIPIENT (evaluatee)
+      await expect(
+        service.assertCanSign(
+          TENANT_A, USER_OWNER, 'employee', 'evaluation_response', DOC_ID,
+        ),
+      ).resolves.toBeUndefined();
+    });
+  });
+
   // ─── external role ─────────────────────────────────────────────────
 
   describe('rol external', () => {

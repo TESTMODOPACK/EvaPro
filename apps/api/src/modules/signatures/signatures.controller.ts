@@ -17,11 +17,19 @@ export class SignaturesController {
   @Roles('super_admin', 'tenant_admin', 'manager', 'employee', 'external')
   requestSignature(
     @Request() req: any,
-    @Body() dto: { documentType: string; documentId: string },
+    @Body() dto: {
+      documentType: string;
+      documentId: string;
+      // G2 (TAREA 5): rol de firma. Default = 'recipient'. 'author' para
+      // manager/external que firma su feedback emitido. 'employer_witness'
+      // solo tenant_admin (TAREA 6).
+      signatureRole?: 'recipient' | 'author' | 'employer_witness';
+    },
   ) {
     return this.signaturesService.requestSignature(
       req.user.tenantId, req.user.userId, req.user.role,
       dto.documentType, dto.documentId,
+      dto.signatureRole ? { signatureRole: dto.signatureRole as any } : undefined,
     );
   }
 
@@ -34,13 +42,11 @@ export class SignaturesController {
       documentType: string;
       documentId: string;
       code: string;
-      // G5 (TAREA 7): acknowledgment opcional. Si no se envía, default = 'agree'.
       acknowledgmentType?: 'agree' | 'agree_with_comments' | 'decline';
       acknowledgmentComment?: string;
+      signatureRole?: 'recipient' | 'author' | 'employer_witness';
     },
   ) {
-    // P2.6 (bonus cleanup): usar getClientIp central (trust proxy-safe) en
-    // vez de leer el header directo (spoofable sin trust proxy).
     return this.signaturesService.verifyAndSign(
       req.user.tenantId, req.user.userId, req.user.role,
       dto.documentType, dto.documentId, dto.code,
@@ -48,6 +54,7 @@ export class SignaturesController {
       dto.acknowledgmentType
         ? { type: dto.acknowledgmentType as any, comment: dto.acknowledgmentComment }
         : undefined,
+      dto.signatureRole ? { signatureRole: dto.signatureRole as any } : undefined,
     );
   }
 

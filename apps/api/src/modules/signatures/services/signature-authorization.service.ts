@@ -7,6 +7,7 @@ import { EvaluationAssignment } from '../../evaluations/entities/evaluation-assi
 import { DevelopmentPlan } from '../../development/entities/development-plan.entity';
 import { Contract } from '../../contracts/entities/contract.entity';
 import { CalibrationSession } from '../../talent/entities/calibration-session.entity';
+import { SignatureRole } from '../entities/document-signature.entity';
 
 /**
  * SignatureAuthorizationService — Gap G1 (audit fix)
@@ -46,9 +47,15 @@ export class SignatureAuthorizationService {
 
   /**
    * Verifica que `userId` tenga derecho a firmar el documento `(documentType, documentId)`
-   * dentro de `tenantId`. Lanza la excepción adecuada en caso contrario.
+   * con el `signatureRole` solicitado, dentro de `tenantId`. Lanza la excepción
+   * adecuada en caso contrario.
    *
    * NOTA: el role debe provenir del JWT (req.user.role), nunca del body del request.
+   *
+   * G2 (TAREA 5): para evaluation_response, distingue:
+   *  - signatureRole=RECIPIENT → user debe ser el evaluatee (compat).
+   *  - signatureRole=AUTHOR    → user debe ser el evaluator (manager o external).
+   *  - signatureRole=EMPLOYER_WITNESS → solo tenant_admin (TAREA 6).
    */
   async assertCanSign(
     tenantId: string,
@@ -56,14 +63,18 @@ export class SignatureAuthorizationService {
     role: string,
     documentType: string,
     documentId: string,
+    signatureRole: SignatureRole = SignatureRole.RECIPIENT,
   ): Promise<void> {
     if (!tenantId || !userId || !role || !documentType || !documentId) {
       throw new BadRequestException('Parámetros de autorización incompletos');
     }
+    if (!Object.values(SignatureRole).includes(signatureRole)) {
+      throw new BadRequestException(`Rol de firma inválido: ${signatureRole}`);
+    }
 
     switch (documentType) {
       case 'evaluation_response':
-        return this.assertCanSignEvaluationResponse(tenantId, userId, role, documentId);
+        return this.assertCanSignEvaluationResponse(tenantId, userId, role, documentId, signatureRole);
       case 'development_plan':
         return this.assertCanSignDevelopmentPlan(tenantId, userId, role, documentId);
       case 'contract':
@@ -80,15 +91,19 @@ export class SignatureAuthorizationService {
   // ─── Reglas por documentType ────────────────────────────────────────
 
   /**
-   * evaluation_response: el firmante debe ser el evaluatee (la persona evaluada
-   * por esa respuesta). Esto cubre el caso "employee firma su propio feedback recibido".
-   * super_admin se permite por trazabilidad forense.
+   * evaluation_response: las reglas dependen de `signatureRole`:
+   *  - RECIPIENT: firmante debe ser el evaluatee (caso histórico — employee firma feedback recibido).
+   *  - AUTHOR: firmante debe ser el evaluator de la asignación (G2 — manager/external firma feedback emitido).
+   *  - EMPLOYER_WITNESS: solo tenant_admin/super_admin (G3, TAREA 6).
+   *
+   * super_admin se permite por trazabilidad forense en todos los casos.
    */
   private async assertCanSignEvaluationResponse(
     tenantId: string,
     userId: string,
     role: string,
     documentId: string,
+    signatureRole: SignatureRole,
   ): Promise<void> {
     const response = await this.responseRepo.findOne({
       where: { id: documentId, tenantId },
@@ -100,14 +115,36 @@ export class SignatureAuthorizationService {
 
     if (role === 'super_admin') return;
 
+    // G3 (TAREA 6) — employer_witness solo tenant_admin
+    if (signatureRole === SignatureRole.EMPLOYER_WITNESS) {
+      if (role !== 'tenant_admin') {
+        throw new ForbiddenException('Solo tenant_admin puede firmar como employer_witness');
+      }
+      return;
+    }
+
     const assignment = await this.assignmentRepo.findOne({
       where: { id: response.assignmentId, tenantId },
-      select: ['id', 'evaluateeId', 'tenantId'],
+      select: ['id', 'evaluateeId', 'evaluatorId', 'tenantId'],
     });
     if (!assignment) {
       throw new NotFoundException('Asignación de evaluación no encontrada');
     }
 
+    // G2 (TAREA 5) — AUTHOR: firmante debe ser el evaluator
+    if (signatureRole === SignatureRole.AUTHOR) {
+      // Roles permitidos para firmar como autor: manager, external, tenant_admin
+      const authorRolesAllowed = new Set(['manager', 'external', 'tenant_admin']);
+      if (!authorRolesAllowed.has(role)) {
+        throw new ForbiddenException('Tu rol no puede firmar como autor del feedback');
+      }
+      if (assignment.evaluatorId !== userId) {
+        throw new ForbiddenException('Solo el evaluador original puede firmar esta evaluación como autor');
+      }
+      return;
+    }
+
+    // RECIPIENT (default histórico)
     if (assignment.evaluateeId !== userId) {
       throw new ForbiddenException('No tienes permiso para firmar esta evaluación');
     }

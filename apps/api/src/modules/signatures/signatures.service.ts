@@ -34,6 +34,12 @@ export interface AcknowledgmentOptions {
   comment?: string;
 }
 
+/** TAREA 5 / G2 — opciones de rol de firma. */
+export interface SignAsOptions {
+  /** Por default RECIPIENT. AUTHOR para manager/external que firma su feedback emitido. */
+  signatureRole?: SignatureRole;
+}
+
 @Injectable()
 export class SignaturesService {
   constructor(
@@ -72,14 +78,17 @@ export class SignaturesService {
     role: string,
     documentType: string,
     documentId: string,
+    signAs?: SignAsOptions,
   ) {
+    const sigRole = signAs?.signatureRole ?? SignatureRole.RECIPIENT;
+
     const user = await this.userRepo.findOne({ where: { id: userId, tenantId } });
     if (!user) throw new NotFoundException('Usuario no encontrado');
 
-    // G1 audit fix: validar autorización del firmante sobre este documento
-    // antes de emitir OTP. Sin esto cualquier usuario podía solicitar OTP
-    // para firmar documentos ajenos.
-    await this.authorizationService.assertCanSign(tenantId, userId, role, documentType, documentId);
+    // G1 audit fix + G2: validar autorización con el rol de firma solicitado.
+    await this.authorizationService.assertCanSign(
+      tenantId, userId, role, documentType, documentId, sigRole,
+    );
 
     // G9 audit fix: rate limiting — max 3 tokens activos del user en la
     // última hora. Previene flood de OTPs (mail bombing, brute force prep).
@@ -138,18 +147,24 @@ export class SignaturesService {
     otpCode: string,
     ipAddress?: string,
     acknowledgment?: AcknowledgmentOptions,
+    signAs?: SignAsOptions,
   ): Promise<DocumentSignature> {
     // G5 (TAREA 7): validar acknowledgment antes de cualquier side-effect
     const ackType = acknowledgment?.type ?? AcknowledgmentType.AGREE;
     const ackComment = acknowledgment?.comment?.trim() || null;
     this.validateAcknowledgment(ackType, ackComment);
 
+    // G2 (TAREA 5): rol de firma — default RECIPIENT (compat histórica)
+    const sigRole = signAs?.signatureRole ?? SignatureRole.RECIPIENT;
+
     const user = await this.userRepo.findOne({ where: { id: userId, tenantId } });
     if (!user) throw new NotFoundException('Usuario no encontrado');
 
-    // G1 audit fix: defense in depth — re-validar autorización al firmar,
-    // por si el documento fue eliminado/transferido entre request y verify.
-    await this.authorizationService.assertCanSign(tenantId, userId, role, documentType, documentId);
+    // G1 audit fix + G2/G3: re-validar autorización al firmar, ahora con
+    // signatureRole. Defense in depth.
+    await this.authorizationService.assertCanSign(
+      tenantId, userId, role, documentType, documentId, sigRole,
+    );
 
     // Check for existing valid signature (prevent duplicates)
     const existing = await this.signatureRepo.findOne({
@@ -217,21 +232,22 @@ export class SignaturesService {
       signerIp: ipAddress || null,
       verificationMethod: 'otp_email',
       status: 'valid',
-      // G5 (TAREA 7): registrar acknowledgmentType + comment.
-      // signatureRole queda en RECIPIENT (default); endpoints específicos
-      // (TAREA 5 author / TAREA 6 employer_witness) lo overridean.
-      signatureRole: SignatureRole.RECIPIENT,
+      // G2/G5/G3: rol de firma viene del caller; default RECIPIENT.
+      // El SignatureAuthorizationService ya validó que el rol del usuario
+      // tiene derecho a firmar con este sigRole.
+      signatureRole: sigRole,
       acknowledgmentType: ackType,
       acknowledgmentComment: ackComment,
     });
     const saved = await this.signatureRepo.save(signature);
 
-    // Audit log (incluye acknowledgmentType para trazabilidad legal)
+    // Audit log (incluye acknowledgmentType + signatureRole para trazabilidad legal)
     this.auditService.log(
       tenantId, userId, 'document.signed', 'signature', saved.id,
       {
         documentType, documentId, documentHash,
         verificationMethod: 'otp_email',
+        signatureRole: sigRole,
         acknowledgmentType: ackType,
         hasComment: !!ackComment,
       },

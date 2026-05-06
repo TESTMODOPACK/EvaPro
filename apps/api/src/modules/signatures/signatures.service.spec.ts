@@ -207,7 +207,7 @@ describe('SignaturesService', () => {
       await service.requestSignature(tenantId, userId, 'tenant_admin', 'evaluation_cycle', documentId);
 
       expect(authorizationService.assertCanSign).toHaveBeenCalledWith(
-        tenantId, userId, 'tenant_admin', 'evaluation_cycle', documentId,
+        tenantId, userId, 'tenant_admin', 'evaluation_cycle', documentId, 'recipient',
       );
     });
 
@@ -459,7 +459,7 @@ describe('SignaturesService', () => {
       );
 
       expect(authorizationService.assertCanSign).toHaveBeenCalledWith(
-        tenantId, userId, 'tenant_admin', 'evaluation_cycle', documentId,
+        tenantId, userId, 'tenant_admin', 'evaluation_cycle', documentId, 'recipient',
       );
     });
 
@@ -482,6 +482,89 @@ describe('SignaturesService', () => {
         }),
         '10.0.0.1',
       );
+    });
+
+    // ─── G2 (TAREA 5): signatureRole=AUTHOR ────────────────────────────
+
+    describe('signatureRole=AUTHOR (G2)', () => {
+      it('persiste signatureRole=author cuando se pasa signAs', async () => {
+        userRepo.findOne.mockResolvedValue(createMockUser({ id: userId, tenantId }));
+        signatureRepo.findOne.mockResolvedValue(null);
+        otpRepo.findOne.mockResolvedValue(activeToken());
+        mockOtpUpdateBuilder(1);
+        responseRepo.findOne.mockResolvedValue({
+          id: documentId, assignmentId: fakeUuid(70), tenantId,
+          answers: { q1: 4 }, overallScore: 4.0, submittedAt: new Date(),
+        });
+
+        await service.verifyAndSign(
+          tenantId, userId, 'manager', 'evaluation_response', documentId, validOtp,
+          undefined, undefined, { signatureRole: 'author' as any },
+        );
+
+        expect(signatureRepo.create).toHaveBeenCalledWith(
+          expect.objectContaining({ signatureRole: 'author' }),
+        );
+      });
+
+      it('propaga signatureRole al SignatureAuthorizationService', async () => {
+        userRepo.findOne.mockResolvedValue(createMockUser({ id: userId, tenantId }));
+        signatureRepo.findOne.mockResolvedValue(null);
+        otpRepo.findOne.mockResolvedValue(activeToken());
+        mockOtpUpdateBuilder(1);
+        responseRepo.findOne.mockResolvedValue({
+          id: documentId, assignmentId: fakeUuid(70), tenantId,
+          answers: {}, overallScore: 0, submittedAt: new Date(),
+        });
+
+        await service.verifyAndSign(
+          tenantId, userId, 'manager', 'evaluation_response', documentId, validOtp,
+          undefined, undefined, { signatureRole: 'author' as any },
+        );
+
+        expect(authorizationService.assertCanSign).toHaveBeenCalledWith(
+          tenantId, userId, 'manager', 'evaluation_response', documentId, 'author',
+        );
+      });
+
+      it('audit log incluye signatureRole', async () => {
+        userRepo.findOne.mockResolvedValue(createMockUser({ id: userId, tenantId }));
+        signatureRepo.findOne.mockResolvedValue(null);
+        otpRepo.findOne.mockResolvedValue(activeToken());
+        mockOtpUpdateBuilder(1);
+        responseRepo.findOne.mockResolvedValue({
+          id: documentId, assignmentId: fakeUuid(70), tenantId,
+          answers: {}, overallScore: 0, submittedAt: new Date(),
+        });
+        signatureRepo.save.mockImplementation((s: any) => Promise.resolve({ ...s, id: 'sig-aut' }));
+
+        await service.verifyAndSign(
+          tenantId, userId, 'manager', 'evaluation_response', documentId, validOtp,
+          undefined, undefined, { signatureRole: 'author' as any },
+        );
+
+        expect(auditService.log).toHaveBeenCalledWith(
+          tenantId, userId, 'document.signed', 'signature', 'sig-aut',
+          expect.objectContaining({ signatureRole: 'author' }),
+          undefined,
+        );
+      });
+
+      it('sin signAs → default RECIPIENT (compat histórica)', async () => {
+        userRepo.findOne.mockResolvedValue(createMockUser({ id: userId, tenantId }));
+        signatureRepo.findOne.mockResolvedValue(null);
+        otpRepo.findOne.mockResolvedValue(activeToken());
+        mockOtpUpdateBuilder(1);
+        cycleRepo.findOne.mockResolvedValue({ id: documentId, name: 'X' });
+
+        await service.verifyAndSign(
+          tenantId, userId, 'tenant_admin', 'evaluation_cycle', documentId, validOtp,
+        );
+
+        expect(signatureRepo.create).toHaveBeenCalledWith(
+          expect.objectContaining({ signatureRole: 'recipient' }),
+        );
+      });
     });
 
     // ─── G5 (TAREA 7): acknowledgmentType + comment ────────────────────
