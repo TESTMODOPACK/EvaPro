@@ -1337,6 +1337,136 @@ describe('SignaturesService', () => {
         expect.objectContaining({ where: { id: sigId, tenantId: otherTenantId } }),
       );
     });
+
+    // ─── B1 fix: limpieza de campo denormalizado tras revocación ─────
+
+    describe('limpieza denormalizada (B1 fix)', () => {
+      it('revocar firma RECIPIENT: pone recipientSignedAt a NULL si no quedan otras', async () => {
+        const revokedSig = {
+          id: sigId, tenantId, status: 'valid',
+          documentType: 'evaluation_response', documentId,
+          signedBy: fakeUuid(2), signatureRole: 'recipient',
+          revokedAt: null, revokedBy: null,
+        };
+        signatureRepo.findOne
+          .mockResolvedValueOnce(revokedSig as any) // primera llamada: la firma a revocar
+          .mockResolvedValueOnce(null); // segunda llamada: no quedan otras firmas válidas
+        signatureRepo.save.mockImplementation((s: any) => Promise.resolve(s));
+
+        await service.revokeSignature(
+          tenantId, userId, 'super_admin', sigId, validReason,
+        );
+
+        expect(responseRepo.update).toHaveBeenCalledWith(
+          { id: documentId, tenantId },
+          { recipientSignedAt: null },
+        );
+      });
+
+      it('revocar firma AUTHOR con OTRA firma AUTHOR válida → recipientSignedAt al MAX(remaining)', async () => {
+        const revokedSig = {
+          id: sigId, tenantId, status: 'valid',
+          documentType: 'evaluation_response', documentId,
+          signedBy: fakeUuid(2), signatureRole: 'author',
+        };
+        const remainingSignedAt = new Date('2026-04-30T10:00:00Z');
+        signatureRepo.findOne
+          .mockResolvedValueOnce(revokedSig as any)
+          .mockResolvedValueOnce({ id: 'other-sig', signedAt: remainingSignedAt } as any);
+        signatureRepo.save.mockImplementation((s: any) => Promise.resolve(s));
+
+        await service.revokeSignature(
+          tenantId, userId, 'super_admin', sigId, validReason,
+        );
+
+        expect(responseRepo.update).toHaveBeenCalledWith(
+          { id: documentId, tenantId },
+          { authorSignedAt: remainingSignedAt },
+        );
+      });
+
+      it('revocar firma EMPLOYER_WITNESS: pone witnessedAt a NULL', async () => {
+        const revokedSig = {
+          id: sigId, tenantId, status: 'valid',
+          documentType: 'evaluation_response', documentId,
+          signedBy: fakeUuid(2), signatureRole: 'employer_witness',
+        };
+        signatureRepo.findOne
+          .mockResolvedValueOnce(revokedSig as any)
+          .mockResolvedValueOnce(null);
+        signatureRepo.save.mockImplementation((s: any) => Promise.resolve(s));
+
+        await service.revokeSignature(
+          tenantId, userId, 'super_admin', sigId, validReason,
+        );
+
+        expect(responseRepo.update).toHaveBeenCalledWith(
+          { id: documentId, tenantId },
+          { witnessedAt: null },
+        );
+      });
+
+      it('revocar firma de documentType !== evaluation_response: NO toca responseRepo', async () => {
+        const revokedSig = {
+          id: sigId, tenantId, status: 'valid',
+          documentType: 'evaluation_cycle', documentId,
+          signedBy: fakeUuid(2), signatureRole: 'recipient',
+        };
+        signatureRepo.findOne.mockResolvedValueOnce(revokedSig as any);
+        signatureRepo.save.mockImplementation((s: any) => Promise.resolve(s));
+
+        await service.revokeSignature(
+          tenantId, userId, 'super_admin', sigId, validReason,
+        );
+
+        expect(responseRepo.update).not.toHaveBeenCalled();
+      });
+
+      it('búsqueda de firmas remanentes filtra status=valid Y mismo signatureRole', async () => {
+        const revokedSig = {
+          id: sigId, tenantId, status: 'valid',
+          documentType: 'evaluation_response', documentId,
+          signedBy: fakeUuid(2), signatureRole: 'recipient',
+        };
+        signatureRepo.findOne
+          .mockResolvedValueOnce(revokedSig as any)
+          .mockResolvedValueOnce(null);
+        signatureRepo.save.mockImplementation((s: any) => Promise.resolve(s));
+
+        await service.revokeSignature(
+          tenantId, userId, 'super_admin', sigId, validReason,
+        );
+
+        // La 2da llamada a findOne debe filtrar status=valid + signatureRole
+        const secondCall = signatureRepo.findOne.mock.calls[1][0];
+        expect(secondCall.where).toMatchObject({
+          tenantId,
+          documentType: 'evaluation_response',
+          documentId,
+          signatureRole: 'recipient',
+          status: 'valid',
+        });
+        expect(secondCall.order).toEqual({ signedAt: 'DESC' });
+      });
+
+      it('fallo del update NO bloquea revocación (best-effort)', async () => {
+        const revokedSig = {
+          id: sigId, tenantId, status: 'valid',
+          documentType: 'evaluation_response', documentId,
+          signedBy: fakeUuid(2), signatureRole: 'recipient',
+        };
+        signatureRepo.findOne
+          .mockResolvedValueOnce(revokedSig as any)
+          .mockResolvedValueOnce(null);
+        signatureRepo.save.mockImplementation((s: any) => Promise.resolve(s));
+        responseRepo.update.mockRejectedValueOnce(new Error('DB temporarily down'));
+
+        // No debe lanzar — la firma ya fue revocada
+        await expect(
+          service.revokeSignature(tenantId, userId, 'super_admin', sigId, validReason),
+        ).resolves.toBeDefined();
+      });
+    });
   });
 
   // ─── getSignatures / getSignaturesByTenant / getSignaturesByUser ────

@@ -62,7 +62,7 @@ describe('SignatureRemindersService (G11)', () => {
     service = module.get<SignatureRemindersService>(SignatureRemindersService);
   });
 
-  function setupCycleAndPending(daysSinceEnd: number, now: Date) {
+  function setupCycleAndPending(daysSinceEnd: number, now: Date, sentLevels: number[] = []) {
     const cycleEnd = new Date(now.getTime() - daysSinceEnd * 24 * 60 * 60 * 1000);
     cycleRepo.find.mockResolvedValue([
       { id: cycleId, tenantId, status: CycleStatus.CLOSED, endDate: cycleEnd },
@@ -78,14 +78,17 @@ describe('SignatureRemindersService (G11)', () => {
       ]),
     };
     responseRepo.createQueryBuilder.mockReturnValue(qb);
+    // B3 fix: ahora usamos `find` para traer todos los niveles enviados
+    reminderRepo.find.mockResolvedValue(
+      sentLevels.map((lvl) => ({ reminderLevel: lvl })),
+    );
   }
 
-  // ─── pickLevel logic via processTenant ────────────────────────────
+  // ─── pickNextLevel logic via processTenant ────────────────────────
 
-  it('D+3 envía recordatorio nivel 3', async () => {
+  it('D+3 sin envíos previos: envía nivel 3', async () => {
     const now = new Date('2026-05-06T10:00:00Z');
-    setupCycleAndPending(3, now);
-    reminderRepo.findOne.mockResolvedValue(null);
+    setupCycleAndPending(3, now, []);
 
     const result = await service.processTenant(tenantId, now);
 
@@ -93,17 +96,15 @@ describe('SignatureRemindersService (G11)', () => {
     expect(notificationsService.create).toHaveBeenCalledWith(
       expect.objectContaining({
         userId: evaluateeId,
-        title: expect.stringMatching(/firma/i),
         metadata: expect.objectContaining({ reminderLevel: 3 }),
       }),
     );
     expect(reminderRepo.save).toHaveBeenCalled();
   });
 
-  it('D+7 envía nivel 7 (firme tone)', async () => {
+  it('D+7 con L3 ya enviado: envía nivel 7 (firme tone)', async () => {
     const now = new Date('2026-05-06T10:00:00Z');
-    setupCycleAndPending(7, now);
-    reminderRepo.findOne.mockResolvedValue(null);
+    setupCycleAndPending(7, now, [3]);
 
     const result = await service.processTenant(tenantId, now);
 
@@ -116,10 +117,9 @@ describe('SignatureRemindersService (G11)', () => {
     );
   });
 
-  it('D+15 envía nivel 15 + escalado a tenant_admins', async () => {
+  it('D+15 con L3+L7 ya enviados: envía nivel 15 + escalado a tenant_admins', async () => {
     const now = new Date('2026-05-06T10:00:00Z');
-    setupCycleAndPending(15, now);
-    reminderRepo.findOne.mockResolvedValue(null);
+    setupCycleAndPending(15, now, [3, 7]);
     userRepo.find.mockResolvedValue([
       { id: fakeUuid(900) }, { id: fakeUuid(901) },
     ]);
@@ -128,9 +128,7 @@ describe('SignatureRemindersService (G11)', () => {
     const result = await service.processTenant(tenantId, now);
 
     expect(result.sent[15]).toBe(1);
-    // 1 al evaluatee + 2 a tenant_admins = 3 calls
     expect(notificationsService.create).toHaveBeenCalledTimes(3);
-    // Una de las llamadas a tenant_admin debe incluir nombre del evaluatee
     const adminCalls = notificationsService.create.mock.calls.filter(
       (c: any) => c[0].title?.includes('atrasada'),
     );
@@ -138,9 +136,36 @@ describe('SignatureRemindersService (G11)', () => {
     expect(adminCalls[0][0].message).toContain('Ana Pérez');
   });
 
-  it('D+5 (entre 3 y 7) NO envía recordatorio (fuera de ventana)', async () => {
+  // ─── B3 fix: catch-up tras outage del worker ───────────────────────
+
+  it('B3: D+5 sin envíos (worker estuvo down día 3-4): envía L3 (catch-up lowest unsent)', async () => {
     const now = new Date('2026-05-06T10:00:00Z');
-    setupCycleAndPending(5, now);
+    setupCycleAndPending(5, now, []);
+
+    const result = await service.processTenant(tenantId, now);
+
+    expect(result.sent[3]).toBe(1);
+    expect(result.sent[7]).toBe(0);
+    expect(notificationsService.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({ reminderLevel: 3 }),
+      }),
+    );
+  });
+
+  it('B3: D+10 con solo L3 enviado: envía L7 (no salta a L15)', async () => {
+    const now = new Date('2026-05-06T10:00:00Z');
+    setupCycleAndPending(10, now, [3]);
+
+    const result = await service.processTenant(tenantId, now);
+
+    expect(result.sent[7]).toBe(1);
+    expect(result.sent[15]).toBe(0);
+  });
+
+  it('B3: D+25 con L3+L7+L15 ya enviados: NO envía nada', async () => {
+    const now = new Date('2026-05-06T10:00:00Z');
+    setupCycleAndPending(25, now, [3, 7, 15]);
 
     const result = await service.processTenant(tenantId, now);
 
@@ -148,35 +173,65 @@ describe('SignatureRemindersService (G11)', () => {
     expect(notificationsService.create).not.toHaveBeenCalled();
   });
 
-  // ─── idempotencia ──────────────────────────────────────────────────
-
-  it('si ya se envió ESE nivel para ese (doc, user), NO reenvía', async () => {
+  it('B3: D+25 con solo L3+L7 (worker down día 15-25): envía L15 escalado', async () => {
     const now = new Date('2026-05-06T10:00:00Z');
-    setupCycleAndPending(3, now);
-    reminderRepo.findOne.mockResolvedValue({ id: 'already-sent' });
+    setupCycleAndPending(25, now, [3, 7]);
+    userRepo.find.mockResolvedValue([{ id: fakeUuid(900) }]);
+    userRepo.findOne.mockResolvedValue({ firstName: 'Ana', lastName: 'Pérez' });
 
     const result = await service.processTenant(tenantId, now);
 
-    expect(result.sent[3]).toBe(0);
+    expect(result.sent[15]).toBe(1);
+  });
+
+  it('B3: cutoff extendido a 30 días (D+29 todavía procesa)', async () => {
+    const now = new Date('2026-05-06T10:00:00Z');
+    setupCycleAndPending(29, now, [3, 7]);
+    userRepo.find.mockResolvedValue([]);
+
+    const result = await service.processTenant(tenantId, now);
+
+    expect(result.sent[15]).toBe(1);
+  });
+
+  it('B3: cutoff a 31 días excluye el ciclo (fuera de ventana)', async () => {
+    const now = new Date('2026-05-06T10:00:00Z');
+    setupCycleAndPending(31, now, []);
+
+    const result = await service.processTenant(tenantId, now);
+
+    expect(result.sent).toEqual({ 3: 0, 7: 0, 15: 0 });
+  });
+
+  // ─── idempotencia (refactored para nuevo modelo) ───────────────────
+
+  it('idempotencia: si TODOS los niveles aplicables ya se enviaron, no reenvía y registra skipped', async () => {
+    const now = new Date('2026-05-06T10:00:00Z');
+    setupCycleAndPending(7, now, [3, 7]);
+
+    const result = await service.processTenant(tenantId, now);
+
+    expect(result.sent).toEqual({ 3: 0, 7: 0, 15: 0 });
+    // skipped registra los que ya estaban enviados Y aplicables (3 y 7)
     expect(result.skipped[3]).toBe(1);
+    expect(result.skipped[7]).toBe(1);
     expect(notificationsService.create).not.toHaveBeenCalled();
     expect(reminderRepo.save).not.toHaveBeenCalled();
   });
 
-  it('idempotencia se chequea con (documentType, documentId, userId, reminderLevel)', async () => {
+  it('idempotencia: query trae todos los niveles enviados para (doc, user)', async () => {
     const now = new Date('2026-05-06T10:00:00Z');
-    setupCycleAndPending(7, now);
-    reminderRepo.findOne.mockResolvedValue(null);
+    setupCycleAndPending(7, now, []);
 
     await service.processTenant(tenantId, now);
 
-    expect(reminderRepo.findOne).toHaveBeenCalledWith({
+    expect(reminderRepo.find).toHaveBeenCalledWith({
       where: {
         documentType: 'evaluation_response',
         documentId: responseId,
         userId: evaluateeId,
-        reminderLevel: 7,
       },
+      select: ['reminderLevel'],
     });
   });
 

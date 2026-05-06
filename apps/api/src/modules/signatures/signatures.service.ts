@@ -379,6 +379,16 @@ export class SignaturesService {
     sig.revocationReason = cleanReason;
     const saved = await this.signatureRepo.save(sig);
 
+    // B1 fix: si la firma revocada era de evaluation_response, recalcular
+    // el campo denormalizado (G6/T12). Sin esto, recipientSignedAt/etc.
+    // quedaba apuntando a una firma revocada → reportes y closeCycle
+    // tendrían falsos positivos.
+    if (sig.documentType === 'evaluation_response' && sig.signatureRole) {
+      await this.recomputeDenormalizedTimestamp(
+        tenantId, sig.documentId, sig.signatureRole,
+      );
+    }
+
     this.auditService.log(
       tenantId, actorId, 'document.signature.revoked', 'signature', saved.id,
       {
@@ -389,6 +399,47 @@ export class SignaturesService {
     ).catch(() => {});
 
     return saved;
+  }
+
+  /**
+   * B1 fix — Recalcula el timestamp denormalizado en evaluation_responses
+   * tras una revocación. Si quedan otras firmas válidas con el mismo rol,
+   * usa el MAX(signedAt) de ellas. Si no quedan, pone NULL.
+   */
+  private async recomputeDenormalizedTimestamp(
+    tenantId: string,
+    documentId: string,
+    sigRole: SignatureRole,
+  ): Promise<void> {
+    const fieldMap: Record<SignatureRole, string> = {
+      [SignatureRole.AUTHOR]: 'authorSignedAt',
+      [SignatureRole.RECIPIENT]: 'recipientSignedAt',
+      [SignatureRole.EMPLOYER_WITNESS]: 'witnessedAt',
+    };
+    const field = fieldMap[sigRole];
+    if (!field) return;
+
+    // Buscar la firma válida más reciente (después de la revocación)
+    // con el mismo rol y documento.
+    const remaining = await this.signatureRepo.findOne({
+      where: {
+        tenantId,
+        documentType: 'evaluation_response',
+        documentId,
+        signatureRole: sigRole,
+        status: 'valid',
+      },
+      order: { signedAt: 'DESC' },
+    });
+    const newTs = remaining?.signedAt ?? null;
+    try {
+      await this.responseRepo.update(
+        { id: documentId, tenantId },
+        { [field]: newTs } as any,
+      );
+    } catch {
+      // Best-effort; document_signatures sigue siendo source of truth.
+    }
   }
 
   /**
@@ -538,6 +589,10 @@ export class SignaturesService {
         // {id, type, tenantId} que daba integridad ficticia.
         const session = await this.calibrationRepo.findOne({ where: { id: documentId, tenantId } });
         if (!session) throw new NotFoundException('Sesión de calibración no encontrada');
+        // B2 review (post-mortem): calibration_entries no tiene tenant_id propio.
+        // Aislamiento cross-tenant es vía FK session_id ON DELETE CASCADE +
+        // verificación previa de session.tenantId en línea anterior. Una
+        // entry con sessionId apuntando a otra tenant es DB-impossible.
         const entries = await this.calibrationEntryRepo.find({
           where: { sessionId: documentId },
           order: { id: 'ASC' }, // orden estable para hash reproducible

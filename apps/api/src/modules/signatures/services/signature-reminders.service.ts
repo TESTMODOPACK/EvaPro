@@ -75,8 +75,10 @@ export class SignatureRemindersService {
     const sent: Record<ReminderLevel, number> = { 3: 0, 7: 0, 15: 0 };
     const skipped: Record<ReminderLevel, number> = { 3: 0, 7: 0, 15: 0 };
 
-    // Ciclos cerrados en los últimos 16 días (ventana suficiente para D+15)
-    const cutoff = new Date(now.getTime() - 16 * 24 * 60 * 60 * 1000);
+    // B3 fix: ventana extendida a 30 días para cubrir outages del worker.
+    // El loop por nivel + idempotencia previenen duplicados; el cutoff
+    // amplio asegura que un L15 atrasado por outage del cron aún se envíe.
+    const cutoff = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     const closedCycles = await this.cycleRepo.find({
       where: { tenantId, status: CycleStatus.CLOSED, endDate: LessThanOrEqual(now) },
     });
@@ -87,9 +89,7 @@ export class SignatureRemindersService {
       if (cycleEnd < cutoff) continue;
       const daysSince = Math.floor((now.getTime() - cycleEnd.getTime()) / (24 * 60 * 60 * 1000));
 
-      // Determinar el nivel APLICABLE — el más alto que ya correspondió.
-      const applicableLevel = this.pickLevel(daysSince);
-      if (applicableLevel === null) continue;
+      if (daysSince < 3) continue; // ningún nivel ha sido alcanzado
 
       // Encontrar evaluatees con evaluation_response sin firma de recipient
       const pendingResponses = await this.responseRepo
@@ -106,17 +106,26 @@ export class SignatureRemindersService {
         const evaluateeId = row.ea_evaluateeId;
         if (!responseId || !evaluateeId) continue;
 
-        // Idempotencia: chequear si ya enviamos ESTE nivel para este (doc,user)
-        const exists = await this.reminderRepo.findOne({
+        // B3 fix: traer TODOS los niveles ya enviados para (doc, user)
+        // y elegir el LOWEST unsent reached. Esto:
+        //  - Garantiza que cada nivel se envía exactamente 1 vez
+        //  - Si el worker estuvo caído, "catch up" desde el nivel más bajo
+        //    no enviado en la próxima ejecución (en runs sucesivos)
+        const sentRecords = await this.reminderRepo.find({
           where: {
             documentType: 'evaluation_response',
             documentId: responseId,
             userId: evaluateeId,
-            reminderLevel: applicableLevel,
           },
+          select: ['reminderLevel'],
         });
-        if (exists) {
-          skipped[applicableLevel]++;
+        const sentLevels = new Set(sentRecords.map((r) => r.reminderLevel));
+        const applicableLevel = this.pickNextLevel(daysSince, sentLevels);
+        if (applicableLevel === null) {
+          // Ya se enviaron todos los aplicables, o ninguno alcanzado
+          for (const lvl of REMINDER_LEVELS) {
+            if (sentLevels.has(lvl) && daysSince >= lvl) skipped[lvl]++;
+          }
           continue;
         }
 
@@ -164,12 +173,27 @@ export class SignatureRemindersService {
     return { sent, skipped };
   }
 
-  /** Devuelve el nivel aplicable (3/7/15) o null si daysSince está fuera de ventana. */
-  private pickLevel(daysSince: number): ReminderLevel | null {
-    // Ventana de 1 día a cada nivel para tolerar variación en hora de ejecución.
-    if (daysSince >= 15 && daysSince < 16) return 15;
-    if (daysSince >= 7 && daysSince < 8) return 7;
-    if (daysSince >= 3 && daysSince < 4) return 3;
+  /**
+   * B3 fix: devuelve el nivel MÁS BAJO no enviado que ya fue alcanzado.
+   *
+   * Esto garantiza que:
+   *  - Cada nivel se envía exactamente 1 vez por (doc, user).
+   *  - Si el worker estuvo caído (ej. outage de 5 días), al recuperarse
+   *    envía el siguiente nivel pendiente. En runs sucesivos enviará los
+   *    superiores, asegurando todos los recordatorios.
+   *  - No spamea: 1 sola notificación por ejecución por (doc, user).
+   *
+   * Ejemplos:
+   *  - daysSince=3, sentLevels={} → 3
+   *  - daysSince=8, sentLevels={3} → 7
+   *  - daysSince=8, sentLevels={3, 7} → null (15 aún no alcanzado)
+   *  - daysSince=20, sentLevels={3, 7} → 15
+   *  - daysSince=20, sentLevels={3, 7, 15} → null (todos enviados)
+   */
+  private pickNextLevel(daysSince: number, sentLevels: Set<number>): ReminderLevel | null {
+    for (const level of REMINDER_LEVELS) {
+      if (daysSince >= level && !sentLevels.has(level)) return level;
+    }
     return null;
   }
 
