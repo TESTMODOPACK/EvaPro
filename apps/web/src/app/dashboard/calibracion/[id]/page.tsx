@@ -65,6 +65,14 @@ export default function CalibracionDetailPage({ params }: { params: { id: string
   const [populating, setPopulating] = useState(false);
   const [completing, setCompleting] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
+  // Bug fix: handleComplete silenciaba errores via try/catch vacio. Ahora
+  // capturamos el mensaje del backend (quorum insuficiente, ajustes
+  // pendientes de aprobacion, etc.) y lo mostramos al admin.
+  const [errorMsg, setErrorMsg] = useState('');
+  // Feature: bulk delete por departamento — set de entryIds seleccionados
+  // por departamento. Activado solo cuando isAdmin + sesion no completed.
+  const [selectedEntryIds, setSelectedEntryIds] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const [editState, setEditState] = useState<Record<string, {
     adjustedScore: number | '';
     adjustedPotential: number | '';
@@ -209,13 +217,64 @@ export default function CalibracionDetailPage({ params }: { params: { id: string
   async function handleComplete() {
     if (!token) return;
     setCompleting(true);
+    setErrorMsg('');
     try {
       await api.talent.calibration.complete(token, params.id);
       await fetchSession();
       setSuccessMsg(t('calibracionDetalle.successMsg'));
       setTimeout(() => setSuccessMsg(''), 5000);
-    } catch { /* ignore */ }
+    } catch (e: any) {
+      // Backend lanza BadRequestException con mensajes claros:
+      //   - "Se requiere un quórum mínimo de N managers..."
+      //   - "Hay N ajuste(s) pendientes de aprobación..."
+      // Mostramos al admin para que sepa que falta para completar.
+      setErrorMsg(e?.message || 'No se pudo completar la calibración. Verifique quórum y aprobaciones pendientes.');
+      setTimeout(() => setErrorMsg(''), 8000);
+    }
     setCompleting(false);
+  }
+
+  async function handleBulkDeleteByDept(dept: string, deptEntries: any[]) {
+    if (!token) return;
+    // Solo entries pendientes son borrables (regla del backend en removeEntry).
+    const deletableEntries = deptEntries.filter((e) => e.status === 'pending');
+    if (deletableEntries.length === 0) {
+      setErrorMsg(`No hay entradas pendientes que borrar en "${dept}". Solo se pueden borrar entradas en estado pendiente.`);
+      setTimeout(() => setErrorMsg(''), 5000);
+      return;
+    }
+    const confirmText = window.prompt(
+      `Borrar ${deletableEntries.length} colaborador(es) pendiente(s) del departamento "${dept}" de esta sesión?\n\n` +
+      `Esto NO borra a los colaboradores del sistema, solo los quita de esta sesión de calibración. ` +
+      `Las entradas ya discutidas/aprobadas NO se borran.\n\n` +
+      `Tipea ELIMINAR para confirmar:`,
+    );
+    if (confirmText !== 'ELIMINAR') return;
+    setBulkDeleting(true);
+    setErrorMsg('');
+    try {
+      // Borramos en paralelo por simplicidad — el backend valida cada entry
+      // individualmente. Si alguna falla (porque cambio de status entre el
+      // fetch y el delete), se reporta en el resultado.
+      const results = await Promise.allSettled(
+        deletableEntries.map((e) => api.talent.calibration.removeEntry(token, e.id)),
+      );
+      const ok = results.filter((r) => r.status === 'fulfilled').length;
+      const failed = results.length - ok;
+      if (failed > 0) {
+        setErrorMsg(`${ok} colaborador(es) borrado(s). ${failed} no se pudieron borrar (probablemente cambiaron de estado).`);
+        setTimeout(() => setErrorMsg(''), 6000);
+      } else {
+        setSuccessMsg(`${ok} colaborador(es) del departamento "${dept}" borrado(s) de la sesión.`);
+        setTimeout(() => setSuccessMsg(''), 4000);
+      }
+      await fetchSession();
+    } catch (e: any) {
+      setErrorMsg(e?.message || 'Error al borrar entradas.');
+      setTimeout(() => setErrorMsg(''), 5000);
+    } finally {
+      setBulkDeleting(false);
+    }
   }
 
   function updateEntry(entryId: string, field: string, value: any) {
@@ -347,6 +406,12 @@ export default function CalibracionDetailPage({ params }: { params: { id: string
           {successMsg}
         </div>
       )}
+      {errorMsg && (
+        <div className="card animate-fade-up" style={{ background: 'var(--danger, #dc2626)', color: '#fff', marginBottom: '1rem', padding: '.75rem 1rem', fontWeight: 600, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
+          <span>{errorMsg}</span>
+          <button onClick={() => setErrorMsg('')} style={{ background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '1.1rem', padding: '0 0.4rem' }} aria-label="Cerrar">×</button>
+        </div>
+      )}
 
       {/* Empty state — preview & select before populating */}
       {entries.length === 0 && !isReadOnly && (
@@ -423,22 +488,32 @@ export default function CalibracionDetailPage({ params }: { params: { id: string
         </div>
       )}
 
-      {/* Filter bar */}
+      {/* Filter bar — UI fix: search + filter + acciones en UNA SOLA FILA.
+          Antes los .input class fuerzan width:100% y se apilaban verticalmente
+          en cada viewport. Ahora la fila usa CSS grid con columnas explicitas:
+          [search expandible | filter fijo | acciones a la derecha]. En mobile
+          (<720px) se permite wrap pero search y filter siguen lado a lado. */}
       {entries.length > 0 && (
-        <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
+        <div style={{
+          display: 'flex',
+          gap: '0.6rem',
+          marginBottom: '1rem',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+        }}>
           <input
             className="input"
             type="text"
             placeholder={t('calibracionDetalle.searchPlaceholder')}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            style={{ flex: 1, minWidth: '220px', fontSize: '0.875rem' }}
+            style={{ flex: '1 1 240px', minWidth: 0, fontSize: '0.875rem', width: 'auto' }}
           />
           <select
             className="input"
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            style={{ fontSize: '0.875rem', minWidth: '160px' }}
+            style={{ fontSize: '0.875rem', flex: '0 0 auto', width: 'auto', minWidth: '170px' }}
           >
             <option value="all">{t('calibracionDetalle.allStatuses')}</option>
             <option value="pending">{t('calibracionDetalle.filterPending')}</option>
@@ -448,26 +523,25 @@ export default function CalibracionDetailPage({ params }: { params: { id: string
             <option value="approved">{t('calibracionDetalle.filterApproved')}</option>
           </select>
           {(search || statusFilter !== 'all') && (
-            <button className="btn-ghost" style={{ fontSize: '0.82rem', whiteSpace: 'nowrap' }}
+            <button className="btn-ghost" style={{ fontSize: '0.78rem', whiteSpace: 'nowrap', flex: '0 0 auto' }}
               onClick={() => { setSearch(''); setStatusFilter('all'); }}>
               {t('common.clearFilters')}
             </button>
           )}
-          <div style={{ display: 'flex', gap: '0.5rem', marginLeft: 'auto' }}>
-            <button className="btn-ghost" style={{ fontSize: '0.78rem' }} onClick={() => setCollapsedDepts(new Set())}>
+          <div style={{ display: 'flex', gap: '0.4rem', marginLeft: 'auto', flex: '0 0 auto' }}>
+            <button className="btn-ghost" style={{ fontSize: '0.78rem', whiteSpace: 'nowrap' }} onClick={() => setCollapsedDepts(new Set())}>
               {t('calibracionDetalle.expandAll')}
             </button>
-            <button className="btn-ghost" style={{ fontSize: '0.78rem' }}
+            <button className="btn-ghost" style={{ fontSize: '0.78rem', whiteSpace: 'nowrap' }}
               onClick={() => setCollapsedDepts(new Set(deptOrder))}>
               {t('calibracionDetalle.collapseAll')}
             </button>
+            {!isReadOnly && (
+              <button className="btn-ghost" style={{ fontSize: '0.78rem', whiteSpace: 'nowrap' }} onClick={() => setShowAddEntry(!showAddEntry)}>
+                {showAddEntry ? 'Cerrar' : '+ Agregar colaborador'}
+              </button>
+            )}
           </div>
-          {/* Add collaborator button */}
-          {!isReadOnly && (
-            <button className="btn-ghost" style={{ fontSize: '0.78rem', whiteSpace: 'nowrap' }} onClick={() => setShowAddEntry(!showAddEntry)}>
-              {showAddEntry ? 'Cerrar' : '+ Agregar colaborador'}
-            </button>
-          )}
         </div>
       )}
 
@@ -543,6 +617,31 @@ export default function CalibracionDetailPage({ params }: { params: { id: string
                     </div>
                     <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', minWidth: '28px', textAlign: 'right' }}>{deptPct}%</span>
                   </div>
+                  {/* Feature: borrar todos los pendientes del depto en bulk.
+                      Solo visible si admin + sesion no completada + hay >=1 pendiente.
+                      Click stopPropagation para no togglar el collapse al borrar. */}
+                  {!isReadOnly && deptPending > 0 && (
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      disabled={bulkDeleting}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleBulkDeleteByDept(dept, deptEntries);
+                      }}
+                      style={{
+                        fontSize: '0.7rem',
+                        padding: '0.2rem 0.5rem',
+                        marginLeft: '0.4rem',
+                        borderColor: '#ef4444',
+                        color: '#ef4444',
+                        whiteSpace: 'nowrap',
+                      }}
+                      title={`Borrar los ${deptPending} colaborador(es) pendientes de este departamento de la sesión.`}
+                    >
+                      🗑 Borrar pendientes
+                    </button>
+                  )}
                 </div>
 
                 {/* Entries table */}
