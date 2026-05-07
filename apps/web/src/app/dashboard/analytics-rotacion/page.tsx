@@ -573,7 +573,7 @@ function TurnoverPageContent() {
                 {/* S3.2 — Hires internos en el periodo (procesos completed
                     con winning_candidate_id que apunta a candidato interno) */}
                 <div className="card" style={{ padding: '1.25rem', textAlign: 'center', borderLeft: '3px solid #10b981' }}>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.35rem' }} title="Personas que ganaron un proceso de selección interno en el periodo">Hires Internos</div>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.35rem' }} title="Personas que ganaron un proceso de selección interno en el periodo">Contrataciones Internas</div>
                   <div style={{ fontSize: '2rem', fontWeight: 800, color: '#10b981' }}>{movData.internalHires ?? 0}</div>
                 </div>
                 {/* S3.2 — Tasa de retencion post-movilidad: % de users con
@@ -596,7 +596,7 @@ function TurnoverPageContent() {
               {movData.internalHiresList?.length > 0 && (
                 <div className="card animate-fade-up" style={{ padding: '1.5rem', marginBottom: '1.5rem' }}>
                   <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '1rem' }}>
-                    🏆 Procesos de Selección Internos Cerrados con Hire ({movData.internalHires})
+                    🏆 Procesos de Selección Internos Cerrados con Contratación ({movData.internalHires})
                   </h2>
                   <div className="table-wrapper">
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>

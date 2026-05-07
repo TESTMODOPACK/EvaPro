@@ -37,6 +37,7 @@ import { CalibrationSession } from '../talent/entities/calibration-session.entit
 import { CalibrationEntry } from '../talent/entities/calibration-entry.entity';
 import { EmailService } from '../notifications/email.service';
 import { AuditService } from '../audit/audit.service';
+import { EvaluationsService } from '../evaluations/evaluations.service';
 import {
   createMockRepository,
   createMockEmailService,
@@ -61,6 +62,7 @@ describe('SignaturesService', () => {
   let emailService: any;
   let auditService: any;
   let authorizationService: { assertCanSign: jest.Mock };
+  let evaluationsServiceMock: any;
 
   const tenantId = fakeUuid(100);
   const userId = fakeUuid(1);
@@ -95,6 +97,11 @@ describe('SignaturesService', () => {
     authorizationService = {
       assertCanSign: jest.fn().mockResolvedValue(undefined),
     };
+    evaluationsServiceMock = {
+      // T5.3 — Audit P0 captureAssignmentObjectiveSnapshot best-effort,
+      // tests no necesitan que haga nada real.
+      captureAssignmentObjectiveSnapshot: jest.fn().mockResolvedValue(undefined),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -113,6 +120,7 @@ describe('SignaturesService', () => {
         { provide: EmailService, useValue: emailService },
         { provide: AuditService, useValue: auditService },
         { provide: SignatureAuthorizationService, useValue: authorizationService },
+        { provide: EvaluationsService, useValue: evaluationsServiceMock },
       ],
     }).compile();
 

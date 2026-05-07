@@ -1021,7 +1021,16 @@ export const api = {
     receivedByUser: (token: string, userId: string) =>
       request<any[]>(`/users/${userId}/received-evaluations`, {}, token),
     getDetail: (token: string, assignmentId: string) =>
-      request<{ assignment: AssignmentData; template: TemplateData | null; response: ResponseData | null }>(
+      request<{
+        assignment: AssignmentData;
+        template: TemplateData | null;
+        response: ResponseData | null;
+        evaluateeObjectives?: any[];
+        evaluateeObjectivesSummary?: any;
+        // T5.4 — Audit P0 (Issue A): indica si los objetivos vienen de un
+        // snapshot inmutable (per-firma o cycle-wide) o del estado live.
+        objectivesSource?: 'snapshot_signature' | 'snapshot_cycle' | 'live';
+      }>(
         `/evaluations/${assignmentId}`, {}, token,
       ),
     saveResponse: (token: string, assignmentId: string, answers: any) =>
@@ -1404,6 +1413,43 @@ export const api = {
   objectives: {
     list: (token: string, userId?: string) =>
       request<ObjectiveData[]>(`/objectives${userId ? `?userId=${userId}` : ""}`, {}, token),
+    /**
+     * T12 — Audit P2: listado paginado con filtros server-side.
+     * Reemplaza el patrón legacy de `list()` que devolvía un array
+     * capado a 200 sin reportar el total. La UI puede consumir esto
+     * para garantizar consistencia "Mostrando X de Y".
+     */
+    listPaginated: (
+      token: string,
+      opts?: {
+        page?: number;
+        pageSize?: number;
+        userId?: string;
+        status?: string;
+        type?: string;
+        cycleId?: string;
+        search?: string;
+        department?: string;
+      },
+    ) => {
+      const params = new URLSearchParams();
+      if (opts?.page) params.set('page', String(opts.page));
+      if (opts?.pageSize) params.set('pageSize', String(opts.pageSize));
+      if (opts?.userId) params.set('userId', opts.userId);
+      if (opts?.status) params.set('status', opts.status);
+      if (opts?.type) params.set('type', opts.type);
+      if (opts?.cycleId) params.set('cycleId', opts.cycleId);
+      if (opts?.search) params.set('search', opts.search);
+      if (opts?.department) params.set('department', opts.department);
+      const qs = params.toString();
+      return request<{
+        data: ObjectiveData[];
+        total: number;
+        page: number;
+        pageSize: number;
+        totalPages: number;
+      }>(`/objectives/list${qs ? `?${qs}` : ''}`, {}, token);
+    },
     getById: (token: string, id: string) =>
       request<ObjectiveData>(`/objectives/${id}`, {}, token),
     create: (token: string, data: any) =>
@@ -1426,8 +1472,66 @@ export const api = {
       request<ObjectiveData>(`/objectives/${id}/submit-for-approval`, { method: "POST" }, token),
     approve: (token: string, id: string) =>
       request<ObjectiveData>(`/objectives/${id}/approve`, { method: "POST" }, token),
+    /** T4.2 — BUG-10: bulk approve transaccional. Reemplaza el loop sequencial. */
+    bulkApprove: (token: string, ids: string[]) =>
+      request<{ approved: string[]; failed: Array<{ id: string; reason: string }> }>(
+        `/objectives/bulk-approve`,
+        { method: "POST", body: JSON.stringify({ ids }) },
+        token,
+      ),
     reject: (token: string, id: string, reason?: string) =>
       request<ObjectiveData>(`/objectives/${id}/reject`, { method: "POST", body: JSON.stringify({ reason }) }, token),
+    /** T7.5 — Audit P1: cancela un objetivo por decisión de negocio. Razón obligatoria (>=5 chars). */
+    cancel: (token: string, id: string, reason: string) =>
+      request<ObjectiveData>(
+        `/objectives/${id}/cancel`,
+        { method: "POST", body: JSON.stringify({ reason }) },
+        token,
+      ),
+    /** T8.2 — Audit P1: historial completo de rechazos del objetivo. */
+    rejectionHistory: (token: string, id: string) =>
+      request<Array<{
+        id: string;
+        objectiveId: string;
+        rejectedBy: string;
+        reason: string | null;
+        objectiveTitleSnapshot: string;
+        rejectedAt: string;
+        rejector?: { id: string; firstName?: string; lastName?: string; email?: string } | null;
+      }>>(`/objectives/${id}/rejection-history`, {}, token),
+    /**
+     * T9 — Audit P1 (Issue B): historial de objetivos por período.
+     * Si includeActive=true, incluye también ACTIVE/OVERDUE con
+     * snapshot-fallback (preferido) o flag inProgress.
+     */
+    historyByPeriod: (
+      token: string,
+      opts?: { userId?: string; cycleId?: string; includeActive?: boolean },
+    ) => {
+      const params = new URLSearchParams();
+      if (opts?.userId) params.set('userId', opts.userId);
+      if (opts?.cycleId) params.set('cycleId', opts.cycleId);
+      if (opts?.includeActive) params.set('includeActive', 'true');
+      const qs = params.toString();
+      return request<{
+        periods: Array<{
+          cycleId: string | null;
+          cycleName: string;
+          startDate: string | null;
+          endDate: string | null;
+          cycleType: string | null;
+          cycleStatus: string | null;
+          totalObjectives: number;
+          completedCount: number;
+          abandonedCount: number;
+          cancelledCount: number;
+          inProgressCount: number;
+          avgProgress: number;
+          objectives: any[];
+        }>;
+        totalObjectives: number;
+      }>(`/objectives/history-by-period${qs ? `?${qs}` : ''}`, {}, token);
+    },
     atRisk: (token: string, userId?: string) =>
       request<ObjectiveData[]>(`/objectives/at-risk${userId ? `?userId=${userId}` : ""}`, {}, token),
     teamSummary: (token: string) =>
@@ -1442,6 +1546,48 @@ export const api = {
       request<void>(`/objectives/key-results/${krId}`, { method: "DELETE" }, token),
     tree: (token: string) =>
       request<any[]>(`/objectives/tree`, {}, token),
+  },
+
+  /** T10 — Audit P2: métricas recurrentes (KPI semánticamente correctos). */
+  recurringMetrics: {
+    list: (token: string, opts?: { ownerUserId?: string; isActive?: boolean }) => {
+      const params = new URLSearchParams();
+      if (opts?.ownerUserId) params.set('ownerUserId', opts.ownerUserId);
+      if (opts?.isActive !== undefined) params.set('isActive', String(opts.isActive));
+      const qs = params.toString();
+      return request<any[]>(`/recurring-metrics${qs ? `?${qs}` : ''}`, {}, token);
+    },
+    getById: (token: string, id: string) =>
+      request<any>(`/recurring-metrics/${id}`, {}, token),
+    /** Estado actual: { metric, lastMeasurement, status, daysSinceLastMeasurement, isOverdue }. */
+    getState: (token: string, id: string) =>
+      request<{
+        metric: any;
+        lastMeasurement: any | null;
+        status: 'green' | 'yellow' | 'red' | 'no_data';
+        daysSinceLastMeasurement: number | null;
+        isOverdue: boolean;
+      }>(`/recurring-metrics/${id}/state`, {}, token),
+    create: (token: string, data: any) =>
+      request<any>('/recurring-metrics', { method: 'POST', body: JSON.stringify(data) }, token),
+    update: (token: string, id: string, data: any) =>
+      request<any>(`/recurring-metrics/${id}`, { method: 'PATCH', body: JSON.stringify(data) }, token),
+    deactivate: (token: string, id: string) =>
+      request<void>(`/recurring-metrics/${id}`, { method: 'DELETE' }, token),
+    addMeasurement: (
+      token: string,
+      id: string,
+      data: { value: number; observedAt?: string; notes?: string },
+    ) =>
+      request<any>(
+        `/recurring-metrics/${id}/measurements`,
+        { method: 'POST', body: JSON.stringify(data) },
+        token,
+      ),
+    listMeasurements: (token: string, id: string, limit?: number) => {
+      const qs = limit ? `?limit=${limit}` : '';
+      return request<any[]>(`/recurring-metrics/${id}/measurements${qs}`, {}, token);
+    },
   },
 
   reports: {

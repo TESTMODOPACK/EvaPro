@@ -433,7 +433,7 @@ export default function DashboardEjecutivoPage() {
                 value={activeInternalProcesses}
               />
               <StatRow
-                label="Hires internos (12m)"
+                label="Contrataciones internas (12m)"
                 value={mobilityData.internalHires ?? 0}
               />
               <StatRow

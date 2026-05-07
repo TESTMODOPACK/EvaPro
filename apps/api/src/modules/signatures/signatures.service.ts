@@ -16,6 +16,7 @@ import { CalibrationSession } from '../talent/entities/calibration-session.entit
 import { CalibrationEntry } from '../talent/entities/calibration-entry.entity';
 import { EmailService } from '../notifications/email.service';
 import { AuditService } from '../audit/audit.service';
+import { EvaluationsService } from '../evaluations/evaluations.service';
 import { SignatureAuthorizationService } from './services/signature-authorization.service';
 
 const OTP_EXPIRY_MINUTES = 10;
@@ -67,6 +68,7 @@ export class SignaturesService {
     private readonly calibrationEntryRepo: Repository<CalibrationEntry>,
     private readonly emailService: EmailService,
     private readonly auditService: AuditService,
+    private readonly evaluationsService: EvaluationsService,
     private readonly authorizationService: SignatureAuthorizationService,
   ) {}
 
@@ -267,16 +269,37 @@ export class SignaturesService {
       }
     }
 
-    // G6 (TAREA 12): denormalizar timestamp en evaluation_response para
-    // queries rápidas "evaluación firmada por X rol" sin JOIN.
-    // Solo si fue afirmativa (decline no cuenta como firma de respaldo).
-    if (isAffirmative && documentType === 'evaluation_response') {
-      // Usar el signedAt de la firma persistida; si por algún motivo no
-      // viene (ej. mocks de test), fallback a Date.now().
-      const ts = saved.signedAt ?? new Date();
-      await this.updateEvaluationResponseSignedTimestamp(
-        tenantId, documentId, sigRole, ts,
-      );
+    if (documentType === 'evaluation_response') {
+      // T5.3 (origin/main) — Audit P0 (Issue A): freezar el estado de los
+      // objetivos del evaluado en un snapshot per-signature al firmar.
+      // Esto evita que el documento firmado mute retroactivamente cuando
+      // los objetivos siguen progresando después de la firma. Best-effort:
+      // si el snapshot falla, la firma igual se persiste — la integridad
+      // del evaluation signature no depende de este snapshot (defensa
+      // en profundidad). Se ejecuta SIEMPRE (incluido decline) porque
+      // el snapshot representa el estado al momento de la firma sea cual
+      // sea el acknowledgmentType.
+      const response = await this.responseRepo.findOne({
+        where: { id: documentId, tenantId },
+        select: ['id', 'assignmentId'],
+      });
+      if (response?.assignmentId) {
+        this.evaluationsService
+          .captureAssignmentObjectiveSnapshot(response.assignmentId, userId)
+          .catch(() => undefined);
+      }
+
+      // G6 (TAREA 12, audit fixes): denormalizar timestamp en
+      // evaluation_responses para queries rápidas "evaluación firmada por
+      // X rol" sin JOIN. Solo si fue afirmativa (decline NO cuenta como
+      // firma de respaldo — queda registrado en document_signatures pero
+      // no se considera "firmada" para reportes).
+      if (isAffirmative) {
+        const ts = saved.signedAt ?? new Date();
+        await this.updateEvaluationResponseSignedTimestamp(
+          tenantId, documentId, sigRole, ts,
+        );
+      }
     }
 
     return saved;

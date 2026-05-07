@@ -5,6 +5,8 @@ import { Objective } from './entities/objective.entity';
 import { ObjectiveUpdate } from './entities/objective-update.entity';
 import { ObjectiveComment } from './entities/objective-comment.entity';
 import { KeyResult } from './entities/key-result.entity';
+import { ObjectiveRejection } from './entities/objective-rejection.entity';
+import { EvaluationObjectiveSnapshot } from '../evaluations/entities/evaluation-objective-snapshot.entity';
 import { User } from '../users/entities/user.entity';
 import { EvaluationCycle } from '../evaluations/entities/evaluation-cycle.entity';
 import { ObjectivesService } from './objectives.service';
@@ -20,7 +22,16 @@ import { RecognitionModule } from '../recognition/recognition.module';
     SubscriptionsModule,
     NotificationsModule,
     RecognitionModule,
-    TypeOrmModule.forFeature([Objective, ObjectiveUpdate, ObjectiveComment, KeyResult, User, EvaluationCycle]),
+    TypeOrmModule.forFeature([
+      Objective,
+      ObjectiveUpdate,
+      ObjectiveComment,
+      KeyResult,
+      ObjectiveRejection,
+      User,
+      EvaluationCycle,
+      EvaluationObjectiveSnapshot,
+    ]),
   ],
   controllers: [ObjectivesController],
   providers: [
