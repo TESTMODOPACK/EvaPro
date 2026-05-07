@@ -1721,6 +1721,33 @@
     "signedDesc": "Your digital signature has been recorded with SHA-256 hash, timestamp and IP.",
     "signedBadge": "Signed",
     "signedBy": "Signed by",
+    "errorRequest": "Error requesting signature",
+    "invalidCode": "Invalid code",
+    "commentRequired": "You must include a comment for this option",
+    "commentMinChars": "Minimum {{min}} characters",
+    "commentLabel": "Your comment",
+    "commentDeclineLabel": "Reason for declining",
+    "commentPlaceholder": "Describe your observations (visible in audit log)...",
+    "commentDeclinePlaceholder": "Explain why you disagree with the results...",
+    "willSignAs": "Your signature will be recorded as",
+    "declineRecorded": "Decline recorded",
+    "declineRecordedDesc": "Your formal decline with reason has been recorded as digitally signed evidence.",
+    "choiceTitle": "How do you want to respond?",
+    "choiceDesc": "Choose the response that best reflects your position. All options are recorded with your digital signature.",
+    "ack": {
+      "agree": {
+        "label": "I agree with the results",
+        "desc": "Full signature, no observations."
+      },
+      "agreeWithComments": {
+        "label": "Agree with comments",
+        "desc": "Signature of conformity but I want to leave observations."
+      },
+      "decline": {
+        "label": "Formally decline",
+        "desc": "I disagree with the results. The reason will be recorded."
+      }
+    },
     "docType": {
       "evaluation_cycle": "Evaluation Cycle",
       "calibration_session": "Calibration Session",

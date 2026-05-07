@@ -385,12 +385,13 @@ function FirmasPageContent() {
         token={token}
       />
 
-      {/* Signature Modal */}
+      {/* Signature Modal — contrato: decline no aplica (rechazo via contracts/:id/reject) */}
       {signingContract && (
         <SignatureModal
           documentType="contract"
           documentId={signingContract.id}
           documentName={signingContract.title}
+          allowAcknowledgmentChoice={false}
           onSigned={() => {
             setSigningContract(null);
             // Refresh all data

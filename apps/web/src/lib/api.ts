@@ -2011,10 +2011,57 @@ export const api = {
   },
 
   signatures: {
-    request: (token: string, documentType: string, documentId: string) =>
-      request<any>("/signatures/request", { method: "POST", body: JSON.stringify({ documentType, documentId }) }, token),
-    verify: (token: string, documentType: string, documentId: string, code: string) =>
-      request<any>("/signatures/verify", { method: "POST", body: JSON.stringify({ documentType, documentId, code }) }, token),
+    request: (
+      token: string,
+      documentType: string,
+      documentId: string,
+      // Mejora #2 (G2): firmar como autor (manager/external) o testigo (tenant_admin).
+      // Si se omite, default backend = 'recipient'.
+      signatureRole?: 'recipient' | 'author' | 'employer_witness',
+    ) =>
+      request<any>(
+        "/signatures/request",
+        {
+          method: "POST",
+          body: JSON.stringify({ documentType, documentId, ...(signatureRole ? { signatureRole } : {}) }),
+        },
+        token,
+      ),
+    verify: (
+      token: string,
+      documentType: string,
+      documentId: string,
+      code: string,
+      opts?: {
+        // Mejora #1 (G5): tipo de acknowledgment + comentario opcional.
+        acknowledgmentType?: 'agree' | 'agree_with_comments' | 'decline';
+        acknowledgmentComment?: string;
+        // Mejora #2 (G2): rol de firma cuando aplique.
+        signatureRole?: 'recipient' | 'author' | 'employer_witness';
+      },
+    ) =>
+      request<any>(
+        "/signatures/verify",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            documentType,
+            documentId,
+            code,
+            ...(opts?.acknowledgmentType ? { acknowledgmentType: opts.acknowledgmentType } : {}),
+            ...(opts?.acknowledgmentComment ? { acknowledgmentComment: opts.acknowledgmentComment } : {}),
+            ...(opts?.signatureRole ? { signatureRole: opts.signatureRole } : {}),
+          }),
+        },
+        token,
+      ),
+    // Mejora #9 / G8 (audit): revocación de firma — solo super_admin.
+    revoke: (token: string, signatureId: string, reason: string) =>
+      request<any>(
+        `/signatures/${signatureId}/revoke`,
+        { method: "POST", body: JSON.stringify({ reason }) },
+        token,
+      ),
     list: (token: string, documentType: string, documentId: string) =>
       request<any[]>(`/signatures/document/${documentType}/${documentId}`, {}, token),
     listAll: (token: string) => request<any[]>("/signatures", {}, token),

@@ -1703,6 +1703,33 @@
     "signedDesc": "Sua assinatura digital foi registrada com hash SHA-256, timestamp e IP.",
     "signedBadge": "Assinado",
     "signedBy": "Assinado por",
+    "errorRequest": "Erro ao solicitar assinatura",
+    "invalidCode": "Código inválido",
+    "commentRequired": "Você deve incluir um comentário para esta opção",
+    "commentMinChars": "Mínimo {{min}} caracteres",
+    "commentLabel": "Seu comentário",
+    "commentDeclineLabel": "Motivo da recusa",
+    "commentPlaceholder": "Descreva suas observações (visível na auditoria)...",
+    "commentDeclinePlaceholder": "Explique por que você discorda dos resultados...",
+    "willSignAs": "Sua assinatura será registrada como",
+    "declineRecorded": "Recusa registrada",
+    "declineRecordedDesc": "Sua recusa formal com motivo foi registrada como evidência assinada digitalmente.",
+    "choiceTitle": "Como você quer responder?",
+    "choiceDesc": "Escolha a resposta que melhor reflete sua posição. Todas as opções são registradas com sua assinatura digital.",
+    "ack": {
+      "agree": {
+        "label": "Concordo com os resultados",
+        "desc": "Assinatura plena, sem observações."
+      },
+      "agreeWithComments": {
+        "label": "Concordo com comentários",
+        "desc": "Assinatura de conformidade mas quero deixar observações."
+      },
+      "decline": {
+        "label": "Recuso formalmente",
+        "desc": "Não concordo com os resultados. O motivo será registrado."
+      }
+    },
     "docType": {
       "evaluation_cycle": "Ciclo de Avaliação",
       "calibration_session": "Sessão de Calibração",
