@@ -10,6 +10,29 @@ import {
   useSubmitResponse,
 } from '@/hooks/useEvaluations';
 import { ScaleLegend } from '@/components/ScoreBadge';
+import SignatureModal from '@/components/SignatureModal';
+
+/**
+ * Mejora #2 (G2): el manager (relationType=manager) o un evaluador externo
+ * (role=external) que evalúa a otra persona debe poder firmar como autor
+ * del feedback emitido. Esto cierra el gap legal "manager evaluó pero no
+ * dejó firma certificando autoría".
+ *
+ * Roles que aplican:
+ *  - relationType=manager → el jefe firma como autor del feedback
+ *  - relationType=peer    → opcional (NO se fuerza por ahora)
+ *  - relationType=direct_report → opcional (eval ascendente)
+ *  - relationType=external → siempre que el user es 'external'
+ *  - relationType=self → NO aplica (autoevaluación, autoría implícita)
+ *
+ * Política conservadora: solo activamos el flujo cuando relationType=manager
+ * o el user es 'external'. Para otros casos el flujo histórico se mantiene.
+ */
+function shouldOfferAuthorSignature(relationType: string | undefined, userRole: string | undefined): boolean {
+  if (relationType === 'manager') return true;
+  if (userRole === 'external') return true;
+  return false;
+}
 
 const relationLabels: Record<string, string> = {
   self: 'Autoevaluación',
@@ -204,6 +227,13 @@ export default function ResponderEvaluacionPage() {
     confirmLabel?: string;
     onConfirm: () => void;
   } | null>(null);
+  // Mejora #2 (G2): después del submit, si aplica firma de autor abrimos
+  // el modal con responseId. null = no estamos firmando (estado inicial o
+  // el usuario eligió "más tarde").
+  const [authorSignModal, setAuthorSignModal] = useState<{
+    responseId: string;
+    documentName: string;
+  } | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Initialize from existing response ─────────────────────────────────────
@@ -330,13 +360,44 @@ export default function ResponderEvaluacionPage() {
       Object.entries(answers).filter(([id]) => visibleIds.has(id)),
     );
     try {
-      await submitResponse.mutateAsync({ assignmentId, answers: filteredAnswers });
+      const result: any = await submitResponse.mutateAsync({ assignmentId, answers: filteredAnswers });
       setHasUnsaved(false);
-      setSubmitted(true);
-      setTimeout(() => router.push(backUrl), 2200);
+      setShowConfirm(false);
+
+      // Mejora #2 (G2): si aplica firma de autor, abrir modal de firma
+      // antes de redirigir. El usuario puede elegir firmar ahora o más tarde.
+      const relationType = detail?.assignment?.relationType;
+      const isAuthorFlow = shouldOfferAuthorSignature(relationType, role);
+      const responseId = result?.response?.id;
+
+      if (isAuthorFlow && responseId) {
+        const evaluatee = detail?.assignment?.evaluatee;
+        const docName = evaluatee
+          ? `Evaluación de ${evaluatee.firstName || ''} ${evaluatee.lastName || ''}`.trim()
+          : 'Evaluación';
+        setAuthorSignModal({ responseId, documentName: docName });
+      } else {
+        // Flujo histórico: mostrar success page + redirect
+        setSubmitted(true);
+        setTimeout(() => router.push(backUrl), 2200);
+      }
     } catch {
       setShowConfirm(false);
     }
+  };
+
+  /** Cuando el manager firma exitosamente como autor */
+  const handleAuthorSigned = () => {
+    setAuthorSignModal(null);
+    setSubmitted(true);
+    setTimeout(() => router.push(backUrl), 2200);
+  };
+
+  /** Cuando el manager elige "Más tarde" / cierra el modal de firma */
+  const handleAuthorSignSkip = () => {
+    setAuthorSignModal(null);
+    setSubmitted(true);
+    setTimeout(() => router.push(backUrl), 2200);
   };
 
   // ── Loading / Error states ────────────────────────────────────────────────
@@ -394,6 +455,9 @@ export default function ResponderEvaluacionPage() {
     ? `${evaluatee.firstName || ''} ${evaluatee.lastName || ''}`.trim() || evaluatee.email
     : '—';
   const pct = totalQuestions > 0 ? Math.round((answeredQuestions / totalQuestions) * 100) : 0;
+
+  // Mejora #2 (G2): determinar si el botón debe ofrecer firma de autor
+  const isAuthorFlow = shouldOfferAuthorSignature(detail.assignment?.relationType, role);
 
   return (
     <>
@@ -709,8 +773,10 @@ export default function ResponderEvaluacionPage() {
             onClick={handleSubmitClick}
             disabled={submitResponse.isPending}
             style={{ padding: '0.6rem 1.5rem' }}
+            title={isAuthorFlow ? 'Tras enviar, podrás firmar como autor del feedback' : undefined}
           >
-            Enviar evaluaci&oacute;n →
+            {/* Mejora #2 (G2): label distinto cuando el flujo invita a firmar como autor */}
+            {isAuthorFlow ? '✍ Firmar y enviar →' : 'Enviar evaluación →'}
           </button>
         </div>
 
@@ -724,6 +790,21 @@ export default function ResponderEvaluacionPage() {
           confirmLabel={navConfirmState.confirmLabel}
           onConfirm={navConfirmState.onConfirm}
           onCancel={() => setNavConfirmState(null)}
+        />
+      )}
+
+      {/* Mejora #2 (G2) — modal de firma de autor tras enviar.
+          allowAcknowledgmentChoice=false porque el autor del feedback no
+          tiene sentido semántico de "rechazar" su propio escrito. */}
+      {authorSignModal && (
+        <SignatureModal
+          documentType="evaluation_response"
+          documentId={authorSignModal.responseId}
+          documentName={authorSignModal.documentName}
+          signatureRole="author"
+          allowAcknowledgmentChoice={false}
+          onSigned={handleAuthorSigned}
+          onCancel={handleAuthorSignSkip}
         />
       )}
     </>
