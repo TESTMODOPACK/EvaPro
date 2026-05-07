@@ -175,6 +175,20 @@ function FirmasPageContent() {
   const [teamSignatures, setTeamSignatures] = useState<any[]>([]);
   const [allSignatures, setAllSignatures] = useState<any[]>([]);
   const [pendingContracts, setPendingContracts] = useState<any[]>([]);
+  // Mejora #3 (G3): bandeja de pendientes de firma de testigo (tenant_admin)
+  const [pendingWitness, setPendingWitness] = useState<Array<{
+    responseId: string;
+    assignmentId: string;
+    cycleId: string;
+    cycleName: string;
+    evaluateeId: string;
+    evaluateeName: string;
+    recipientSignedAt: string;
+  }>>([]);
+  const [signingAsWitness, setSigningAsWitness] = useState<{
+    responseId: string;
+    documentName: string;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'mine' | 'team' | 'all'>('mine');
   const [showGuide, setShowGuide] = useState(false);
@@ -223,8 +237,25 @@ function FirmasPageContent() {
       );
     }
 
+    // Mejora #3 (G3) — Admin: pendientes de firma de testigo
+    if (isAdmin) {
+      promises.push(
+        api.signatures.pendingEmployerWitness(token)
+          .then((data: any) => setPendingWitness(Array.isArray(data) ? data : []))
+          .catch(() => setPendingWitness([]))
+      );
+    }
+
     Promise.all(promises).finally(() => setLoading(false));
   }, [token, role]);
+
+  /** Refresh witness pending list after signing */
+  const reloadWitnessPending = () => {
+    if (!token || !isAdmin) return;
+    api.signatures.pendingEmployerWitness(token)
+      .then((data: any) => setPendingWitness(Array.isArray(data) ? data : []))
+      .catch(() => {});
+  };
 
   if (loading) return <PageSkeleton cards={3} tableRows={8} />;
 
@@ -344,6 +375,60 @@ function FirmasPageContent() {
         )}
       </div>
 
+      {/* Mejora #3 (G3) — Bandeja de pendientes de firma de testigo del empleador.
+          Solo visible para tenant_admin/super_admin. La sección aparece solo si
+          existen items (no spamea cuando está vacía). */}
+      {isAdmin && pendingWitness.length > 0 && (
+        <div
+          className="card animate-fade-up"
+          style={{
+            padding: '1.25rem', marginBottom: '1.5rem',
+            borderLeft: '4px solid #6366f1',
+          }}
+        >
+          <h3 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '0.5rem', color: '#6366f1' }}>
+            🏛️ {t('firmas.witnessPendingTitle', { count: pendingWitness.length })}
+          </h3>
+          <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.85rem', lineHeight: 1.5 }}>
+            {t('firmas.witnessPendingDesc')}
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            {pendingWitness.map((w) => (
+              <div
+                key={w.responseId}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '0.6rem 0.85rem', background: 'var(--bg-surface)',
+                  borderRadius: 'var(--radius-sm, 6px)', border: '1px solid var(--border)',
+                  flexWrap: 'wrap', gap: '0.5rem',
+                }}
+              >
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>
+                    {t('firmas.witnessFor', { name: w.evaluateeName })}
+                  </div>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                    {w.cycleName} · {t('firmas.witnessSignedOn', {
+                      date: new Date(w.recipientSignedAt).toLocaleDateString('es-CL'),
+                    })}
+                  </div>
+                </div>
+                <button
+                  className="btn-primary"
+                  onClick={() => setSigningAsWitness({
+                    responseId: w.responseId,
+                    documentName: t('firmas.witnessFor', { name: w.evaluateeName }),
+                  })}
+                  style={{ padding: '0.4rem 1rem', fontSize: '0.82rem' }}
+                >
+                  {t('firmas.witnessSignBtn')}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Pending Contracts Section */}
       {pendingContracts.length > 0 && (
         <div className="card animate-fade-up" style={{ padding: '1.25rem', marginBottom: '1.5rem', borderLeft: '4px solid var(--warning, #f59e0b)' }}>
@@ -384,6 +469,24 @@ function FirmasPageContent() {
         canVerify={isAdmin || isManager}
         token={token}
       />
+
+      {/* Mejora #3 (G3) — Modal de firma como testigo del empleador.
+          allowAcknowledgmentChoice=false: el testigo certifica que el
+          proceso fue válido, no es un acto de "agree/decline" semántico. */}
+      {signingAsWitness && (
+        <SignatureModal
+          documentType="evaluation_response"
+          documentId={signingAsWitness.responseId}
+          documentName={signingAsWitness.documentName}
+          signatureRole="employer_witness"
+          allowAcknowledgmentChoice={false}
+          onSigned={() => {
+            setSigningAsWitness(null);
+            reloadWitnessPending();
+          }}
+          onCancel={() => setSigningAsWitness(null)}
+        />
+      )}
 
       {/* Signature Modal — contrato: decline no aplica (rechazo via contracts/:id/reject) */}
       {signingContract && (

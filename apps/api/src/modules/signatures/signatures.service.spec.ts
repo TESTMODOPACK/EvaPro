@@ -1262,6 +1262,126 @@ describe('SignaturesService', () => {
     });
   });
 
+  // ─── G3 / Mejora #3: getPendingEmployerWitness ─────────────────────
+
+  describe('getPendingEmployerWitness (G3 / UI Mejora #3)', () => {
+    it('lista respuestas con recipientSignedAt set Y witnessedAt NULL', async () => {
+      const responseQb = {
+        innerJoin: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        select: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue([
+          {
+            responseId: fakeUuid(50),
+            assignmentId: fakeUuid(70),
+            cycleId: fakeUuid(200),
+            cycleName: 'Q1 2026',
+            evaluateeId: fakeUuid(2),
+            firstName: 'María',
+            lastName: 'Pérez',
+            recipientSignedAt: new Date('2026-05-05T10:00:00Z'),
+          },
+        ]),
+      };
+      responseRepo.createQueryBuilder.mockReturnValue(responseQb);
+
+      const result = await service.getPendingEmployerWitness(tenantId);
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toMatchObject({
+        responseId: fakeUuid(50),
+        assignmentId: fakeUuid(70),
+        cycleId: fakeUuid(200),
+        cycleName: 'Q1 2026',
+        evaluateeId: fakeUuid(2),
+        evaluateeName: 'María Pérez',
+      });
+    });
+
+    it('respeta multi-tenant en el WHERE', async () => {
+      const responseQb = {
+        innerJoin: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        select: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue([]),
+      };
+      responseRepo.createQueryBuilder.mockReturnValue(responseQb);
+
+      await service.getPendingEmployerWitness(otherTenantId);
+
+      expect(responseQb.where).toHaveBeenCalledWith(
+        'er.tenantId = :tenantId',
+        { tenantId: otherTenantId },
+      );
+    });
+
+    it('aplica filtros recipientSignedAt IS NOT NULL Y witnessedAt IS NULL', async () => {
+      const responseQb = {
+        innerJoin: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        select: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue([]),
+      };
+      responseRepo.createQueryBuilder.mockReturnValue(responseQb);
+
+      await service.getPendingEmployerWitness(tenantId);
+
+      const andWhereCalls = responseQb.andWhere.mock.calls.map((c: any) => c[0]);
+      expect(andWhereCalls).toContain('er.recipientSignedAt IS NOT NULL');
+      expect(andWhereCalls).toContain('er.witnessedAt IS NULL');
+    });
+
+    it('orderBy más antiguos primero (queue de pendientes)', async () => {
+      const responseQb = {
+        innerJoin: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        select: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue([]),
+      };
+      responseRepo.createQueryBuilder.mockReturnValue(responseQb);
+
+      await service.getPendingEmployerWitness(tenantId);
+
+      expect(responseQb.orderBy).toHaveBeenCalledWith('er.recipientSignedAt', 'ASC');
+      expect(responseQb.limit).toHaveBeenCalledWith(200);
+    });
+
+    it('maneja evaluatees sin nombre (fallback "Sin nombre")', async () => {
+      const responseQb = {
+        innerJoin: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        select: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue([
+          {
+            responseId: fakeUuid(50), assignmentId: fakeUuid(70),
+            cycleId: fakeUuid(200), cycleName: 'X',
+            evaluateeId: fakeUuid(2), firstName: null, lastName: null,
+            recipientSignedAt: new Date(),
+          },
+        ]),
+      };
+      responseRepo.createQueryBuilder.mockReturnValue(responseQb);
+
+      const result = await service.getPendingEmployerWitness(tenantId);
+      expect(result[0].evaluateeName).toBe('Sin nombre');
+    });
+  });
+
   // ─── G8 (TAREA 9): revokeSignature ──────────────────────────────────
 
   describe('revokeSignature (G8)', () => {

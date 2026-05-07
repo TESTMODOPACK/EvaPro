@@ -359,6 +359,58 @@ export class SignaturesService {
     return count > 0;
   }
 
+  /**
+   * G3 / Mejora #3 (UI) — Lista evaluation_responses pendientes de firma
+   * de testigo del empleador (employer_witness). Pendiente = el evaluatee
+   * ya firmó (recipientSignedAt) pero aún no hay firma de witness.
+   *
+   * Usa los campos denormalizados (G6/T12) para evitar JOINs caros a
+   * document_signatures.
+   *
+   * Multi-tenant: filtra por tenantId del JWT.
+   */
+  async getPendingEmployerWitness(tenantId: string): Promise<Array<{
+    responseId: string;
+    assignmentId: string;
+    cycleId: string;
+    cycleName: string;
+    evaluateeId: string;
+    evaluateeName: string;
+    recipientSignedAt: Date;
+  }>> {
+    const rows = await this.responseRepo
+      .createQueryBuilder('er')
+      .innerJoin('evaluation_assignments', 'a', 'a.id = er.assignmentId')
+      .innerJoin('evaluation_cycles', 'c', 'c.id = a.cycle_id')
+      .innerJoin('users', 'u', 'u.id = a.evaluatee_id')
+      .where('er.tenantId = :tenantId', { tenantId })
+      .andWhere('er.recipientSignedAt IS NOT NULL')
+      .andWhere('er.witnessedAt IS NULL')
+      .select([
+        'er.id AS "responseId"',
+        'a.id AS "assignmentId"',
+        'c.id AS "cycleId"',
+        'c.name AS "cycleName"',
+        'u.id AS "evaluateeId"',
+        'u.first_name AS "firstName"',
+        'u.last_name AS "lastName"',
+        'er.recipientSignedAt AS "recipientSignedAt"',
+      ])
+      .orderBy('er.recipientSignedAt', 'ASC') // los más antiguos primero
+      .limit(200)
+      .getRawMany();
+
+    return rows.map((r: any) => ({
+      responseId: r.responseId,
+      assignmentId: r.assignmentId,
+      cycleId: r.cycleId,
+      cycleName: r.cycleName,
+      evaluateeId: r.evaluateeId,
+      evaluateeName: `${r.firstName || ''} ${r.lastName || ''}`.trim() || 'Sin nombre',
+      recipientSignedAt: r.recipientSignedAt,
+    }));
+  }
+
   // ─── G8 (TAREA 9): Revocación de firma ──────────────────────────────
 
   /**

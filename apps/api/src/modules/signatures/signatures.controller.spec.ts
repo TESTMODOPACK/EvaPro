@@ -33,6 +33,7 @@ describe('SignaturesController', () => {
       getSignatures: jest.fn().mockResolvedValue([]),
       getSignaturesByTenant: jest.fn().mockResolvedValue([]),
       revokeSignature: jest.fn().mockResolvedValue({ id: 'sig-1', status: 'revoked' }),
+      getPendingEmployerWitness: jest.fn().mockResolvedValue([]),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -229,6 +230,22 @@ describe('SignaturesController', () => {
     it('revokeSignature SOLO super_admin (G8)', () => {
       const roles = rolesOf('revokeSignature');
       expect(roles).toEqual(['super_admin']);
+    });
+
+    it('getPendingEmployerWitness solo super_admin/tenant_admin (G3 / Mejora #3)', () => {
+      const roles = rolesOf('getPendingEmployerWitness');
+      expect(roles).toEqual(expect.arrayContaining(['super_admin', 'tenant_admin']));
+      expect(roles).not.toContain('manager');
+      expect(roles).not.toContain('employee');
+      expect(roles).not.toContain('external');
+    });
+  });
+
+  describe('getPendingEmployerWitness (G3)', () => {
+    it('llama service.getPendingEmployerWitness con tenantId del JWT', async () => {
+      const req: any = { user: { tenantId, userId, role: 'tenant_admin' } };
+      await controller.getPendingEmployerWitness(req);
+      expect(service.getPendingEmployerWitness).toHaveBeenCalledWith(tenantId);
     });
   });
 

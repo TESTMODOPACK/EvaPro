@@ -2069,6 +2069,14 @@ export const api = {
     team: (token: string) => request<any[]>("/signatures/team", {}, token),
     verifyIntegrity: (token: string, id: string) =>
       request<any>(`/signatures/verify/${id}`, {}, token),
+    // Mejora #3 / G3 — bandeja de evaluation_responses pendientes de
+    // firma de testigo del empleador. Solo tenant_admin/super_admin.
+    pendingEmployerWitness: (token: string) =>
+      request<Array<{
+        responseId: string; assignmentId: string; cycleId: string;
+        cycleName: string; evaluateeId: string; evaluateeName: string;
+        recipientSignedAt: string;
+      }>>("/signatures/pending-employer-witness", {}, token),
   },
 
   contracts: {

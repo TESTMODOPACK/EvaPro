@@ -83,6 +83,17 @@ export class SignaturesController {
     return this.signaturesService.verifyIntegrity(req.user.tenantId, id);
   }
 
+  /**
+   * G3 / Mejora #3 — Lista evaluation_responses pendientes de firma de
+   * testigo del empleador. Solo tenant_admin / super_admin.
+   * Devuelve documentos cuyo evaluatee ya firmó pero falta el testigo.
+   */
+  @Get('pending-employer-witness')
+  @Roles('super_admin', 'tenant_admin')
+  getPendingEmployerWitness(@Request() req: any) {
+    return this.signaturesService.getPendingEmployerWitness(req.user.tenantId);
+  }
+
   /** List signatures for a document */
   @Get('document/:documentType/:documentId')
   @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
