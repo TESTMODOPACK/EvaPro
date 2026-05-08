@@ -164,7 +164,7 @@ function CompetencyHeatmapSection({ cycleId }: { cycleId: string }) {
       )}
 
       {/* Heatmap table */}
-      {!isEmpty && <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem', minWidth: '600px' }}>
+      {!isEmpty && <div className="table-wrapper"><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem', minWidth: '600px' }}>
         <thead>
           <tr style={{ borderBottom: '2px solid var(--border)' }}>
             <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.72rem', minWidth: '160px' }}>
@@ -228,7 +228,7 @@ function CompetencyHeatmapSection({ cycleId }: { cycleId: string }) {
             );
           })}
         </tbody>
-      </table>}
+      </table></div>}
 
       {!isEmpty && hasPrivacyRows && (
         <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.75rem' }}>
