@@ -1795,6 +1795,16 @@
     "witnessFor": "Evaluation of {{name}}",
     "witnessSignedOn": "Signed by employee on {{date}}",
     "witnessSignBtn": "Sign as witness",
+    "badgeAgree": "Agreed",
+    "badgeAgreeWithComments": "Agreed with comments",
+    "badgeDecline": "Declined",
+    "signatureRole": "Role",
+    "role": {
+      "recipient": "Recipient",
+      "author": "Author",
+      "employer_witness": "Employer witness"
+    },
+    "revocationReason": "Revocation reason",
     "guideTitle": "Guide: Digital Signatures",
     "guideProcess": "Signing process:",
     "guideProcessText": "The system sends an OTP code to the signer's email. The signer enters the code to validate their identity. A SHA-256 hash of the document is generated as evidence.",

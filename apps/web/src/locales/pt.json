@@ -1777,6 +1777,16 @@
     "witnessFor": "Avaliação de {{name}}",
     "witnessSignedOn": "Assinada pelo empregado em {{date}}",
     "witnessSignBtn": "Assinar como testemunha",
+    "badgeAgree": "Aceita",
+    "badgeAgreeWithComments": "Aceita com observações",
+    "badgeDecline": "Recusada",
+    "signatureRole": "Função",
+    "role": {
+      "recipient": "Receptor",
+      "author": "Autor",
+      "employer_witness": "Testemunha do empregador"
+    },
+    "revocationReason": "Motivo da revogação",
     "guideTitle": "Guia: Assinaturas Digitais",
     "guideProcess": "Processo de assinatura:",
     "guideProcessText": "O sistema envia um código OTP para o e-mail do assinante. O assinante insere o código para validar sua identidade. Um hash SHA-256 do documento é gerado como evidência.",

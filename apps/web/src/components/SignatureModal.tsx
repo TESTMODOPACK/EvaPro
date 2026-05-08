@@ -372,19 +372,180 @@ function ackTypeKey(t: AcknowledgmentType): 'agree' | 'agreeWithComments' | 'dec
   return 'agree';
 }
 
-/** Badge component showing signature status */
+/**
+ * Mejora #4: estados visuales de firma con badges de color.
+ *
+ * Estados:
+ *  🟢 verde   — firmada (status='valid', acknowledgmentType='agree' o legacy NULL)
+ *  🟡 amarillo — firmada con comentario (acknowledgmentType='agree_with_comments')
+ *  🔴 rojo    — rechazada formalmente (acknowledgmentType='decline')
+ *  ⚫ gris    — revocada (status='revoked')
+ *
+ * También indica el signatureRole (recipient / author / employer_witness).
+ */
+interface SignatureBadgeStyle {
+  bg: string;
+  border: string;
+  color: string;
+  emoji: string;
+  labelKey: string;
+}
+
+function styleFromSignature(sig: any): SignatureBadgeStyle {
+  if (sig?.status === 'revoked') {
+    return {
+      bg: 'rgba(107,114,128,0.10)',
+      border: 'rgba(107,114,128,0.25)',
+      color: 'var(--text-muted)',
+      emoji: '⚫',
+      labelKey: 'firmas.statusRevoked',
+    };
+  }
+  const ack: AcknowledgmentType | null = sig?.acknowledgmentType ?? null;
+  if (ack === 'decline') {
+    return {
+      bg: 'rgba(239,68,68,0.08)',
+      border: 'rgba(239,68,68,0.25)',
+      color: 'var(--danger)',
+      emoji: '🔴',
+      labelKey: 'firmas.badgeDecline',
+    };
+  }
+  if (ack === 'agree_with_comments') {
+    return {
+      bg: 'rgba(245,158,11,0.10)',
+      border: 'rgba(245,158,11,0.25)',
+      color: '#b45309',
+      emoji: '🟡',
+      labelKey: 'firmas.badgeAgreeWithComments',
+    };
+  }
+  // Default: agree (incluye firmas legacy con acknowledgmentType=null)
+  return {
+    bg: 'rgba(16,185,129,0.08)',
+    border: 'rgba(16,185,129,0.2)',
+    color: 'var(--success)',
+    emoji: '🟢',
+    labelKey: 'firmas.badgeAgree',
+  };
+}
+
+function roleEmoji(role: string | null | undefined): string {
+  if (role === 'author') return '✍️';
+  if (role === 'employer_witness') return '🏛️';
+  return '👤'; // recipient default
+}
+
+/** Badge component showing signature status (multi-estado + popover de comentario). */
 export function SignatureBadge({ signatures }: { signatures: any[] }) {
   const { t } = useTranslation();
   if (!signatures || signatures.length === 0) return null;
+  // Mostrar la firma más reciente (por compat con uso histórico)
   const latest = signatures[0];
+  return <SignatureStatusBadge sig={latest} compact />;
+}
+
+/**
+ * Badge enriquecido con popover/title que muestra:
+ *  - signatureRole (icono)
+ *  - estado (color + label)
+ *  - firmante + fecha + IP
+ *  - comentario (si hay) en tooltip
+ */
+export function SignatureStatusBadge({
+  sig,
+  compact = false,
+}: {
+  sig: any;
+  compact?: boolean;
+}) {
+  const { t } = useTranslation();
+  const [showComment, setShowComment] = useState(false);
+  if (!sig) return null;
+
+  const style = styleFromSignature(sig);
+  const role = sig.signatureRole || 'recipient';
+  const signerName = sig.signer
+    ? `${sig.signer.firstName || ''} ${sig.signer.lastName || ''}`.trim()
+    : sig.signedBy?.substring(0, 8) || '—';
+  const dateStr = sig.signedAt ? new Date(sig.signedAt).toLocaleString('es-CL') : '';
+  const hasComment = !!sig.acknowledgmentComment;
+
+  // Tooltip text combinado para hover (a11y nativo, sin JS):
+  const tooltipParts = [
+    `${t('firmas.signedBy')}: ${signerName}`,
+    dateStr && `${dateStr}`,
+    sig.signerIp && `IP: ${sig.signerIp}`,
+    sig.signatureRole && `${t('firmas.signatureRole')}: ${t(`firmas.role.${role}`)}`,
+    sig.status === 'revoked' && sig.revocationReason && `${t('firmas.revocationReason')}: ${sig.revocationReason}`,
+  ].filter(Boolean).join('\n');
+
   return (
-    <span title={`${t('firmas.signedBy')}: ${latest.signer?.firstName || ''} ${latest.signer?.lastName || ''} — ${new Date(latest.signedAt).toLocaleString('es-CL')}`}
-      style={{
-        display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
-        background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)',
-        borderRadius: 20, padding: '2px 10px', fontSize: '0.72rem', color: 'var(--success)', fontWeight: 600,
-      }}>
-      {'✍️'} {t('firmas.signedBadge')}
+    <span style={{ position: 'relative', display: 'inline-block' }}>
+      <span
+        title={tooltipParts}
+        aria-label={tooltipParts}
+        style={{
+          display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+          background: style.bg, border: `1px solid ${style.border}`,
+          borderRadius: 20, padding: compact ? '2px 10px' : '4px 12px',
+          fontSize: compact ? '0.72rem' : '0.78rem',
+          color: style.color, fontWeight: 600,
+          cursor: hasComment ? 'pointer' : 'default',
+        }}
+        onClick={() => hasComment && setShowComment((v) => !v)}
+        onKeyDown={(e) => {
+          if (hasComment && (e.key === 'Enter' || e.key === ' ')) {
+            e.preventDefault();
+            setShowComment((v) => !v);
+          }
+        }}
+        tabIndex={hasComment ? 0 : undefined}
+        role={hasComment ? 'button' : undefined}
+      >
+        <span aria-hidden="true">{roleEmoji(role)}</span>
+        <span aria-hidden="true">{style.emoji}</span>
+        <span>{t(style.labelKey)}</span>
+        {hasComment && (
+          <span aria-hidden="true" style={{ fontSize: '0.85em', opacity: 0.7 }}>💬</span>
+        )}
+      </span>
+
+      {/* Popover con el comentario (si lo hay y el usuario click) */}
+      {showComment && hasComment && (
+        <div
+          role="tooltip"
+          style={{
+            position: 'absolute', top: '110%', left: 0, zIndex: 50,
+            minWidth: '260px', maxWidth: '380px',
+            padding: '0.6rem 0.75rem',
+            background: 'var(--bg-surface, #fff)',
+            border: '1px solid var(--border)',
+            borderLeft: `3px solid ${style.color}`,
+            borderRadius: 'var(--radius-sm, 6px)',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+            fontSize: '0.78rem', lineHeight: 1.5,
+            color: 'var(--text-primary)',
+            whiteSpace: 'pre-wrap',
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div style={{
+            fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase',
+            color: style.color, marginBottom: '0.25rem',
+          }}>
+            {t(style.labelKey)}
+          </div>
+          <div>{sig.acknowledgmentComment}</div>
+          <button
+            className="btn-ghost"
+            onClick={() => setShowComment(false)}
+            style={{ marginTop: '0.5rem', fontSize: '0.7rem', padding: '0.15rem 0.5rem' }}
+          >
+            {t('common.close')}
+          </button>
+        </div>
+      )}
     </span>
   );
 }

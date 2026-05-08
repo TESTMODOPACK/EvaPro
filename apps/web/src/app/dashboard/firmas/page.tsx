@@ -6,6 +6,10 @@ import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
 import { PageSkeleton } from '@/components/LoadingSkeleton';
 import dynamic from 'next/dynamic';
+// Mejora #4: badge enriquecido reemplaza el span de status simple.
+// Importación directa porque SignatureStatusBadge es un export con nombre
+// (no default), no funciona via next/dynamic igual de simple.
+import { SignatureStatusBadge } from '@/components/SignatureModal';
 
 const SignatureModal = dynamic(() => import('@/components/SignatureModal'), { ssr: false });
 
@@ -104,8 +108,6 @@ function SignatureTable({
               </thead>
               <tbody>
                 {paged.map((sig: any) => {
-                  const statusColor = sig.status === 'revoked' ? 'var(--danger)' : 'var(--success)';
-                  const statusLabel = sig.status === 'revoked' ? t('firmas.statusRevoked') : t('firmas.statusValid');
                   const vr = verifyResult[sig.id];
                   return (
                     <tr key={sig.id} style={{ borderBottom: '1px solid var(--border)' }}>
@@ -124,7 +126,8 @@ function SignatureTable({
                         {sig.signedAt ? new Date(sig.signedAt).toLocaleString('es-CL') : '\u2014'}
                       </td>
                       <td style={{ padding: '0.6rem 0.75rem' }}>
-                        <span style={{ color: statusColor, fontWeight: 600, fontSize: '0.78rem' }}>{statusLabel}</span>
+                        {/* Mejora #4: badge multi-estado con popover de comentario */}
+                        <SignatureStatusBadge sig={sig} compact />
                       </td>
                       {canVerify && (
                         <td style={{ padding: '0.6rem 0.75rem' }}>
