@@ -1,10 +1,17 @@
 # ADR 0002 — Modelo de Recomendación de Promociones
 
 **Estado:** Propuesto (pendiente validación con clientes)
-**Fecha:** 2026-05-08
+**Fecha:** 2026-05-08 (rev. 2026-05-08 — restricciones cliente)
 **Decisores:** CTO, Director de Producto, HR Partner Senior
 **Supersedes:** N/A
 **Relacionado:** ADR 0001 (signatures), módulos `evaluations`, `talent`, `dei`, `development`
+
+## Revisiones
+
+| Rev | Fecha | Cambio principal | Autor |
+|---|---|---|---|
+| 1 | 2026-05-08 | Versión inicial | CTO |
+| 2 | 2026-05-08 | **Restricciones explícitas del cliente:** (a) tenure mínimo en empresa ≥ 3 años (F1a), (b) mínimo 3 ciclos NO-90° (F1c — solo cuentan ciclos multi-fuente 180°/270°/360°), (c) refuerzo en §8.bis: módulo es **solo recomendación + visibilidad** para manager y RRHH, NO ejecuta promociones automáticamente | CTO + cliente |
 
 ---
 
@@ -85,9 +92,10 @@ Implementar un **modelo de scoring multidimensional explicable** con las siguien
 ```
 
 **Edge cases:**
-- Solo 1 ciclo evaluado: usar ese score, aplicar penalty de confianza −20%, marcar como `low_confidence`.
+- Solo 1 ciclo evaluado: usar ese score, aplicar penalty de confianza −20%, marcar como `low_confidence`. **NOTA:** este caso ya queda excluido por el filtro F1c (mínimo 3 ciclos no-90°), así que en la práctica no se calcula scoring en este caso.
 - 0 ciclos evaluados: marcar como `INSUFFICIENT_DATA`, no calcular score, excluir de candidatos.
-- Más de 3 ciclos disponibles: usar los 3 más recientes; los anteriores se descartan (decisiones recientes pesan más).
+- Más de 3 ciclos disponibles: usar los 3 más recientes que cumplan **el criterio no-90°** (excluye ciclos de manager-only, alineado con F1c). Los anteriores se descartan (decisiones recientes pesan más).
+- Ciclos 90° (solo manager) intercalados con ciclos multi-fuente: los 90° **no cuentan ni para F1c ni para el cálculo de Performance**. Solo se usan ciclos donde el user fue evaluado por al menos otra fuente además del manager (180°/270°/360°).
 
 ---
 
@@ -226,7 +234,9 @@ Si **cualquiera** de estos falla, el candidato es **NOT_READY** sin importar su 
 
 | # | Filtro | Default | Justificación |
 |---|---|---|---|
-| F1 | Tenure mínimo en rol actual | ≥ 12 meses | Promote-to-fail si no consolidó el rol actual |
+| **F1a** | **Tenure mínimo en la empresa** | **≥ 36 meses (3 años)** | Promociones a empleados con menos de 3 años son riesgo: no han demostrado consistencia cultural ni soportado al menos un ciclo completo de negocio. Decisión explícita del cliente. |
+| **F1b** | **Tenure mínimo en rol actual** | ≥ 12 meses | Subfiltro: dentro de los 3 años en empresa, debe llevar al menos 1 año en el rol actual para evitar promote-too-fast. |
+| **F1c** | **Mínimo 3 ciclos de evaluación NO-90°** | ≥ 3 ciclos completos donde el user fue evaluatee y el ciclo incluyó relationTypes distintos a `manager` (es decir, 180° / 270° / 360°) | Una evaluación 90° (solo manager) es una sola fuente de feedback con sesgo conocido. Exigir ≥3 ciclos multi-fuente garantiza que la decisión se basa en data triangulada de varios stakeholders y no en la opinión de un solo jefe. |
 | F2 | `user.isActive = true` | obligatorio | No se promueve a desvinculados |
 | F3 | Sin PIP activo | sin `development_plans.type='pip'` activo | PIP indica no-cumplimiento del rol actual |
 | F4 | Última firma de evaluación NO `decline` con severity grave | `acknowledgmentType ≠ 'decline'` o `acknowledgmentComment` no contiene flags graves | Empleado en desacuerdo formal con su evaluación → conflicto sin resolver |
@@ -234,11 +244,44 @@ Si **cualquiera** de estos falla, el candidato es **NOT_READY** sin importar su 
 | F6 | Existe posición jerárquica superior | `career_path.next_level` definido para `user.position` | No se puede promover si no hay hacia dónde |
 | F7 | Sin sanción disciplinaria activa | (módulo separado, opcional) | Compliance |
 
-**Configurabilidad:**
+### Detalle del filtro F1c — "ciclos NO-90°"
+
+**Definición operacional:**
+- Un ciclo se considera "NO-90°" para el evaluado X si X tiene assignments con `relationType` ≠ `manager` en ese ciclo (es decir, fue evaluado además por sí mismo, peers, direct reports o externos).
+- Solo cuentan ciclos con `cycle.status IN ('closed', 'active')` y assignments con `status = 'completed'`.
+
+**Pseudocódigo de validación:**
+```sql
+SELECT COUNT(DISTINCT a.cycle_id) AS qualifying_cycles
+FROM evaluation_assignments a
+JOIN evaluation_cycles c ON c.id = a.cycle_id
+WHERE a.evaluatee_id = :userId
+  AND a.tenant_id = :tenantId
+  AND a.status = 'completed'
+  AND c.status IN ('closed', 'active')
+  AND a.cycle_id IN (
+    -- el ciclo debe tener al menos un assignment para ESE user con relationType != manager
+    SELECT cycle_id FROM evaluation_assignments
+    WHERE evaluatee_id = :userId
+      AND relation_type IN ('self', 'peer', 'direct_report', 'external')
+      AND status = 'completed'
+  )
+```
+
+**Resultado esperado:** `qualifying_cycles >= 3` para pasar el filtro.
+
+**Edge cases:**
+- Empresa que históricamente solo hace evaluaciones 90° → ningún empleado pasa el filtro → la pantalla muestra "Para activar recomendaciones de promoción, configura ciclos 180°/270°/360°. Esto requiere al menos 3 ciclos completados."
+- Empleado nuevo con 3 años de empresa pero solo 2 ciclos completados → falla el filtro → se muestra como `NOT_READY` con razón explícita: "Faltan ciclos de evaluación multi-fuente (tiene 2, requiere 3)".
+
+### Configurabilidad
+
 ```json
 {
   "tenant.settings.promotionPolicy.filters": {
-    "minTenureMonths": 12,
+    "minTenureMonthsCompany": 36,
+    "minTenureMonthsCurrentRole": 12,
+    "minNon90Cycles": 3,
     "minEngagement": 3.0,
     "requirePositionAbove": true,
     "ignoreDeclineSignatures": false
@@ -246,9 +289,11 @@ Si **cualquiera** de estos falla, el candidato es **NOT_READY** sin importar su 
 }
 ```
 
-**Override mecanismo:**
+### Override mecanismo
+
 - Solo `tenant_admin` puede marcar `bypassFilter` con justificación escrita en el endorsement.
 - El bypass queda en `audit_log` con razón.
+- **F1a, F1b y F1c NO admiten bypass** — son políticas de negocio del cliente, no técnicas. Si el cliente quiere relajarlas debe modificar la config, no override caso-a-caso.
 - Bypass automático cuando el filtro falla por F6 (no hay position above) → genera notificación al admin: "Considera crear posición o expandir career path".
 
 ---
@@ -293,7 +338,7 @@ SELECT cohort_strategy:
 
 ## 4. Worked Example
 
-**Caso real ilustrativo: María, Senior Developer, departamento Engineering, hire date hace 28 meses, en rol actual hace 16 meses.**
+**Caso real ilustrativo: María, Senior Developer, departamento Engineering, hire date hace 42 meses (3.5 años), en rol actual hace 16 meses, ha participado en 4 ciclos completos de evaluación (3 a 360° + 1 a 270°).**
 
 **Cohort:** otros Senior Developers en Engineering (n=8).
 
@@ -355,7 +400,9 @@ composite_score =
 
 ### Filtros
 
-- F1: 16 meses ≥ 12 ✓
+- **F1a: tenure empresa 42 meses ≥ 36 ✓**
+- **F1b: tenure rol actual 16 meses ≥ 12 ✓**
+- **F1c: 4 ciclos no-90° ≥ 3 ✓** (3 a 360° + 1 a 270°, todos cuentan)
 - F2: isActive ✓
 - F3: sin PIP ✓
 - F4: última firma agree ✓
@@ -439,9 +486,11 @@ interface PromotionPolicy {
     engagement: number;      // default 0.05
   };
   filters: {
-    minTenureMonths: number;       // default 12
-    minEngagement: number;         // default 3.0
-    requirePositionAbove: boolean; // default true
+    minTenureMonthsCompany: number;     // default 36 (3 años — política mandatoria del cliente)
+    minTenureMonthsCurrentRole: number; // default 12
+    minNon90Cycles: number;             // default 3
+    minEngagement: number;              // default 3.0
+    requirePositionAbove: boolean;      // default true
     requirePotentialFromCalibration: boolean; // default true
   };
   thresholds: {
@@ -453,6 +502,12 @@ interface PromotionPolicy {
   performanceCycleCount: number;  // default 3
 }
 ```
+
+**Política mandatoria del cliente (no overridable a la baja):**
+- `minTenureMonthsCompany` ≥ 36 — el cliente puede subirla pero NO bajarla.
+- `minNon90Cycles` ≥ 3 — el cliente puede subirla pero NO bajarla.
+
+Estas dos restricciones son piso defensivo del cliente y se enforcaron explícitamente para evitar que un tenant_admin las relaje accidentalmente.
 
 Validaciones:
 - `Σ weights = 1.0 ± 0.001`
@@ -511,6 +566,93 @@ UI debe distinguir visualmente recomendaciones LOW (warning amarillo: "data limi
 - Diferenciador vs. Workday/Lattice (ninguno hace bias check automatic en LATAM)
 - Compliance preparation para regulaciones futuras
 - Reduce litigios por discriminación
+
+---
+
+## 8.bis Modo de Operación — Solo Recomendación + Visibilidad
+
+**Decisión explícita y mandatoria:** este módulo es de **RECOMENDACIÓN y VISIBILIDAD**, no de **ACCIÓN AUTOMATIZADA**.
+
+### Qué hace el sistema
+
+✅ Calcula scores y niveles de readiness por cron diario.
+✅ Presenta el resultado a `manager` (su equipo directo) y `tenant_admin` / RRHH (toda la organización).
+✅ Permite endorsement del manager, aprobación del admin.
+✅ Genera explicación natural-language por candidato (right-to-explanation).
+✅ Bloquea publicación de listas si dispara disparate impact.
+
+### Qué NO hace el sistema
+
+❌ NO ejecuta promociones automáticamente bajo ningún umbral.
+❌ NO actualiza `user.position` ni `user.salary` por sí solo.
+❌ NO envía notificación al empleado evaluado (la decisión es del manager comunicarla cuando exista).
+❌ NO comparte el ranking con el empleado.
+❌ NO usa estos scores para gating de otros features (ej. asignación de bonos, acceso a entrenamientos, etc.).
+
+### Matriz de Visibilidad (RBAC)
+
+| Rol | Ver lista candidatos | Ver score breakdown | Ver ranking comparativo | Endorse / Reject | Aprobar promoción | Ver bias report |
+|---|---|---|---|---|---|---|
+| `super_admin` | ✅ todos | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `tenant_admin` (RRHH) | ✅ todo el tenant | ✅ | ✅ | ❌ (es del manager) | ✅ | ✅ |
+| `manager` | ✅ **solo su equipo directo** (descendientes en jerarquía) | ✅ del equipo | ✅ del equipo | ✅ | ❌ (es de RRHH) | ❌ |
+| `employee` | ❌ | ✅ **solo el suyo** (right-to-explanation, on demand) | ❌ | ❌ | ❌ | ❌ |
+| `external` | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+
+### Visibilidad para el Manager
+
+**Pantalla `/dashboard/promociones/equipo`:**
+- Lista de **direct + indirect reports** (toda la cadena descendente).
+- Por cada miembro: nombre, rol actual, tenure en empresa, último ciclo de evaluación, readiness level, score breakdown (5 dimensiones), trend de últimos 3 ciclos.
+- Filtros: nivel, departamento, readiness level, área de oportunidad (qué dimensión falla).
+- Acciones por candidato:
+  - **Endorse para promoción** (entra a queue de RRHH).
+  - **Generar PDI orientado** (deriva a módulo de development con el gap más débil).
+  - **Marcar para mentoring**.
+  - **Solicitar más data** (lanza encuesta 360 ad-hoc).
+- **Vista ampliada de comportamiento** (no solo promoción): historial completo de evaluaciones, feedback recibido, recognition, mood trend, asistencia a check-ins. **Es un "cockpit" del manager para entender a su equipo holísticamente, no solo para promover.**
+
+### Visibilidad para RRHH (`tenant_admin`)
+
+**Pantalla `/dashboard/promociones/admin`:**
+- **Vista enterprise-wide** con filtros: departamento, nivel, readiness, género (para bias check), nacionalidad.
+- KPIs agregados: # candidatos READY_NOW, # READY_12M, # endorsed pending review, % de pipeline interno cubierto vs hiring externo.
+- **Tabla de bias check** por dimensión protegida: muestra ratio de selección por género/edad/nacionalidad y banderas si <0.80.
+- **Reporte ejecutivo** descargable (PDF/Excel) — top 20 candidatos del trimestre con explicación.
+- Acciones:
+  - **Aprobar promoción endorsed** (dispara workflow de firmas G2 + G3).
+  - **Solicitar revisión adicional** (devuelve al manager con preguntas).
+  - **Rechazar con motivo** (queda en audit log).
+
+### Visibilidad para el Empleado
+
+**Pantalla `/dashboard/mi-desarrollo/explicacion`** (NUEVA, opt-in):
+- El empleado puede solicitar voluntariamente una "explicación de mi data" — esto cumple right-to-explanation de GDPR/AI Act.
+- Lo que ve:
+  - Su breakdown propio (las 5 dimensiones SIN el composite final ni el percentil)
+  - Áreas de fortaleza y áreas de oportunidad (en lenguaje natural, sin "score")
+  - Plan de desarrollo sugerido para cerrar gaps
+- Lo que **NO** ve:
+  - Su readiness level (READY_NOW / READY_12M / etc.)
+  - Su score composite numérico
+  - Ranking vs. otros del cohort
+  - Si fue endorsed por su manager
+
+**Razón del límite:**
+- Mostrar al empleado "estás en READY_NOW" crea expectativa de promoción inmediata que puede no cumplirse (depende de presupuesto, posición disponible, decisión final de RRHH).
+- Mostrar el ranking genera competencia tóxica entre colegas y desmotiva a los no-rankeados.
+- Mostrar áreas de mejora SÍ es útil y no genera expectativa: el empleado sabe en qué crecer sin saber su "puesto" en una lista.
+
+### Auditoría obligatoria
+
+Cada acción queda persistida en `audit_logs`:
+- `promotion.recommendation.viewed` — quién vio qué lista
+- `promotion.endorsement.created` — manager X endorsó a user Y
+- `promotion.decision.approved` / `.rejected` — admin Z aprobó/rechazó
+- `promotion.bias.alert` — disparate impact detectado
+- `promotion.employee_explanation.requested` — empleado pidió su explicación
+
+Compliance check: `tenant_admin` puede generar reporte mensual "¿quién accedió a qué data de promoción?".
 
 ---
 
