@@ -19,6 +19,10 @@ import { SignatureRemindersService } from './services/signature-reminders.servic
 import { NotificationsModule } from '../notifications/notifications.module';
 import { AuditModule } from '../audit/audit.module';
 import { EvaluationsModule } from '../evaluations/evaluations.module';
+// Mejora #5 — RlsModule expone TenantCronRunner que necesita
+// SignatureRemindersService para iterar tenants en el cron diario
+// con app.current_tenant_id seteado (defense vs RLS).
+import { RlsModule } from '../../common/rls/rls.module';
 
 @Module({
   imports: [
@@ -34,6 +38,8 @@ import { EvaluationsModule } from '../evaluations/evaluations.module';
     // un evaluation_response, freezando el estado de los objetivos del
     // evaluado en el momento exacto de la firma.
     EvaluationsModule,
+    // Mejora #5 — TenantCronRunner para el cron diario.
+    RlsModule,
   ],
   controllers: [SignaturesController],
   providers: [SignaturesService, SignatureAuthorizationService, SignatureRemindersService],

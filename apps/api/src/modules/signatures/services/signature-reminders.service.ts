@@ -1,12 +1,15 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { Cron } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
-import { IsNull, LessThanOrEqual, Repository } from 'typeorm';
+import { DataSource, IsNull, LessThanOrEqual, Repository } from 'typeorm';
 import { SignatureReminderSent } from '../entities/signature-reminder-sent.entity';
 import { EvaluationResponse } from '../../evaluations/entities/evaluation-response.entity';
 import { EvaluationAssignment } from '../../evaluations/entities/evaluation-assignment.entity';
 import { EvaluationCycle, CycleStatus } from '../../evaluations/entities/evaluation-cycle.entity';
 import { User } from '../../users/entities/user.entity';
 import { NotificationsService } from '../../notifications/notifications.service';
+import { runWithCronLock } from '../../../common/utils/cron-lock';
+import { TenantCronRunner } from '../../../common/rls/tenant-cron-runner';
 
 const REMINDER_LEVELS = [3, 7, 15] as const;
 type ReminderLevel = (typeof REMINDER_LEVELS)[number];
@@ -59,7 +62,52 @@ export class SignatureRemindersService {
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     private readonly notificationsService: NotificationsService,
+    // Mejora #5 — DataSource para advisory lock (anti race entre replicas).
+    // TenantCronRunner para iterar tenants activos con app.current_tenant_id
+    // seteado (defense vs RLS cuando se active).
+    private readonly dataSource: DataSource,
+    private readonly tenantCronRunner: TenantCronRunner,
   ) {}
+
+  /**
+   * Mejora #5 — Cron job diario que dispara processTenant por cada tenant
+   * activo. Corre a las 9:00 AM (timezone del server). El advisory lock
+   * via runWithCronLock previene que dos replicas de la API ejecuten el
+   * mismo cron simultaneamente (en deployment multi-replica de Render).
+   *
+   * Las firmas pendientes con D+3/D+7/D+15 reciben recordatorio escalonado.
+   * Idempotencia garantizada por la tabla signature_reminders_sent (UNIQUE
+   * constraint), asi que reintento manual o restart del worker no genera
+   * duplicados.
+   */
+  @Cron('0 9 * * *')
+  async runDailyReminders(): Promise<void> {
+    await runWithCronLock(
+      'signatureRemindersDaily',
+      this.dataSource,
+      this.logger,
+      async () => {
+        this.logger.log('[Cron signatureRemindersDaily] start');
+        const totals = { 3: 0, 7: 0, 15: 0 };
+        const results = await this.tenantCronRunner.runForEachTenant(
+          'signatureRemindersDaily',
+          async (tenantId) => {
+            return this.processTenant(tenantId);
+          },
+        );
+        // Agregar contadores para visibilidad en logs
+        for (const r of results) {
+          if (!r) continue;
+          totals[3] += r.sent[3];
+          totals[7] += r.sent[7];
+          totals[15] += r.sent[15];
+        }
+        this.logger.log(
+          `[Cron signatureRemindersDaily] done — L3=${totals[3]} L7=${totals[7]} L15=${totals[15]}`,
+        );
+      },
+    );
+  }
 
   /**
    * Procesa recordatorios pendientes para un tenant. Identifica

@@ -10,6 +10,7 @@
  */
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
+import { DataSource } from 'typeorm';
 
 import { SignatureRemindersService } from './signature-reminders.service';
 import { SignatureReminderSent } from '../entities/signature-reminder-sent.entity';
@@ -18,9 +19,11 @@ import { EvaluationAssignment } from '../../evaluations/entities/evaluation-assi
 import { EvaluationCycle, CycleStatus } from '../../evaluations/entities/evaluation-cycle.entity';
 import { User } from '../../users/entities/user.entity';
 import { NotificationsService } from '../../notifications/notifications.service';
+import { TenantCronRunner } from '../../../common/rls/tenant-cron-runner';
 import {
   createMockRepository,
   createMockNotificationsService,
+  createMockDataSource,
   fakeUuid,
 } from '../../../../test/test-utils';
 
@@ -32,6 +35,8 @@ describe('SignatureRemindersService (G11)', () => {
   let cycleRepo: any;
   let userRepo: any;
   let notificationsService: any;
+  let dataSource: any;
+  let tenantCronRunner: any;
 
   const tenantId = fakeUuid(100);
   const otherTenantId = fakeUuid(101);
@@ -46,6 +51,15 @@ describe('SignatureRemindersService (G11)', () => {
     cycleRepo = createMockRepository();
     userRepo = createMockRepository();
     notificationsService = createMockNotificationsService();
+    dataSource = createMockDataSource();
+    // Mock TenantCronRunner.runForEachTenant: invoca callback inmediatamente
+    // con un tenantId fake (usamos el mismo que los tests usan).
+    tenantCronRunner = {
+      runForEachTenant: jest.fn().mockImplementation(async (_label: string, cb: any) => {
+        const result = await cb(tenantId);
+        return [result];
+      }),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -56,6 +70,8 @@ describe('SignatureRemindersService (G11)', () => {
         { provide: getRepositoryToken(EvaluationCycle), useValue: cycleRepo },
         { provide: getRepositoryToken(User), useValue: userRepo },
         { provide: NotificationsService, useValue: notificationsService },
+        { provide: DataSource, useValue: dataSource },
+        { provide: TenantCronRunner, useValue: tenantCronRunner },
       ],
     }).compile();
 
@@ -322,5 +338,79 @@ describe('SignatureRemindersService (G11)', () => {
 
     // Al menos uno se envió a pesar del fallo
     expect(result.sent[3]).toBe(1);
+  });
+
+  // ─── Mejora #5: @Cron runDailyReminders ─────────────────────────────
+
+  describe('runDailyReminders (@Cron Mejora #5)', () => {
+    /**
+     * Helper: crea un queryRunner mock que simula obtener el advisory lock.
+     * `locked=true` permite que el cron entre al body; `locked=false` skip.
+     */
+    function setupLock(locked: boolean) {
+      const runner: any = {
+        connect: jest.fn().mockResolvedValue(undefined),
+        release: jest.fn().mockResolvedValue(undefined),
+        query: jest.fn().mockImplementation((sql: string) => {
+          if (sql.includes('pg_try_advisory_lock')) {
+            return Promise.resolve([{ locked }]);
+          }
+          if (sql.includes('pg_advisory_unlock')) {
+            return Promise.resolve([{ pg_advisory_unlock: true }]);
+          }
+          return Promise.resolve([]);
+        }),
+      };
+      dataSource.createQueryRunner.mockReturnValue(runner);
+      return runner;
+    }
+
+    it('itera tenants via runForEachTenant con label correcto cuando obtiene el lock', async () => {
+      setupLock(true);
+      const qb: any = {
+        innerJoin: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        select: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue([]),
+      };
+      responseRepo.createQueryBuilder.mockReturnValue(qb);
+
+      await service.runDailyReminders();
+
+      expect(tenantCronRunner.runForEachTenant).toHaveBeenCalledWith(
+        'signatureRemindersDaily',
+        expect.any(Function),
+      );
+    });
+
+    it('usa advisory lock (queryRunner.query con pg_try_advisory_lock)', async () => {
+      const runner = setupLock(true);
+      const qb: any = {
+        innerJoin: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        select: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue([]),
+      };
+      responseRepo.createQueryBuilder.mockReturnValue(qb);
+
+      await service.runDailyReminders();
+
+      // El queryRunner debe haber pedido advisory lock + unlock
+      const sqlCalls = runner.query.mock.calls.map((c: any[]) => c[0]);
+      expect(sqlCalls.some((s: string) => s.includes('pg_try_advisory_lock'))).toBe(true);
+      expect(sqlCalls.some((s: string) => s.includes('pg_advisory_unlock'))).toBe(true);
+      expect(runner.release).toHaveBeenCalled();
+    });
+
+    it('si el lock falla (otra replica corriendo), skip sin procesar tenants', async () => {
+      setupLock(false);
+
+      await expect(service.runDailyReminders()).resolves.toBeUndefined();
+
+      // tenantCronRunner NO debe haberse llamado (skipped por lock)
+      expect(tenantCronRunner.runForEachTenant).not.toHaveBeenCalled();
+    });
   });
 });
