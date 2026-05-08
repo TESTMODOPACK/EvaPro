@@ -61,6 +61,12 @@ services:
     build:
       context: ./apps/api
       dockerfile: Dockerfile
+      args:
+        # Mejora #6 — SHA del checkout para exponer via /health/version.
+        # Setear antes de `docker compose build`:
+        #   export GIT_SHA=$(git rev-parse --short HEAD)
+        # Si no se setea, default 'unknown' (no rompe el build).
+        GIT_SHA: ${GIT_SHA:-unknown}
     container_name: eva360_api
     restart: unless-stopped
     mem_limit: 768m
