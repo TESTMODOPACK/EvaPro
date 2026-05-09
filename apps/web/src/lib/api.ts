@@ -2079,6 +2079,71 @@ export const api = {
       }>>("/signatures/pending-employer-witness", {}, token),
   },
 
+  // ADR 0002 — Promotions module
+  promotions: {
+    /** Lista candidatos visibles según rol (manager: equipo, admin: tenant) */
+    listCandidates: (
+      token: string,
+      filters?: { readiness?: string[]; departmentId?: string; q?: string },
+    ) => {
+      const params = new URLSearchParams();
+      if (filters?.readiness?.length) params.set('readiness', filters.readiness.join(','));
+      if (filters?.departmentId) params.set('departmentId', filters.departmentId);
+      if (filters?.q) params.set('q', filters.q);
+      const qs = params.toString();
+      return request<any[]>(`/promotions/candidates${qs ? '?' + qs : ''}`, {}, token);
+    },
+    /** Detalle + breakdown de 5 dimensiones (manager equipo / admin tenant) */
+    explainCandidate: (token: string, userId: string) =>
+      request<any>(`/promotions/candidates/${userId}/explain`, {}, token),
+    /** Right-to-explanation del empleado (sin readiness, sin score numérico) */
+    myExplanation: (token: string) =>
+      request<{ strengths: string[]; opportunities: string[]; message: string }>(
+        '/promotions/me/explanation', {}, token,
+      ),
+    /** Manager endorsa candidato */
+    endorse: (token: string, userId: string, comment: string, targetLevelId?: string) =>
+      request<any>(
+        `/promotions/${userId}/endorse`,
+        { method: 'POST', body: JSON.stringify({ comment, ...(targetLevelId ? { targetLevelId } : {}) }) },
+        token,
+      ),
+    /** Manager rechaza candidato */
+    reject: (token: string, userId: string, comment: string) =>
+      request<any>(
+        `/promotions/${userId}/reject`,
+        { method: 'POST', body: JSON.stringify({ comment }) },
+        token,
+      ),
+    /** Admin decide approve|reject|return sobre un endorsement */
+    decide: (
+      token: string,
+      decisionId: string,
+      action: 'approve' | 'reject' | 'return',
+      comment: string,
+      approvedTargetLevelId?: string,
+    ) =>
+      request<any>(
+        `/promotions/decisions/${decisionId}/decide`,
+        { method: 'POST', body: JSON.stringify({ action, comment, ...(approvedTargetLevelId ? { approvedTargetLevelId } : {}) }) },
+        token,
+      ),
+    /** Listado de decisiones pendientes de RRHH */
+    pendingDecisions: (token: string) =>
+      request<any[]>('/promotions/decisions/pending', {}, token),
+    /** Reporte de bias / disparate impact (admin only) */
+    biasReport: (token: string) =>
+      request<{
+        flagged: boolean;
+        reports: any[];
+        totalEligible: number;
+        totalRecommended: number;
+      }>('/promotions/bias-report', {}, token),
+    /** Trigger manual de re-cálculo (admin only) */
+    recalculate: (token: string, userId: string) =>
+      request<any>(`/promotions/candidates/${userId}/recalculate`, { method: 'POST' }, token),
+  },
+
   contracts: {
     list: (token: string) => request<any[]>("/contracts", {}, token),
     getById: (token: string, id: string) => request<any>(`/contracts/${id}`, {}, token),

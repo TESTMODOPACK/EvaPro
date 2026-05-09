@@ -19,6 +19,7 @@ export const ROUTE_FEATURE_MAP: Record<string, string> = {
   '/dashboard/reconocimientos': 'RECOGNITION',
   '/dashboard/desarrollo-organizacional': 'ORG_DEVELOPMENT',
   '/dashboard/firmas': 'SIGNATURES',
+  '/dashboard/promociones': 'PROMOTIONS',
   '/dashboard/auditoria': 'AUDIT_LOG',
   '/dashboard/dei': 'DEI',
   // v3.1 F1 — Agenda Mágica de 1:1. La ruta base /dashboard/feedback ya está
@@ -52,6 +53,7 @@ export const FEATURE_MIN_PLAN: Record<string, string> = {
   POSTULANTS: 'Pro',
   ORG_DEVELOPMENT: 'Pro',
   SIGNATURES: 'Pro',
+  PROMOTIONS: 'Pro',
   AUDIT_LOG: 'Pro',
   DEI: 'Pro',
   MAGIC_MEETINGS: 'Pro',
@@ -82,6 +84,7 @@ export const FEATURE_LABELS: Record<string, string> = {
   RECOGNITION: 'Reconocimientos',
   ORG_DEVELOPMENT: 'Desarrollo Organizacional',
   SIGNATURES: 'Firmas Digitales',
+  PROMOTIONS: 'Recomendaciones de Promoción',
   ENGAGEMENT_SURVEYS: 'Encuestas de Clima',
   AUDIT_LOG: 'Registro de Auditoría',
   DEI: 'Diversidad e Inclusión',
