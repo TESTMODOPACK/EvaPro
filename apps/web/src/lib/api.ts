@@ -806,6 +806,33 @@ export const api = {
       if (filters?.tenantId) params.set('tenantId', filters.tenantId);
       return request<PaginatedResponse<UserData>>(`/users?${params.toString()}`, {}, token);
     },
+    /**
+     * Picker scope — devuelve TODOS los usuarios activos del tenant con
+     * SOLO campos públicos (sin info sensible). Para dropdowns de
+     * selección: reconocimientos, feedback continuo, pickers en general.
+     *
+     * Diferente de list(): no aplica scope manager — cualquier rol
+     * (excepto external) ve todo el tenant. Esto permite recognition
+     * cross-team y upward, alineado con best practice del sector.
+     */
+    picker: (token: string) =>
+      request<{
+        data: Array<{
+          id: string;
+          firstName: string;
+          lastName: string;
+          email: string;
+          position: string | null;
+          positionId: string | null;
+          department: string | null;
+          departmentId: string | null;
+          role: string;
+          hierarchyLevel: number | null;
+          managerId: string | null;
+          language: string | null;
+        }>;
+        total: number;
+      }>('/users/picker', {}, token),
     me: (token: string) =>
       request<UserData>("/users/me", {}, token),
     uploadCv: async (token: string, file: File) => {

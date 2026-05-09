@@ -78,6 +78,27 @@ export class UsersController {
     );
   }
 
+  /**
+   * GET /users/picker — Lista de usuarios activos del tenant con campos
+   * NO-sensibles, para dropdowns de selección (reconocimientos, feedback,
+   * pickers en general).
+   *
+   * Diferente de GET / (findAll):
+   *  - NO aplica scope manager → cualquier rol ve TODOS los users del
+   *    tenant (alinea con best practice de recognition: cualquiera puede
+   *    reconocer a cualquiera, incluyendo upward y cross-team).
+   *  - SOLO campos públicos (sin rut, birthDate, gender, nationality,
+   *    contractType, hireDate, salaryBand, etc.).
+   *  - Sin paginación (hasta 500 por request).
+   *
+   * external NO accede (no debe ver staff).
+   */
+  @Get('picker')
+  @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
+  findAllForPicker(@Request() req: any) {
+    return this.usersService.findAllForPicker(req.user.tenantId, req.user.role);
+  }
+
   /** POST /users/me/cv — Upload CV (PDF/DOCX, max 5MB) */
   @Post('me/cv')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }))

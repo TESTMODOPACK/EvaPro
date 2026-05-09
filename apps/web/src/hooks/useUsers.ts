@@ -26,15 +26,24 @@ export function useUsers(
 /**
  * P8-C: hook especializado para pickers (dropdowns, SearchableSelect) que
  * necesitan "todos los usuarios activos" en UI. Cachea 5 min porque el
- * dataset cambia lentamente, y limita a usuarios activos solamente para
- * reducir payload. Si el tenant tiene >500 usuarios, migrar a
+ * dataset cambia lentamente.
+ *
+ * IMPORTANTE: usa el endpoint dedicado `/users/picker` que devuelve
+ * tenant-wide (NO aplica scope manager) para que reconocimientos y
+ * feedback puedan reconocer/dar a cualquiera. Solo campos públicos
+ * (sin info sensible). Si el tenant tiene >500 usuarios, migrar a
  * autocomplete con backend search.
+ *
+ * El componente que consume este hook puede recibir tanto:
+ *   - { data: User[] } (estructura vieja paginada — fallback)
+ *   - User[] (estructura nueva del endpoint picker)
+ * por compat con el patrón de uso `(usersPage as any)?.data || usersPage`.
  */
 export function useActiveUsersForPicker() {
   const token = useAuthStore((s) => s.token);
   return useQuery({
     queryKey: ['users', 'active-picker'],
-    queryFn: () => api.users.list(token!, 1, PICKER_USERS_LIMIT, { status: 'active' }),
+    queryFn: () => api.users.picker(token!),
     enabled: !!token,
     staleTime: 5 * 60 * 1000, // 5 min
   });
