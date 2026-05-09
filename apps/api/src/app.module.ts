@@ -37,6 +37,7 @@ import { TeamMeetingsModule } from './modules/team-meetings/team-meetings.module
 import { MoodCheckinsModule } from './modules/mood-checkins/mood-checkins.module';
 import { LeaderStreaksModule } from './modules/leader-streaks/leader-streaks.module';
 import { SignaturesModule } from './modules/signatures/signatures.module';
+import { PromotionsModule } from './modules/promotions/promotions.module';
 import { SurveysModule } from './modules/surveys/surveys.module';
 import { ContractsModule } from './modules/contracts/contracts.module';
 import { HealthModule } from './modules/health/health.module';
@@ -124,6 +125,7 @@ import { CsrfGuard } from './common/guards/csrf.guard';
     MoodCheckinsModule,
     LeaderStreaksModule,
     SignaturesModule,
+    PromotionsModule,
     SurveysModule,
     ContractsModule,
     HealthModule,
