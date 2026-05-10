@@ -1,10 +1,33 @@
-import { Injectable, NotFoundException, BadRequestException, InternalServerErrorException, Inject, forwardRef, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  InternalServerErrorException,
+  Inject,
+  forwardRef,
+  Logger,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository, In, Between, LessThanOrEqual, MoreThanOrEqual, ILike } from 'typeorm';
+import {
+  DataSource,
+  Repository,
+  In,
+  Between,
+  LessThanOrEqual,
+  MoreThanOrEqual,
+  ILike,
+} from 'typeorm';
 import { Invoice, InvoiceStatus, InvoiceType } from './entities/invoice.entity';
 import { InvoiceLine } from './entities/invoice-line.entity';
-import { Subscription, SubscriptionStatus } from './entities/subscription.entity';
-import { PaymentHistory, PaymentStatus, BillingPeriod } from './entities/payment-history.entity';
+import {
+  Subscription,
+  SubscriptionStatus,
+} from './entities/subscription.entity';
+import {
+  PaymentHistory,
+  PaymentStatus,
+  BillingPeriod,
+} from './entities/payment-history.entity';
 import { Tenant } from '../tenants/entities/tenant.entity';
 import { User } from '../users/entities/user.entity';
 import { AuditService } from '../audit/audit.service';
@@ -52,12 +75,18 @@ export class InvoicesService {
       .createQueryBuilder('i')
       .select('i.invoice_number', 'invoiceNumber')
       .where('i.invoice_number LIKE :prefix', { prefix: `${prefix}%` })
-      .orderBy(`CAST(NULLIF(regexp_replace(i.invoice_number, '^EVA-\\d+-', ''), '') AS INTEGER)`, 'DESC')
+      .orderBy(
+        `CAST(NULLIF(regexp_replace(i.invoice_number, '^EVA-\\d+-', ''), '') AS INTEGER)`,
+        'DESC',
+      )
       .limit(1)
       .getRawOne();
     let seq = 1;
     if (row?.invoiceNumber) {
-      const parsed = parseInt(String(row.invoiceNumber).replace(prefix, ''), 10);
+      const parsed = parseInt(
+        String(row.invoiceNumber).replace(prefix, ''),
+        10,
+      );
       if (!isNaN(parsed)) seq = parsed + 1;
     }
     return `${prefix}${String(seq).padStart(4, '0')}`;
@@ -65,26 +94,69 @@ export class InvoicesService {
 
   // ─── Generate Invoice ───────────────────────────────────────────────
 
-  async generateInvoice(subscriptionId: string, userId?: string): Promise<Invoice> {
+  async generateInvoice(
+    subscriptionId: string,
+    userId?: string,
+  ): Promise<Invoice> {
     try {
       const sub = await this.subRepo.findOne({
         where: { id: subscriptionId },
         relations: ['plan', 'tenant'],
       });
       if (!sub) throw new NotFoundException('Suscripcion no encontrada');
-      if (!sub.plan) throw new BadRequestException('La suscripcion no tiene un plan asociado. Asigne un plan antes de facturar.');
-      if (!sub.tenant) throw new BadRequestException('La suscripcion no tiene un tenant asociado.');
+      if (!sub.plan)
+        throw new BadRequestException(
+          'La suscripcion no tiene un plan asociado. Asigne un plan antes de facturar.',
+        );
+      if (!sub.tenant)
+        throw new BadRequestException(
+          'La suscripcion no tiene un tenant asociado.',
+        );
 
-      // Calculate period. All three fallbacks coerced through `new Date(...)` so
-      // that downstream code can call Date methods reliably even if the DB
-      // returned a string (postgres `date` columns serialize as string).
+      // Calculate period by HISTORICAL CONTINUITY (Fase 0 / Tarea 0.1.1).
+      //
+      // Bug previo: usabamos `sub.nextBillingDate` como `periodStart`, lo que
+      // facturaba el siguiente periodo en vez del actual (caso real
+      // reproducido: tenant con plan anual creado el 2026-05 generaba factura
+      // con periodo abr/2027). `nextBillingDate` representa "cuando se debe
+      // cobrar la PROXIMA factura" — NO el periodo cubierto por la factura
+      // que estoy generando ahora.
+      //
+      // Regla correcta:
+      //   - Primera factura de la suscripcion (sin facturas previas activas)
+      //     -> periodStart = sub.startDate (cubre el periodo actual desde
+      //     que el cliente firmo).
+      //   - Facturas siguientes -> periodStart = periodEnd de la ultima
+      //     factura no-cancelada (continuidad sin gaps ni overlaps).
+      //
+      // Excluimos CANCELLED del lookup porque una factura cancelada
+      // representa un periodo que NUNCA se cobro y debe ser refacturado.
+      // Si el negocio quiere "anular sin refacturar", debe emitirse como
+      // CREDIT_NOTE (Fase 2), no como CANCELLED.
+      //
+      // Coercion `new Date(...)` defensiva: las columnas postgres `date`
+      // se serializan como string `YYYY-MM-DD`.
       const now = new Date();
-      const rawStart = sub.nextBillingDate || sub.startDate || now;
+      const lastInvoice = await this.invoiceRepo.findOne({
+        where: {
+          subscriptionId: sub.id,
+          status: In([
+            InvoiceStatus.DRAFT,
+            InvoiceStatus.SENT,
+            InvoiceStatus.PAID,
+            InvoiceStatus.OVERDUE,
+          ]),
+        },
+        order: { periodEnd: 'DESC' },
+      });
+      const rawStart = lastInvoice?.periodEnd ?? sub.startDate ?? now;
       const periodStart = new Date(rawStart as any);
       if (isNaN(periodStart.getTime())) {
-        throw new BadRequestException(`Fecha de inicio de periodo invalida para la suscripcion ${sub.id} (valor recibido: ${String(rawStart)})`);
+        throw new BadRequestException(
+          `Fecha de inicio de periodo invalida para la suscripcion ${sub.id} (valor recibido: ${String(rawStart)})`,
+        );
       }
-      const billingPeriod = (sub.billingPeriod || BillingPeriod.MONTHLY) as BillingPeriod;
+      const billingPeriod = sub.billingPeriod || BillingPeriod.MONTHLY;
       const periodEnd = this.addBillingPeriod(periodStart, billingPeriod);
 
       // Check for duplicate invoice in same period
@@ -92,11 +164,17 @@ export class InvoicesService {
         where: {
           subscriptionId: sub.id,
           periodStart: periodStart,
-          status: In([InvoiceStatus.DRAFT, InvoiceStatus.SENT, InvoiceStatus.PAID]),
+          status: In([
+            InvoiceStatus.DRAFT,
+            InvoiceStatus.SENT,
+            InvoiceStatus.PAID,
+          ]),
         },
       });
       if (existing) {
-        throw new BadRequestException(`Ya existe una factura para este período (${existing.invoiceNumber})`);
+        throw new BadRequestException(
+          `Ya existe una factura para este período (${existing.invoiceNumber})`,
+        );
       }
 
       // P0: critical section (get next number + save invoice) envuelta
@@ -111,8 +189,15 @@ export class InvoicesService {
         this.dataSource,
         async () => {
           const invoiceNumber = await this.getNextInvoiceNumber();
-          const dueDate = new Date(periodStart);
-          dueDate.setDate(dueDate.getDate() + 15); // 15 days to pay
+          // Fase 0 / Tarea 0.1.2: dueDate ancla en fecha de EMISION (now),
+          // no en periodStart. Pre-fix: con plan anual creado hoy y bug de
+          // periodStart=2027, dueDate quedaba en 2027-05 (~1 ano fuera).
+          // Post-fix: la factura siempre vence 15 dias despues de emitirla,
+          // independiente del periodo cubierto. Esto coincide con la
+          // expectativa de pago del cliente (cobrar al inicio del periodo,
+          // pagar dentro de 15 dias) y con plazos comerciales chilenos.
+          const dueDate = new Date(now);
+          dueDate.setUTCDate(dueDate.getUTCDate() + 15); // 15 days from issuance (UTC-safe, ver Tarea 0.1.6)
 
           // Build lines
           const lines: Partial<InvoiceLine>[] = [];
@@ -120,7 +205,13 @@ export class InvoicesService {
           // Line 1: Plan base
           const planPrice = this.getPlanPriceForPeriod(sub);
           if (planPrice > 0) {
-            const periodLabel = { monthly: 'Mensual', quarterly: 'Trimestral', semiannual: 'Semestral', annual: 'Anual' }[billingPeriod] || 'Mensual';
+            const periodLabel =
+              {
+                monthly: 'Mensual',
+                quarterly: 'Trimestral',
+                semiannual: 'Semestral',
+                annual: 'Anual',
+              }[billingPeriod] || 'Mensual';
             lines.push({
               concept: `Plan ${sub.plan?.name || 'Base'} — ${periodLabel}`,
               quantity: 1,
@@ -142,7 +233,9 @@ export class InvoicesService {
           }
 
           if (lines.length === 0) {
-            throw new BadRequestException(`El plan asignado no tiene precio configurado (monthlyPrice=${sub.plan?.monthlyPrice || 0}). Configure el precio antes de facturar o asigne un plan pagado.`);
+            throw new BadRequestException(
+              `El plan asignado no tiene precio configurado (monthlyPrice=${sub.plan?.monthlyPrice || 0}). Configure el precio antes de facturar o asigne un plan pagado.`,
+            );
           }
 
           const subtotal = lines.reduce((s, l) => s + (l.total || 0), 0);
@@ -171,21 +264,39 @@ export class InvoicesService {
 
           // Save lines (dentro del lock también — consistencia atómica)
           for (const line of lines) {
-            await this.lineRepo.save(this.lineRepo.create({ ...line, invoiceId: saved.id }));
+            await this.lineRepo.save(
+              this.lineRepo.create({ ...line, invoiceId: saved.id }),
+            );
           }
 
           if (userId) {
-            await this.auditService.log(sub.tenantId, userId, 'invoice.generated', 'invoice', saved.id, { invoiceNumber, total }).catch(() => {});
+            await this.auditService
+              .log(
+                sub.tenantId,
+                userId,
+                'invoice.generated',
+                'invoice',
+                saved.id,
+                { invoiceNumber, total },
+              )
+              .catch(() => {});
           }
 
           return saved;
         },
       );
 
-      return this.invoiceRepo.findOne({ where: { id: savedWithNumber.id }, relations: ['tenant', 'lines'] }) as Promise<Invoice>;
+      return this.invoiceRepo.findOne({
+        where: { id: savedWithNumber.id },
+        relations: ['tenant', 'lines'],
+      }) as Promise<Invoice>;
     } catch (err: any) {
       // Rethrow business exceptions as-is so the 400 message reaches the client.
-      if (err instanceof NotFoundException || err instanceof BadRequestException) throw err;
+      if (
+        err instanceof NotFoundException ||
+        err instanceof BadRequestException
+      )
+        throw err;
       // Everything else is an unexpected DB/runtime error. Log the full stack
       // server-side AND rethrow a 500 carrying the actual root message so the
       // admin UI can show the real cause instead of a generic "Internal server error".
@@ -201,9 +312,13 @@ export class InvoicesService {
 
   // ─── Bulk Generate ──────────────────────────────────────────────────
 
-  async generateBulkInvoices(userId: string): Promise<{ generated: number; skipped: number; errors: string[] }> {
+  async generateBulkInvoices(
+    userId: string,
+  ): Promise<{ generated: number; skipped: number; errors: string[] }> {
     const subs = await this.subRepo.find({
-      where: { status: In([SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIAL]) },
+      where: {
+        status: In([SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIAL]),
+      },
       relations: ['plan', 'tenant'],
     });
 
@@ -230,9 +345,12 @@ export class InvoicesService {
   // ─── List & Filter ──────────────────────────────────────────────────
 
   async getAllInvoices(filters?: {
-    status?: string; tenantId?: string; periodMonth?: string;
+    status?: string;
+    tenantId?: string;
+    periodMonth?: string;
   }): Promise<Invoice[]> {
-    const qb = this.invoiceRepo.createQueryBuilder('i')
+    const qb = this.invoiceRepo
+      .createQueryBuilder('i')
       .leftJoinAndSelect('i.tenant', 't')
       .leftJoinAndSelect('i.lines', 'l')
       .orderBy('i.issueDate', 'DESC');
@@ -261,14 +379,33 @@ export class InvoicesService {
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
 
-    const all = await this.invoiceRepo.find({ select: ['id', 'total', 'status', 'issueDate', 'dueDate', 'currency'] });
+    const all = await this.invoiceRepo.find({
+      select: ['id', 'total', 'status', 'issueDate', 'dueDate', 'currency'],
+    });
 
-    const thisMonth = all.filter(i => new Date(i.issueDate) >= monthStart && new Date(i.issueDate) <= monthEnd);
+    const thisMonth = all.filter(
+      (i) =>
+        new Date(i.issueDate) >= monthStart &&
+        new Date(i.issueDate) <= monthEnd,
+    );
 
     const totalInvoiced = thisMonth.reduce((s, i) => s + Number(i.total), 0);
-    const totalPaid = thisMonth.filter(i => i.status === InvoiceStatus.PAID).reduce((s, i) => s + Number(i.total), 0);
-    const totalPending = all.filter(i => i.status === InvoiceStatus.SENT || i.status === InvoiceStatus.DRAFT).reduce((s, i) => s + Number(i.total), 0);
-    const totalOverdue = all.filter(i => i.status === InvoiceStatus.OVERDUE || (i.status === InvoiceStatus.SENT && new Date(i.dueDate) < now)).reduce((s, i) => s + Number(i.total), 0);
+    const totalPaid = thisMonth
+      .filter((i) => i.status === InvoiceStatus.PAID)
+      .reduce((s, i) => s + Number(i.total), 0);
+    const totalPending = all
+      .filter(
+        (i) =>
+          i.status === InvoiceStatus.SENT || i.status === InvoiceStatus.DRAFT,
+      )
+      .reduce((s, i) => s + Number(i.total), 0);
+    const totalOverdue = all
+      .filter(
+        (i) =>
+          i.status === InvoiceStatus.OVERDUE ||
+          (i.status === InvoiceStatus.SENT && new Date(i.dueDate) < now),
+      )
+      .reduce((s, i) => s + Number(i.total), 0);
 
     // Monthly evolution (last 6 months)
     const evolution: { month: string; invoiced: number; paid: number }[] = [];
@@ -276,14 +413,22 @@ export class InvoicesService {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const key = d.toISOString().slice(0, 7);
       const mEnd = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-      const monthInvoices = all.filter(inv => {
+      const monthInvoices = all.filter((inv) => {
         const dt = new Date(inv.issueDate);
         return dt >= d && dt <= mEnd;
       });
       evolution.push({
         month: key,
-        invoiced: Math.round(monthInvoices.reduce((s, inv) => s + Number(inv.total), 0) * 100) / 100,
-        paid: Math.round(monthInvoices.filter(inv => inv.status === InvoiceStatus.PAID).reduce((s, inv) => s + Number(inv.total), 0) * 100) / 100,
+        invoiced:
+          Math.round(
+            monthInvoices.reduce((s, inv) => s + Number(inv.total), 0) * 100,
+          ) / 100,
+        paid:
+          Math.round(
+            monthInvoices
+              .filter((inv) => inv.status === InvoiceStatus.PAID)
+              .reduce((s, inv) => s + Number(inv.total), 0) * 100,
+          ) / 100,
       });
     }
 
@@ -308,25 +453,43 @@ export class InvoicesService {
       totalOverdue: Math.round(totalOverdue * 100) / 100,
       invoiceCount: thisMonth.length,
       evolution,
-      revenueBreakdown: { plan: Math.round(planRevenue * 100) / 100, addon: Math.round(addonRevenue * 100) / 100 },
+      revenueBreakdown: {
+        plan: Math.round(planRevenue * 100) / 100,
+        addon: Math.round(addonRevenue * 100) / 100,
+      },
       currency: 'UF',
     };
   }
 
   // ─── Mark as Paid ───────────────────────────────────────────────────
 
-  async markAsPaid(invoiceId: string, paymentData: { paymentMethod?: string; transactionRef?: string; notes?: string }, userId: string): Promise<Invoice> {
-    const invoice = await this.invoiceRepo.findOne({ where: { id: invoiceId }, relations: ['tenant', 'lines'] });
+  async markAsPaid(
+    invoiceId: string,
+    paymentData: {
+      paymentMethod?: string;
+      transactionRef?: string;
+      notes?: string;
+    },
+    userId: string,
+  ): Promise<Invoice> {
+    const invoice = await this.invoiceRepo.findOne({
+      where: { id: invoiceId },
+      relations: ['tenant', 'lines'],
+    });
     if (!invoice) throw new NotFoundException('Factura no encontrada');
-    if (invoice.status === InvoiceStatus.PAID) throw new BadRequestException('La factura ya está pagada');
-    if (invoice.status === InvoiceStatus.CANCELLED) throw new BadRequestException('No se puede pagar una factura cancelada');
+    if (invoice.status === InvoiceStatus.PAID)
+      throw new BadRequestException('La factura ya está pagada');
+    if (invoice.status === InvoiceStatus.CANCELLED)
+      throw new BadRequestException('No se puede pagar una factura cancelada');
 
     invoice.status = InvoiceStatus.PAID;
     invoice.paidAt = new Date();
     await this.invoiceRepo.save(invoice);
 
     // Create payment history record
-    const sub = await this.subRepo.findOne({ where: { id: invoice.subscriptionId } });
+    const sub = await this.subRepo.findOne({
+      where: { id: invoice.subscriptionId },
+    });
     const payment = this.paymentRepo.create({
       tenantId: invoice.tenantId,
       subscriptionId: invoice.subscriptionId,
@@ -350,15 +513,21 @@ export class InvoicesService {
     if (sub) {
       sub.lastPaymentDate = new Date();
       sub.lastPaymentAmount = Number(invoice.total);
-      if (sub.status === SubscriptionStatus.SUSPENDED || sub.status === SubscriptionStatus.EXPIRED) {
+      if (
+        sub.status === SubscriptionStatus.SUSPENDED ||
+        sub.status === SubscriptionStatus.EXPIRED
+      ) {
         sub.status = SubscriptionStatus.ACTIVE;
       }
       await this.subRepo.save(sub);
     }
 
-    await this.auditService.log(invoice.tenantId, userId, 'invoice.paid', 'invoice', invoiceId, {
-      invoiceNumber: invoice.invoiceNumber, amount: invoice.total,
-    }).catch(() => {});
+    await this.auditService
+      .log(invoice.tenantId, userId, 'invoice.paid', 'invoice', invoiceId, {
+        invoiceNumber: invoice.invoiceNumber,
+        amount: invoice.total,
+      })
+      .catch(() => {});
 
     return invoice;
   }
@@ -366,28 +535,44 @@ export class InvoicesService {
   // ─── Send Invoice Email ─────────────────────────────────────────────
 
   async sendInvoice(invoiceId: string, userId: string): Promise<Invoice> {
-    const invoice = await this.invoiceRepo.findOne({ where: { id: invoiceId }, relations: ['tenant', 'lines'] });
+    const invoice = await this.invoiceRepo.findOne({
+      where: { id: invoiceId },
+      relations: ['tenant', 'lines'],
+    });
     if (!invoice) throw new NotFoundException('Factura no encontrada');
 
     // Find tenant admins
     const admins = await this.userRepo.find({
-      where: { tenantId: invoice.tenantId, role: 'tenant_admin', isActive: true },
+      where: {
+        tenantId: invoice.tenantId,
+        role: 'tenant_admin',
+        isActive: true,
+      },
       select: ['id', 'email', 'firstName'],
     });
 
     for (const admin of admins) {
-      await this.emailService.send(
-        admin.email,
-        `Factura ${invoice.invoiceNumber} — Eva360`,
-        `<p>Hola ${admin.firstName},</p><p>Se ha generado la factura <strong>${invoice.invoiceNumber}</strong> por un total de <strong>${invoice.total} ${invoice.currency}</strong>.</p><p>Período: ${new Date(invoice.periodStart).toLocaleDateString('es-CL')} al ${new Date(invoice.periodEnd).toLocaleDateString('es-CL')}<br>Vencimiento: ${new Date(invoice.dueDate).toLocaleDateString('es-CL')}</p><p>Puede ver el detalle y descargar el PDF desde su panel de suscripción en Eva360.</p><p>Saludos,<br>Equipo Eva360</p>`,
-      ).catch(() => {});
+      await this.emailService
+        .send(
+          admin.email,
+          `Factura ${invoice.invoiceNumber} — Eva360`,
+          `<p>Hola ${admin.firstName},</p><p>Se ha generado la factura <strong>${invoice.invoiceNumber}</strong> por un total de <strong>${invoice.total} ${invoice.currency}</strong>.</p><p>Período: ${new Date(invoice.periodStart).toLocaleDateString('es-CL')} al ${new Date(invoice.periodEnd).toLocaleDateString('es-CL')}<br>Vencimiento: ${new Date(invoice.dueDate).toLocaleDateString('es-CL')}</p><p>Puede ver el detalle y descargar el PDF desde su panel de suscripción en Eva360.</p><p>Saludos,<br>Equipo Eva360</p>`,
+        )
+        .catch(() => {});
     }
 
-    invoice.status = invoice.status === InvoiceStatus.DRAFT ? InvoiceStatus.SENT : invoice.status;
+    invoice.status =
+      invoice.status === InvoiceStatus.DRAFT
+        ? InvoiceStatus.SENT
+        : invoice.status;
     invoice.sentAt = new Date();
     await this.invoiceRepo.save(invoice);
 
-    await this.auditService.log(invoice.tenantId, userId, 'invoice.sent', 'invoice', invoiceId, { invoiceNumber: invoice.invoiceNumber }).catch(() => {});
+    await this.auditService
+      .log(invoice.tenantId, userId, 'invoice.sent', 'invoice', invoiceId, {
+        invoiceNumber: invoice.invoiceNumber,
+      })
+      .catch(() => {});
 
     return invoice;
   }
@@ -427,17 +612,23 @@ export class InvoicesService {
         : `Recordatorio: Factura ${inv.invoiceNumber} vence pronto — Eva360`;
 
       for (const admin of admins) {
-        await this.emailService.send(
-          admin.email,
-          subject,
-          `<p>Hola ${admin.firstName},</p><p>${isOverdue ? 'La siguiente factura se encuentra <strong style="color:red">VENCIDA</strong>' : 'Le recordamos que la siguiente factura vence pronto'}:</p><p>Factura: <strong>${inv.invoiceNumber}</strong><br>Total: <strong>${inv.total} ${inv.currency}</strong><br>Vencimiento: ${new Date(inv.dueDate).toLocaleDateString('es-CL')}</p><p>Por favor realice el pago a la brevedad.</p><p>Saludos,<br>Equipo Eva360</p>`,
-        ).catch(() => {});
+        await this.emailService
+          .send(
+            admin.email,
+            subject,
+            `<p>Hola ${admin.firstName},</p><p>${isOverdue ? 'La siguiente factura se encuentra <strong style="color:red">VENCIDA</strong>' : 'Le recordamos que la siguiente factura vence pronto'}:</p><p>Factura: <strong>${inv.invoiceNumber}</strong><br>Total: <strong>${inv.total} ${inv.currency}</strong><br>Vencimiento: ${new Date(inv.dueDate).toLocaleDateString('es-CL')}</p><p>Por favor realice el pago a la brevedad.</p><p>Saludos,<br>Equipo Eva360</p>`,
+          )
+          .catch(() => {});
       }
       sent++;
     }
 
     if (userId) {
-      await this.auditService.log('system', userId, 'invoice.reminders_sent', 'invoice', undefined, { count: sent }).catch(() => {});
+      await this.auditService
+        .log('system', userId, 'invoice.reminders_sent', 'invoice', undefined, {
+          count: sent,
+        })
+        .catch(() => {});
     }
 
     return { sent };
@@ -446,24 +637,44 @@ export class InvoicesService {
   // ─── Cancel Invoice ─────────────────────────────────────────────────
 
   async cancelInvoice(invoiceId: string, userId: string): Promise<Invoice> {
-    const invoice = await this.invoiceRepo.findOne({ where: { id: invoiceId } });
+    const invoice = await this.invoiceRepo.findOne({
+      where: { id: invoiceId },
+    });
     if (!invoice) throw new NotFoundException('Factura no encontrada');
-    if (invoice.status === InvoiceStatus.PAID) throw new BadRequestException('No se puede cancelar una factura ya pagada');
+    if (invoice.status === InvoiceStatus.PAID)
+      throw new BadRequestException(
+        'No se puede cancelar una factura ya pagada',
+      );
 
     invoice.status = InvoiceStatus.CANCELLED;
     await this.invoiceRepo.save(invoice);
 
-    await this.auditService.log(invoice.tenantId, userId, 'invoice.cancelled', 'invoice', invoiceId, { invoiceNumber: invoice.invoiceNumber }).catch(() => {});
+    await this.auditService
+      .log(
+        invoice.tenantId,
+        userId,
+        'invoice.cancelled',
+        'invoice',
+        invoiceId,
+        { invoiceNumber: invoice.invoiceNumber },
+      )
+      .catch(() => {});
 
     return invoice;
   }
 
   // ─── PDF Generation ─────────────────────────────────────────────────
 
-  async generatePdf(invoiceId: string, tenantId: string | null): Promise<Buffer> {
+  async generatePdf(
+    invoiceId: string,
+    tenantId: string | null,
+  ): Promise<Buffer> {
     const where: any = { id: invoiceId };
     if (tenantId !== null) where.tenantId = tenantId;
-    const invoice = await this.invoiceRepo.findOne({ where, relations: ['tenant', 'lines', 'subscription'] });
+    const invoice = await this.invoiceRepo.findOne({
+      where,
+      relations: ['tenant', 'lines', 'subscription'],
+    });
     if (!invoice) throw new NotFoundException('Factura no encontrada');
 
     const { jsPDF } = await import('jspdf');
@@ -482,7 +693,9 @@ export class InvoicesService {
     doc.text(invoice.invoiceNumber, margin, 28);
     doc.setFontSize(9);
     doc.setTextColor(201, 147, 58);
-    doc.text('Eva360 — Evaluación de Desempeño 360°', pageW - margin, 14, { align: 'right' });
+    doc.text('Eva360 — Evaluación de Desempeño 360°', pageW - margin, 14, {
+      align: 'right',
+    });
     doc.text('RUT: 77.XXX.XXX-X', pageW - margin, 22, { align: 'right' });
     doc.text('Santiago, Chile', pageW - margin, 30, { align: 'right' });
 
@@ -499,8 +712,14 @@ export class InvoicesService {
     y += 5;
     doc.setFontSize(8);
     doc.setTextColor(100, 116, 139);
-    if (invoice.tenant?.rut) { doc.text(`RUT: ${invoice.tenant.rut}`, margin, y); y += 4; }
-    if (invoice.tenant?.commercialAddress) { doc.text(invoice.tenant.commercialAddress, margin, y); y += 4; }
+    if (invoice.tenant?.rut) {
+      doc.text(`RUT: ${invoice.tenant.rut}`, margin, y);
+      y += 4;
+    }
+    if (invoice.tenant?.commercialAddress) {
+      doc.text(invoice.tenant.commercialAddress, margin, y);
+      y += 4;
+    }
 
     // Invoice details (right side)
     const rx = pageW - margin - 60;
@@ -508,10 +727,28 @@ export class InvoicesService {
     doc.setFontSize(8);
     doc.setTextColor(100, 116, 139);
     const details = [
-      ['Fecha emisión:', new Date(invoice.issueDate).toLocaleDateString('es-CL')],
-      ['Fecha vencimiento:', new Date(invoice.dueDate).toLocaleDateString('es-CL')],
-      ['Período:', `${new Date(invoice.periodStart).toLocaleDateString('es-CL')} - ${new Date(invoice.periodEnd).toLocaleDateString('es-CL')}`],
-      ['Estado:', invoice.status === 'paid' ? 'PAGADA' : invoice.status === 'overdue' ? 'VENCIDA' : invoice.status === 'sent' ? 'ENVIADA' : 'BORRADOR'],
+      [
+        'Fecha emisión:',
+        new Date(invoice.issueDate).toLocaleDateString('es-CL'),
+      ],
+      [
+        'Fecha vencimiento:',
+        new Date(invoice.dueDate).toLocaleDateString('es-CL'),
+      ],
+      [
+        'Período:',
+        `${new Date(invoice.periodStart).toLocaleDateString('es-CL')} - ${new Date(invoice.periodEnd).toLocaleDateString('es-CL')}`,
+      ],
+      [
+        'Estado:',
+        invoice.status === 'paid'
+          ? 'PAGADA'
+          : invoice.status === 'overdue'
+            ? 'VENCIDA'
+            : invoice.status === 'sent'
+              ? 'ENVIADA'
+              : 'BORRADOR',
+      ],
     ];
     for (const [label, value] of details) {
       doc.text(label, rx, ry);
@@ -528,16 +765,25 @@ export class InvoicesService {
       startY: y,
       margin: { left: margin, right: margin },
       head: [['Concepto', 'Cant.', 'Precio Unit.', 'Total']],
-      body: (invoice.lines || []).map(l => [
+      body: (invoice.lines || []).map((l) => [
         l.concept,
         String(l.quantity),
         `${Number(l.unitPrice).toFixed(2)} ${invoice.currency}`,
         `${Number(l.total).toFixed(2)} ${invoice.currency}`,
       ]),
-      headStyles: { fillColor: [201, 147, 58], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
+      headStyles: {
+        fillColor: [201, 147, 58],
+        textColor: [255, 255, 255],
+        fontStyle: 'bold',
+        fontSize: 8,
+      },
       bodyStyles: { fontSize: 8 },
       alternateRowStyles: { fillColor: [248, 250, 252] },
-      columnStyles: { 1: { halign: 'center' }, 2: { halign: 'right' }, 3: { halign: 'right' } },
+      columnStyles: {
+        1: { halign: 'center' },
+        2: { halign: 'right' },
+        3: { halign: 'right' },
+      },
     });
 
     // Totals
@@ -548,27 +794,59 @@ export class InvoicesService {
     doc.setTextColor(100, 116, 139);
     doc.text('Subtotal:', totX, totY);
     doc.setTextColor(26, 18, 6);
-    doc.text(`${Number(invoice.subtotal).toFixed(2)} ${invoice.currency}`, pageW - margin, totY, { align: 'right' });
+    doc.text(
+      `${Number(invoice.subtotal).toFixed(2)} ${invoice.currency}`,
+      pageW - margin,
+      totY,
+      { align: 'right' },
+    );
     totY += 6;
     doc.setTextColor(100, 116, 139);
     doc.text(`IVA ${invoice.taxRate}%:`, totX, totY);
     doc.setTextColor(26, 18, 6);
-    doc.text(`${Number(invoice.taxAmount).toFixed(2)} ${invoice.currency}`, pageW - margin, totY, { align: 'right' });
+    doc.text(
+      `${Number(invoice.taxAmount).toFixed(2)} ${invoice.currency}`,
+      pageW - margin,
+      totY,
+      { align: 'right' },
+    );
     totY += 8;
     doc.setFillColor(248, 250, 252);
-    doc.roundedRect(totX - 4, totY - 5, pageW - margin - totX + 8, 12, 2, 2, 'F');
+    doc.roundedRect(
+      totX - 4,
+      totY - 5,
+      pageW - margin - totX + 8,
+      12,
+      2,
+      2,
+      'F',
+    );
     doc.setFontSize(11);
     doc.setTextColor(201, 147, 58);
     doc.text('TOTAL:', totX, totY + 2);
     doc.setTextColor(26, 18, 6);
-    doc.text(`${Number(invoice.total).toFixed(2)} ${invoice.currency}`, pageW - margin, totY + 2, { align: 'right' });
+    doc.text(
+      `${Number(invoice.total).toFixed(2)} ${invoice.currency}`,
+      pageW - margin,
+      totY + 2,
+      { align: 'right' },
+    );
 
     // Footer
     doc.setFontSize(7);
     doc.setTextColor(148, 163, 184);
     const footY = doc.internal.pageSize.getHeight() - 12;
-    doc.text('Eva360 — Plataforma de Evaluación de Desempeño | www.eva360.ascenda.cl', margin, footY);
-    doc.text(`Factura ${invoice.invoiceNumber} — Generada el ${new Date().toLocaleDateString('es-CL')}`, pageW - margin, footY, { align: 'right' });
+    doc.text(
+      'Eva360 — Plataforma de Evaluación de Desempeño | www.eva360.ascenda.cl',
+      margin,
+      footY,
+    );
+    doc.text(
+      `Factura ${invoice.invoiceNumber} — Generada el ${new Date().toLocaleDateString('es-CL')}`,
+      pageW - margin,
+      footY,
+      { align: 'right' },
+    );
 
     return Buffer.from(doc.output('arraybuffer'));
   }
@@ -579,29 +857,61 @@ export class InvoicesService {
     const plan = sub.plan;
     if (!plan) return 0;
     switch (sub.billingPeriod) {
-      case BillingPeriod.QUARTERLY: return Number(plan.quarterlyPrice) || Number(plan.monthlyPrice) * 3 * 0.9;
-      case BillingPeriod.SEMIANNUAL: return Number(plan.semiannualPrice) || Number(plan.monthlyPrice) * 6 * 0.85;
-      case BillingPeriod.ANNUAL: return Number(plan.yearlyPrice) || Number(plan.monthlyPrice) * 12 * 0.8;
-      default: return Number(plan.monthlyPrice) || 0;
+      case BillingPeriod.QUARTERLY:
+        return (
+          Number(plan.quarterlyPrice) || Number(plan.monthlyPrice) * 3 * 0.9
+        );
+      case BillingPeriod.SEMIANNUAL:
+        return (
+          Number(plan.semiannualPrice) || Number(plan.monthlyPrice) * 6 * 0.85
+        );
+      case BillingPeriod.ANNUAL:
+        return Number(plan.yearlyPrice) || Number(plan.monthlyPrice) * 12 * 0.8;
+      default:
+        return Number(plan.monthlyPrice) || 0;
     }
   }
 
   private getMonthsInPeriod(period: string): number {
     switch (period) {
-      case BillingPeriod.QUARTERLY: return 3;
-      case BillingPeriod.SEMIANNUAL: return 6;
-      case BillingPeriod.ANNUAL: return 12;
-      default: return 1;
+      case BillingPeriod.QUARTERLY:
+        return 3;
+      case BillingPeriod.SEMIANNUAL:
+        return 6;
+      case BillingPeriod.ANNUAL:
+        return 12;
+      default:
+        return 1;
     }
   }
 
   private addBillingPeriod(date: Date, period: string): Date {
+    // Fase 0 / Tarea 0.1.6 — Bug encontrado en revision exhaustiva:
+    // las versiones previas usaban `getMonth()`/`setMonth()` (local time),
+    // lo que provoca drift en cualquier maquina que NO este en UTC. En
+    // produccion (TZ Chile, UTC-3/-4) un input UTC midnight como
+    // `new Date('2026-05-01')` es leido como 2026-04-30T20:00 local —
+    // entonces `setMonth(getMonth()+1)` calculaba mayo->junio en local
+    // pero el resultado convertido a UTC quedaba 2026-05-31T20:00, lo
+    // que serializado a `date` PostgreSQL daba `'2026-05-31'` en vez
+    // de `'2026-06-01'`. Mismo problema cerca de DST (cambio de horario
+    // chileno mueve hasta 2 dias).
+    //
+    // Fix: operar siempre en UTC para que la columna `date` PG (sin tz)
+    // refleje exactamente el dia esperado.
     const d = new Date(date);
     switch (period) {
-      case BillingPeriod.QUARTERLY: d.setMonth(d.getMonth() + 3); break;
-      case BillingPeriod.SEMIANNUAL: d.setMonth(d.getMonth() + 6); break;
-      case BillingPeriod.ANNUAL: d.setFullYear(d.getFullYear() + 1); break;
-      default: d.setMonth(d.getMonth() + 1);
+      case BillingPeriod.QUARTERLY:
+        d.setUTCMonth(d.getUTCMonth() + 3);
+        break;
+      case BillingPeriod.SEMIANNUAL:
+        d.setUTCMonth(d.getUTCMonth() + 6);
+        break;
+      case BillingPeriod.ANNUAL:
+        d.setUTCFullYear(d.getUTCFullYear() + 1);
+        break;
+      default:
+        d.setUTCMonth(d.getUTCMonth() + 1);
     }
     return d;
   }
@@ -619,7 +929,8 @@ export class InvoicesService {
   //   stage 30 → final warning before cancellation
   //   stage 37 → cancel subscription + email "cuenta cancelada"
 
-  private readonly appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://evaascenda.netlify.app';
+  private readonly appUrl =
+    process.env.NEXT_PUBLIC_APP_URL || 'https://evaascenda.netlify.app';
 
   private dunningTargetStage(daysOverdue: number): 0 | 3 | 7 | 14 | 30 | 37 {
     if (daysOverdue >= 37) return 37;
@@ -636,7 +947,9 @@ export class InvoicesService {
     // rows that haven't been flipped yet and explicit OVERDUE rows.
     const candidates = await this.invoiceRepo
       .createQueryBuilder('i')
-      .where('i.status IN (:...statuses)', { statuses: [InvoiceStatus.SENT, InvoiceStatus.OVERDUE] })
+      .where('i.status IN (:...statuses)', {
+        statuses: [InvoiceStatus.SENT, InvoiceStatus.OVERDUE],
+      })
       .andWhere('i.dueDate < :now', { now })
       .leftJoinAndSelect('i.tenant', 'tenant')
       .leftJoinAndSelect('i.subscription', 'subscription')
@@ -646,7 +959,8 @@ export class InvoicesService {
 
     for (const invoice of candidates) {
       const daysOverdue = Math.floor(
-        (now.getTime() - new Date(invoice.dueDate).getTime()) / (24 * 60 * 60 * 1000),
+        (now.getTime() - new Date(invoice.dueDate).getTime()) /
+          (24 * 60 * 60 * 1000),
       );
       const target = this.dunningTargetStage(daysOverdue);
       if (target === 0) continue;
@@ -661,7 +975,11 @@ export class InvoicesService {
       // Find a contact for the tenant. Prefer tenant_admin; fall back to any
       // active user of the tenant.
       const recipient = await this.userRepo.findOne({
-        where: { tenantId: invoice.tenantId, role: 'tenant_admin', isActive: true },
+        where: {
+          tenantId: invoice.tenantId,
+          role: 'tenant_admin',
+          isActive: true,
+        },
       });
       const recipientEmail = recipient?.email || null;
       const payUrl = `${this.appUrl}/dashboard/mi-suscripcion`;
@@ -698,17 +1016,23 @@ export class InvoicesService {
           // consistent for the user on their next dashboard load. If the
           // DB update fails, no email is sent and the stage does not
           // advance — the cron will retry tomorrow.
-          if (invoice.subscription?.status !== SubscriptionStatus.SUSPENDED &&
-              invoice.subscription?.status !== SubscriptionStatus.CANCELLED) {
-            await this.subRepo.update(invoice.subscriptionId, { status: SubscriptionStatus.SUSPENDED });
-            await this.auditService.log(
-              invoice.tenantId,
-              null,
-              'subscription.suspended_by_dunning',
-              'Subscription',
-              invoice.subscriptionId,
-              { invoiceId: invoice.id, daysOverdue },
-            ).catch(() => undefined);
+          if (
+            invoice.subscription?.status !== SubscriptionStatus.SUSPENDED &&
+            invoice.subscription?.status !== SubscriptionStatus.CANCELLED
+          ) {
+            await this.subRepo.update(invoice.subscriptionId, {
+              status: SubscriptionStatus.SUSPENDED,
+            });
+            await this.auditService
+              .log(
+                invoice.tenantId,
+                null,
+                'subscription.suspended_by_dunning',
+                'Subscription',
+                invoice.subscriptionId,
+                { invoiceId: invoice.id, daysOverdue },
+              )
+              .catch(() => undefined);
           }
           if (recipientEmail) {
             await this.emailService.sendAccountSuspended(recipientEmail, {
@@ -722,37 +1046,46 @@ export class InvoicesService {
           } else {
             // No recipient — the tenant will be suspended silently. Flag
             // for ops review so they can chase a contact out-of-band.
-            await this.auditService.log(
-              invoice.tenantId,
-              null,
-              'subscription.suspended_no_contact',
-              'Subscription',
-              invoice.subscriptionId,
-              { invoiceId: invoice.id, daysOverdue },
-            ).catch(() => undefined);
+            await this.auditService
+              .log(
+                invoice.tenantId,
+                null,
+                'subscription.suspended_no_contact',
+                'Subscription',
+                invoice.subscriptionId,
+                { invoiceId: invoice.id, daysOverdue },
+              )
+              .catch(() => undefined);
           }
         } else if (target === 30 && recipientEmail) {
-          await this.emailService.sendAccountCancellationWarning(recipientEmail, {
-            firstName: recipient!.firstName,
-            orgName,
-            payUrl,
-            tenantId: invoice.tenantId,
-          });
+          await this.emailService.sendAccountCancellationWarning(
+            recipientEmail,
+            {
+              firstName: recipient!.firstName,
+              orgName,
+              payUrl,
+              tenantId: invoice.tenantId,
+            },
+          );
         } else if (target === 37) {
           // Cancellation is the most destructive step — flip state first
           // so no further billing side-effects happen on the cancelled sub,
           // then notify. If the email fails, the user still finds out from
           // their dashboard / login attempt.
           if (invoice.subscription?.status !== SubscriptionStatus.CANCELLED) {
-            await this.subRepo.update(invoice.subscriptionId, { status: SubscriptionStatus.CANCELLED });
-            await this.auditService.log(
-              invoice.tenantId,
-              null,
-              'subscription.cancelled_by_dunning',
-              'Subscription',
-              invoice.subscriptionId,
-              { invoiceId: invoice.id, daysOverdue },
-            ).catch(() => undefined);
+            await this.subRepo.update(invoice.subscriptionId, {
+              status: SubscriptionStatus.CANCELLED,
+            });
+            await this.auditService
+              .log(
+                invoice.tenantId,
+                null,
+                'subscription.cancelled_by_dunning',
+                'Subscription',
+                invoice.subscriptionId,
+                { invoiceId: invoice.id, daysOverdue },
+              )
+              .catch(() => undefined);
           }
           if (recipientEmail) {
             await this.emailService.sendAccountCancelled(recipientEmail, {
