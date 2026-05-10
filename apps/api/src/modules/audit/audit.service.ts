@@ -117,6 +117,9 @@ export class AuditService {
     'payment.failed',
     'payment.refunded',
     'payment.cancelled',
+    // Fase 0 / Tarea 0.4 — disputas/chargebacks: SII + evidencia legal
+    // (prueba de servicio prestado al banco/cliente que reclama).
+    'payment.disputed',
     'contract.signed',
     'contract.rejected',
     'contract.terminated',

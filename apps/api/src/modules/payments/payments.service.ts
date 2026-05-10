@@ -224,8 +224,27 @@ export class PaymentsService {
     if (session.status === 'paid' && event.type === 'payment.succeeded') return { handled: true };
     if (session.status === 'failed' && event.type === 'payment.failed') return { handled: true };
     if (session.status === 'cancelled' && event.type === 'payment.cancelled') return { handled: true };
-    // No permitir downgrades desde terminal (e.g. paid → failed).
-    if (['paid', 'failed', 'cancelled', 'expired'].includes(session.status)) {
+    if (session.status === 'refunded' && event.type === 'payment.refunded') return { handled: true };
+    if (session.status === 'disputed' && event.type === 'payment.disputed') return { handled: true };
+
+    // Fase 0 / Tarea 0.4.4 — Post-payment events son extensiones legitimas
+    // del lifecycle, NO downgrades. Una session en 'paid' puede recibir
+    // 'payment.refunded' o 'payment.disputed' validamente. Pre-fix las
+    // bloqueabamos como "terminal" (porque 'paid' estaba en la lista).
+    const isPostPaymentEvent =
+      event.type === 'payment.refunded' || event.type === 'payment.disputed';
+
+    // No permitir downgrades genuinos (e.g. paid → failed) ni transiciones
+    // imposibles (e.g. cancelled → refunded — no se puede refund algo no
+    // pagado). Solo aceptamos refund/dispute si la session paso por 'paid'.
+    if (isPostPaymentEvent) {
+      if (session.status !== 'paid' && session.status !== 'refunded' && session.status !== 'disputed') {
+        this.logger.warn(
+          `Webhook ${event.type} on session ${session.id} but status='${session.status}' (expected 'paid'); ignoring`,
+        );
+        return { handled: false, reason: 'cannot refund/dispute a non-paid session' };
+      }
+    } else if (['paid', 'failed', 'cancelled', 'expired', 'refunded', 'disputed'].includes(session.status)) {
       this.logger.warn(
         `Webhook tried to transition session ${session.id} from ${session.status} to ${event.type}; ignoring`,
       );
@@ -240,7 +259,152 @@ export class PaymentsService {
       return this.applyPaymentFailedOrCancelled(provider, event, session);
     }
 
+    if (event.type === 'payment.refunded') {
+      return this.applyPaymentRefunded(provider, event, session);
+    }
+
+    if (event.type === 'payment.disputed') {
+      return this.applyPaymentDisputed(provider, event, session);
+    }
+
     return { handled: false, reason: 'unhandled event type' };
+  }
+
+  /**
+   * Handler de payment.refunded (Fase 0 / Tarea 0.4.4 — alcance MINIMO).
+   *
+   * Acciones P0:
+   *   - atomic acquire del lock (paid -> refunded) para idempotencia.
+   *   - audit log `payment.refunded` con monto y razon (para reconciliacion
+   *     contable y SII Chile retention 6 anos).
+   *   - log warning visible para que ops detecte el caso.
+   *
+   * Lo que NO hacemos aqui (defer Fase 2 / Tarea 2.3):
+   *   - revertir invoice.status PAID -> CREDIT_NOTE (requiere flujo de
+   *     credit notes que aun no existe).
+   *   - email al cliente notificando el reembolso (depende de plantilla).
+   *   - revertir lastPaymentAmount de la subscription.
+   *   - alerta in-app al super_admin (notifications integradas vienen en
+   *     Fase 4).
+   *
+   * Por ahora el efecto practico es: la PaymentSession refleja el evento,
+   * el audit log queda con todo el detalle, y el super_admin tiene visibilidad
+   * via /dashboard/audit-log para investigar y emitir credit note manual.
+   */
+  private async applyPaymentRefunded(
+    provider: PaymentProviderName,
+    event: WebhookEvent,
+    session: PaymentSession,
+  ): Promise<{ handled: boolean; reason?: string }> {
+    const result = await this.sessionRepo
+      .createQueryBuilder()
+      .update(PaymentSession)
+      .set({
+        status: 'refunded',
+        // No piso completedAt — preservo el momento del pago original;
+        // refundedAt vive en metadata.
+        metadata: () => `metadata || '${JSON.stringify({
+          refundedAt: new Date().toISOString(),
+          refundAmount: event.amount ?? null,
+          refundCurrency: event.currency ?? null,
+        }).replace(/'/g, "''")}'::jsonb`,
+      })
+      .where('id = :id AND status = :prev', { id: session.id, prev: 'paid' })
+      .execute();
+
+    if ((result.affected ?? 0) === 0) {
+      this.logger.log(
+        `Session ${session.id} refund ignored — status already moved by concurrent webhook`,
+      );
+      return { handled: true, reason: 'concurrent webhook already processed' };
+    }
+
+    this.logger.warn(
+      `[Refund] Session ${session.id} (invoice ${session.invoiceId}, tenant ${session.tenantId}) refunded via ${provider} — amount=${event.amount} ${event.currency}. ` +
+        `Invoice status NOT auto-reverted; super_admin debe emitir credit note (Fase 2 / T2.3).`,
+    );
+
+    await this.auditService
+      .log(session.tenantId, session.initiatedBy, 'payment.refunded', 'PaymentSession', session.id, {
+        provider,
+        invoiceId: session.invoiceId,
+        amount: event.amount ?? null,
+        currency: event.currency ?? null,
+        originalAmount: session.amount,
+        originalCurrency: session.currency,
+        // Flag para dashboards: este caso requiere accion manual hasta
+        // que Fase 2 implemente credit notes.
+        requiresManualCreditNote: true,
+      })
+      .catch(() => undefined);
+
+    return { handled: true };
+  }
+
+  /**
+   * Handler de payment.disputed (Fase 0 / Tarea 0.4.4 — alcance MINIMO).
+   *
+   * Una disputa / chargeback significa que el cliente o su banco
+   * reclamaron el cobro al provider. El dinero queda congelado hasta que
+   * el super_admin responda con evidencia (factura, T&C, prueba de
+   * servicio prestado) y el provider resuelva.
+   *
+   * Acciones P0:
+   *   - atomic acquire del lock (paid -> disputed).
+   *   - audit log `payment.disputed` con razon — accion CRITICAL para
+   *     retention 6 anos (SII Chile).
+   *   - log warning visible para alerta inmediata via Sentry/logs.
+   *
+   * Lo que NO hacemos aqui (defer Fase 2/4):
+   *   - email/notif al super_admin (notifications de operacion en Fase 4).
+   *   - freno del cobro automatico de la sub asociada (Fase 1 dunning).
+   *   - upload de evidencia automatico al provider (Fase 5 hardening).
+   */
+  private async applyPaymentDisputed(
+    provider: PaymentProviderName,
+    event: WebhookEvent,
+    session: PaymentSession,
+  ): Promise<{ handled: boolean; reason?: string }> {
+    const result = await this.sessionRepo
+      .createQueryBuilder()
+      .update(PaymentSession)
+      .set({
+        status: 'disputed',
+        metadata: () => `metadata || '${JSON.stringify({
+          disputedAt: new Date().toISOString(),
+          disputeReason: event.failureReason ?? null,
+          disputeAmount: event.amount ?? null,
+        }).replace(/'/g, "''")}'::jsonb`,
+      })
+      .where('id = :id AND status = :prev', { id: session.id, prev: 'paid' })
+      .execute();
+
+    if ((result.affected ?? 0) === 0) {
+      this.logger.log(
+        `Session ${session.id} dispute ignored — status already moved by concurrent webhook`,
+      );
+      return { handled: true, reason: 'concurrent webhook already processed' };
+    }
+
+    this.logger.error(
+      `[DISPUTE] CRITICAL — Session ${session.id} (invoice ${session.invoiceId}, tenant ${session.tenantId}) DISPUTED via ${provider}. ` +
+        `Reason: ${event.failureReason || 'no_reason_provided'}. Amount=${event.amount} ${event.currency}. ` +
+        `Super_admin debe revisar en dashboard del provider y aportar evidencia para responder a la disputa.`,
+    );
+
+    await this.auditService
+      .log(session.tenantId, session.initiatedBy, 'payment.disputed', 'PaymentSession', session.id, {
+        provider,
+        invoiceId: session.invoiceId,
+        amount: event.amount ?? null,
+        currency: event.currency ?? null,
+        reason: event.failureReason ?? null,
+        // Flag para escalacion ops.
+        requiresImmediateAction: true,
+      })
+      .catch(() => undefined);
+
+    return { handled: true };
   }
 
   /**

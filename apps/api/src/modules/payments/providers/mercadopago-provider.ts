@@ -179,12 +179,26 @@ export class MercadoPagoProvider implements PaymentProvider {
       const payment = new this.mp.Payment(this.mp.config);
       const p = await payment.get({ id: dataId });
       const externalRef = String(p?.external_reference || '');
-      // MP statuses: approved, pending, in_process, authorized, rejected, cancelled, refunded, charged_back
+      // MP statuses: approved, pending, in_process, authorized, rejected,
+      // cancelled, refunded, charged_back.
+      //
+      // Fase 0 / Tarea 0.4.2 — Pre-fix agrupaba refunded + charged_back
+      // junto con cancelled, lo que era contablemente incorrecto:
+      //   - refunded: el dinero ya se movio y se devolvio (requiere
+      //     credit note + reverse de invoice.PAID). Diferente de cancel,
+      //     que ocurre antes del cobro.
+      //   - charged_back: disputa abierta por el cliente / banco. El
+      //     dinero queda en limbo hasta que el provider resuelva.
+      //     Requiere alerta inmediata al super_admin y freno de cobro
+      //     automatico.
+      // Post-fix: cada uno mapea a su propio tipo normalizado.
       const status: string = String(p?.status || '');
       let type: WebhookEvent['type'] = 'unknown';
       if (status === 'approved' || status === 'authorized') type = 'payment.succeeded';
       else if (status === 'rejected') type = 'payment.failed';
-      else if (status === 'cancelled' || status === 'refunded' || status === 'charged_back') type = 'payment.cancelled';
+      else if (status === 'cancelled') type = 'payment.cancelled';
+      else if (status === 'refunded') type = 'payment.refunded';
+      else if (status === 'charged_back') type = 'payment.disputed';
       return {
         type,
         externalId: externalRef,

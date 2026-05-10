@@ -175,6 +175,44 @@ export class StripeProvider implements PaymentProvider {
           isIgnorable: !sessionId,
         };
       }
+      // Fase 0 / Tarea 0.4.3 — Refunds y disputas. Stripe envia metadata
+      // en el Charge (heredada del PaymentIntent que la heredo del
+      // CheckoutSession.payment_intent_data, ver linea 96-99). Asi
+      // recuperamos `payment_session_id` para hacer match con nuestra
+      // PaymentSession.
+      case 'charge.refunded': {
+        const charge = event.data.object as any;
+        const sessionId = (charge.metadata && charge.metadata.payment_session_id) || '';
+        return {
+          type: 'payment.refunded',
+          externalId: sessionId,
+          amount: charge.amount_refunded ?? undefined,
+          currency: charge.currency?.toUpperCase(),
+          isIgnorable: !sessionId,
+        };
+      }
+      case 'charge.dispute.created': {
+        const dispute = event.data.object as any;
+        // Dispute viene con `payment_intent` y `charge` ids; la metadata
+        // se busca en `dispute.charge.metadata` cuando esta expandido, o
+        // queda en strings sueltos. Stripe NO envia la metadata expandida
+        // por defecto en este event, asi que el handler debe hacer
+        // matching por charge id como fallback. Por ahora, leemos
+        // metadata si vino expandida; si no, marcamos ignorable y
+        // dejamos que el super_admin lo vea en Stripe Dashboard.
+        const metaSessionId =
+          (dispute.metadata && dispute.metadata.payment_session_id) ||
+          (dispute.charge?.metadata && dispute.charge.metadata.payment_session_id) ||
+          '';
+        return {
+          type: 'payment.disputed',
+          externalId: metaSessionId,
+          amount: dispute.amount ?? undefined,
+          currency: dispute.currency?.toUpperCase(),
+          failureReason: dispute.reason || 'dispute_opened',
+          isIgnorable: !metaSessionId,
+        };
+      }
       default:
         return { type: 'unknown', externalId: '', isIgnorable: true };
     }

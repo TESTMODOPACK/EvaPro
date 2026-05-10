@@ -15,10 +15,15 @@ import { User } from '../../users/entities/user.entity';
 export type PaymentProviderName = 'stripe' | 'mercadopago';
 export type PaymentSessionStatus =
   | 'pending'    // just created, user has not completed checkout yet
-  | 'paid'       // webhook confirmed payment — terminal success
+  | 'paid'       // webhook confirmed payment — terminal success (initial)
   | 'failed'     // webhook confirmed failure — terminal failure
   | 'cancelled'  // user cancelled at provider — terminal
-  | 'expired';   // provider session timed out — terminal
+  | 'expired'    // provider session timed out — terminal
+  // Fase 0 / Tarea 0.4 — Post-payment lifecycle: una session que paso por
+  // 'paid' puede luego transitar a estos estados cuando el provider envia
+  // eventos posteriores. NO son downgrades; son extensiones del ciclo.
+  | 'refunded'   // refund total/parcial confirmado por el provider
+  | 'disputed';  // chargeback / disputa abierta — requiere intervencion super_admin
 
 /**
  * Handshake record for a single attempt to pay an invoice via an external

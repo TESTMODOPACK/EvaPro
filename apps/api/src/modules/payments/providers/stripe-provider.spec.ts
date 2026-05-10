@@ -111,4 +111,103 @@ describe('StripeProvider — verifyWebhook (Fase 0 / Tarea 0.3)', () => {
     );
     expect(result).toBeNull();
   });
+
+  // ─── Fase 0 / Tarea 0.4 — Refunds y Disputas ───────────────────────
+
+  it('charge.refunded: maps to payment.refunded with metadata.payment_session_id', async () => {
+    mockConstructEvent({
+      type: 'charge.refunded',
+      data: {
+        object: {
+          metadata: { payment_session_id: 'cs_test_refunded' },
+          amount_refunded: 5000,
+          currency: 'clp',
+        },
+      },
+    });
+
+    const result = await provider.verifyWebhook(
+      Buffer.from('{}'),
+      'sig-irrelevant',
+    );
+
+    expect(result).not.toBeNull();
+    expect(result!.type).toBe('payment.refunded');
+    expect(result!.externalId).toBe('cs_test_refunded');
+    expect(result!.amount).toBe(5000);
+    expect(result!.currency).toBe('CLP');
+    expect(result!.isIgnorable).toBe(false);
+  });
+
+  it('charge.refunded: ignorable if metadata is missing', async () => {
+    mockConstructEvent({
+      type: 'charge.refunded',
+      data: {
+        object: {
+          metadata: {},
+          amount_refunded: 1000,
+          currency: 'clp',
+        },
+      },
+    });
+
+    const result = await provider.verifyWebhook(
+      Buffer.from('{}'),
+      'sig-irrelevant',
+    );
+
+    expect(result!.isIgnorable).toBe(true);
+    expect(result!.externalId).toBe('');
+  });
+
+  it('charge.dispute.created: maps to payment.disputed with reason', async () => {
+    mockConstructEvent({
+      type: 'charge.dispute.created',
+      data: {
+        object: {
+          metadata: { payment_session_id: 'cs_test_disputed' },
+          amount: 12345,
+          currency: 'clp',
+          reason: 'fraudulent',
+        },
+      },
+    });
+
+    const result = await provider.verifyWebhook(
+      Buffer.from('{}'),
+      'sig-irrelevant',
+    );
+
+    expect(result!.type).toBe('payment.disputed');
+    expect(result!.externalId).toBe('cs_test_disputed');
+    expect(result!.failureReason).toBe('fraudulent');
+    expect(result!.amount).toBe(12345);
+  });
+
+  it('charge.dispute.created: falls back to expanded charge.metadata if dispute.metadata missing', async () => {
+    // Stripe a veces envia el evento con la metadata expandida en
+    // dispute.charge en vez de en dispute.metadata directo.
+    mockConstructEvent({
+      type: 'charge.dispute.created',
+      data: {
+        object: {
+          metadata: undefined,
+          charge: {
+            metadata: { payment_session_id: 'cs_via_charge' },
+          },
+          amount: 999,
+          currency: 'clp',
+          reason: 'product_not_received',
+        },
+      },
+    });
+
+    const result = await provider.verifyWebhook(
+      Buffer.from('{}'),
+      'sig-irrelevant',
+    );
+
+    expect(result!.externalId).toBe('cs_via_charge');
+    expect(result!.type).toBe('payment.disputed');
+  });
 });

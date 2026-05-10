@@ -45,7 +45,18 @@ export interface CreateCheckoutResult {
  * retry unknown-kind events endlessly).
  */
 export interface WebhookEvent {
-  type: 'payment.succeeded' | 'payment.failed' | 'payment.cancelled' | 'unknown';
+  type:
+    | 'payment.succeeded'
+    | 'payment.failed'
+    | 'payment.cancelled'
+    // Fase 0 / Tarea 0.4 — Post-payment events. Pre-fix, MercadoPago
+    // mapeaba `refunded` y `charged_back` a `payment.cancelled`,
+    // confundiendo refunds y disputas con cancelaciones de checkout.
+    // Resultado contable y operativo incorrecto: refunds invisibles,
+    // chargebacks sin alerta, dunning siguiendo en facturas pagadas.
+    | 'payment.refunded'
+    | 'payment.disputed'
+    | 'unknown';
   externalId: string;
   amount?: number;
   currency?: string;
