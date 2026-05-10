@@ -157,7 +157,17 @@ export class StripeProvider implements PaymentProvider {
         const pi = event.data.object as any;
         // We can't look up by payment_intent id directly (we keyed by
         // checkout session id); the metadata carries the session id.
-        const sessionId = (pi.metadata && pi.metadata.stripe_checkout_session_id) || '';
+        //
+        // Fase 0 / Tarea 0.3 — bug previo: leiamos
+        // `pi.metadata.stripe_checkout_session_id` pero payments.service
+        // envia la key como `payment_session_id` (ver payments.service.ts:147
+        // y stripe-provider.ts:90 donde tambien se lee con la key correcta).
+        // Resultado pre-fix: TODO `payment_intent.payment_failed` venia
+        // con sessionId='' -> isIgnorable=true -> los rechazos asincronos
+        // (3DS, transferencias bancarias, debitos rechazados despues de
+        // checkout) NUNCA se procesaban: la sesion quedaba en `pending`
+        // forever y el cliente no recibia correo de fallo.
+        const sessionId = (pi.metadata && pi.metadata.payment_session_id) || '';
         return {
           type: 'payment.failed',
           externalId: sessionId,
