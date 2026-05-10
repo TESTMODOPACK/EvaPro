@@ -34,6 +34,7 @@ import {
   createMockQueryBuilder,
   createMockAuditService,
   createMockDataSource,
+  createSpyableDataSource,
   createMockEmailService,
   createMockNotificationsService,
   createMockPlan,
@@ -65,6 +66,7 @@ describe('InvoicesService', () => {
   let invoiceRepo: any;
   let lineRepo: any;
   let subRepo: any;
+  let dataSource: any;
 
   const tenantId = fakeUuid(100);
 
@@ -72,6 +74,10 @@ describe('InvoicesService', () => {
     invoiceRepo = createMockRepository();
     lineRepo = createMockRepository();
     subRepo = createMockRepository();
+    // Fase 1 / Tarea 1.3 — usar createSpyableDataSource para poder
+    // inspeccionar las entities guardadas dentro de la transaction
+    // de generateInvoice (que pre-fix usaba invoiceRepo.save directo).
+    dataSource = createSpyableDataSource();
 
     // getNextInvoiceNumber usa createQueryBuilder
     const numQb = createMockQueryBuilder();
@@ -99,8 +105,9 @@ describe('InvoicesService', () => {
           provide: NotificationsService,
           useValue: createMockNotificationsService(),
         },
-        // DataSource es usado por runWithBlockingAdvisoryLock (numeracion).
-        { provide: DataSource, useValue: createMockDataSource() },
+        // DataSource es usado por runWithBlockingAdvisoryLock (numeracion)
+        // y por generateInvoice (transaction atomica de invoice + lines).
+        { provide: DataSource, useValue: dataSource },
       ],
     }).compile();
 
@@ -179,14 +186,13 @@ describe('InvoicesService', () => {
           taxAmount: 1.9,
           taxRate: 19,
         });
-      invoiceRepo.save.mockImplementation((entity: any) =>
-        Promise.resolve({ id: fakeUuid(700), ...entity }),
-      );
 
       await service.generateInvoice(fakeUuid(600));
 
-      expect(invoiceRepo.save).toHaveBeenCalled();
-      const savedEntity = invoiceRepo.save.mock.calls[0][0];
+      // Fase 1 / Tarea 1.3 — invoice se guarda dentro de
+      // dataSource.transaction. El primer entity persistido es la invoice.
+      expect(dataSource.txSavedEntities.length).toBeGreaterThan(0);
+      const savedEntity = dataSource.txSavedEntities[0];
       expect(savedEntity.taxRate).toBe(19);
       expect(savedEntity.subtotal).toBe(10);
       expect(savedEntity.taxAmount).toBe(1.9); // 10 * 0.19
@@ -198,21 +204,17 @@ describe('InvoicesService', () => {
 
   describe('generateInvoice — periodStart (Fase 0 / Tarea 0.1)', () => {
     /**
-     * Helper: extrae el entity guardado en el primer save() del invoice
-     * (NO el de las lines). El primer call de invoiceRepo.save es el de
-     * la factura, los siguientes son las invoice lines guardadas via
-     * lineRepo.save.
+     * Fase 1 / Tarea 1.3 — invoice + lines se guardan via
+     * dataSource.transaction. El primer entity persistido es la invoice
+     * (luego siguen las lines).
      */
     function getSavedInvoice(): any {
-      expect(invoiceRepo.save).toHaveBeenCalled();
-      return invoiceRepo.save.mock.calls[0][0];
+      expect(dataSource.txSavedEntities.length).toBeGreaterThan(0);
+      return dataSource.txSavedEntities[0];
     }
 
     function setupHappyPath(sub: any) {
       subRepo.findOne.mockResolvedValue(sub);
-      invoiceRepo.save.mockImplementation((entity: any) =>
-        Promise.resolve({ id: fakeUuid(700), ...entity }),
-      );
     }
 
     it('first invoice (no previous): periodStart = sub.startDate (NOT nextBillingDate)', async () => {
@@ -364,6 +366,55 @@ describe('InvoicesService', () => {
       );
     });
 
+    // ─── Fase 1 / Tarea 1.3 — Atomicidad ──────────────────────────────
+
+    it('rolls back invoice if a line save fails (no DRAFT corrupted)', async () => {
+      // Pre-fix Tarea 1.3: si fallaba lineRepo.save mid-loop, la invoice
+      // ya estaba persistida (DRAFT corrupto). El cron de auto-renewal
+      // (T0.2) la encontraria como lastInvoice y avanzaria periodStart
+      // -> el periodo "fallado" nunca se re-facturaria.
+      // Post-fix: dataSource.transaction rollbackea TODO si cualquier
+      // save adentro lanza.
+      const sub = buildMockSub();
+      setupHappyPath(sub);
+      invoiceRepo.findOne
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ id: fakeUuid(700) });
+
+      // Override transaction mock para simular fallo en el 2do save
+      // (la 1ra es la invoice, las siguientes son lines).
+      const txCalls: any[] = [];
+      (dataSource.transaction as jest.Mock).mockImplementation(async (cb: any) => {
+        const mockMgr = {
+          save: jest.fn().mockImplementation((arg1: any) => {
+            txCalls.push(arg1);
+            if (txCalls.length === 1) {
+              // Primera save (invoice) OK
+              return Promise.resolve({ ...arg1, id: 'mock-tx-uuid' });
+            }
+            // Segunda save (line) FALLA — provider error simulado
+            return Promise.reject(
+              new Error('insert into invoice_lines failed: not-null violation'),
+            );
+          }),
+          getRepository: jest.fn().mockReturnValue(createMockRepository()),
+        };
+        // El service llama a cb(mockMgr) y captura el throw — la
+        // transaction real haria rollback. Aqui propagamos el reject
+        // para que el outer catch lo trate como InternalServerError.
+        return cb(mockMgr);
+      });
+
+      await expect(service.generateInvoice(sub.id)).rejects.toThrow(
+        /Fallo al generar factura/,
+      );
+
+      // Verificar que la transaction se inicio (al menos un save) pero
+      // que el error se propago (no se completo el flujo).
+      expect(txCalls.length).toBeGreaterThanOrEqual(1);
+    });
+
     it('continuity lookup excludes CANCELLED invoices', async () => {
       // Si la ultima factura fue cancelada, ese periodo no se cobro y debe
       // re-facturarse. Verificamos que el query de continuidad pasa el
@@ -415,14 +466,11 @@ describe('InvoicesService', () => {
           .mockResolvedValueOnce(null)
           .mockResolvedValueOnce(null)
           .mockResolvedValueOnce({ id: fakeUuid(700) });
-        invoiceRepo.save.mockImplementation((entity: any) =>
-          Promise.resolve({ id: fakeUuid(700), ...entity }),
-        );
 
         await service.generateInvoice(sub.id);
 
-        expect(invoiceRepo.save).toHaveBeenCalled();
-        const saved = invoiceRepo.save.mock.calls[0][0];
+        expect(dataSource.txSavedEntities.length).toBeGreaterThan(0);
+        const saved = dataSource.txSavedEntities[0];
         // dueDate debe estar a ~15 dias de hoy (2026-05-01), NO en mayo 2027.
         const due = new Date(saved.dueDate);
         const diffDays =

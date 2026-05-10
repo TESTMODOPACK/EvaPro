@@ -256,7 +256,7 @@ export class InvoicesService {
           const taxAmount = Math.round(subtotal * (taxRate / 100) * 100) / 100;
           const total = Math.round((subtotal + taxAmount) * 100) / 100;
 
-          const invoice = this.invoiceRepo.create({
+          const invoiceEntity = this.invoiceRepo.create({
             tenantId: sub.tenantId,
             subscriptionId: sub.id,
             invoiceNumber,
@@ -273,14 +273,26 @@ export class InvoicesService {
             currency: sub.plan?.currency || 'UF',
           });
 
-          const saved = await this.invoiceRepo.save(invoice);
-
-          // Save lines (dentro del lock también — consistencia atómica)
-          for (const line of lines) {
-            await this.lineRepo.save(
-              this.lineRepo.create({ ...line, invoiceId: saved.id }),
-            );
-          }
+          // Fase 1 / Tarea 1.3 — ATOMICIDAD: invoice + sus lines deben
+          // persistirse en la misma transaccion. Pre-fix: hacia
+          // invoiceRepo.save y luego un loop de lineRepo.save sueltos. Si
+          // fallaba mid-loop (e.g. constraint violation en una line, OOM,
+          // crash de proceso), quedaba una factura DRAFT corrupta sin
+          // todas sus lines. El cron de auto-renewal (T0.2) la encontraria
+          // como "lastInvoice" y avanzaria periodStart -> el periodo
+          // fallado nunca se re-facturaria.
+          // Post-fix: dataSource.transaction asegura rollback total si
+          // cualquier save falla. La factura queda creada solo cuando
+          // todas sus lines tambien se guardaron OK.
+          const saved = await this.dataSource.transaction(async (txManager) => {
+            const persisted = await txManager.save(invoiceEntity);
+            for (const line of lines) {
+              await txManager.save(
+                this.lineRepo.create({ ...line, invoiceId: persisted.id }),
+              );
+            }
+            return persisted;
+          });
 
           if (userId) {
             await this.auditService

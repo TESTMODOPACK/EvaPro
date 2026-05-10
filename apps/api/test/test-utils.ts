@@ -120,12 +120,77 @@ export function createMockDataSource(): Partial<DataSource> {
     }),
     transaction: jest.fn().mockImplementation(async (cb: any) => {
       const mockManager = {
-        save: jest.fn().mockImplementation((_: any, entity: any) => Promise.resolve(entity)),
+        // TypeORM EntityManager.save tiene 2 firmas:
+        //   - save(entity)         -> retornar entity (arg1)
+        //   - save(target, entity) -> retornar entity (arg2)
+        // Pre-fix Fase 1/T1.3: solo soportaba la 2da, rompiendo tests
+        // que usaban la 1ra (generateInvoice envuelto en transaction).
+        // Tambien asigna un id auto si el entity no lo trae, replicando
+        // el comportamiento del Repository real (TypeORM autogenera el
+        // PK al insertar).
+        save: jest.fn().mockImplementation((arg1: any, arg2: any) => {
+          const entity = arg2 ?? arg1;
+          if (entity && typeof entity === 'object' && !entity.id) {
+            return Promise.resolve({ ...entity, id: 'mock-tx-uuid' });
+          }
+          return Promise.resolve(entity);
+        }),
         getRepository: jest.fn().mockReturnValue(createMockRepository()),
       };
       return cb(mockManager);
     }),
   };
+}
+
+/**
+ * Variante de createMockDataSource que expone un `txSavedEntities`
+ * accesible despues de la corrida del transaction. Util para tests que
+ * verifican el contenido del entity guardado dentro de una transaccion
+ * (por ejemplo Fase 1/T1.3 generateInvoice atomico).
+ *
+ * Uso:
+ *   const ds = createSpyableDataSource();
+ *   ...
+ *   await service.generateInvoice(...);
+ *   expect(ds.txSavedEntities[0]).toMatchObject({ periodStart: ... });
+ */
+export function createSpyableDataSource(): Partial<DataSource> & {
+  txSavedEntities: any[];
+} {
+  const txSavedEntities: any[] = [];
+  return {
+    query: jest.fn().mockResolvedValue([]),
+    createQueryRunner: jest.fn().mockReturnValue({
+      connect: jest.fn(),
+      startTransaction: jest.fn(),
+      commitTransaction: jest.fn(),
+      rollbackTransaction: jest.fn(),
+      release: jest.fn(),
+      query: jest.fn().mockResolvedValue([]),
+      manager: {
+        save: jest.fn().mockImplementation((arg1: any, arg2: any) =>
+          Promise.resolve(arg2 ?? arg1),
+        ),
+        getRepository: jest.fn().mockReturnValue(createMockRepository()),
+      },
+    }),
+    transaction: jest.fn().mockImplementation(async (cb: any) => {
+      const mockManager = {
+        save: jest.fn().mockImplementation((arg1: any, arg2: any) => {
+          const entity = arg2 ?? arg1;
+          const withId =
+            entity && typeof entity === 'object' && !entity.id
+              ? { ...entity, id: `mock-tx-${txSavedEntities.length}` }
+              : entity;
+          txSavedEntities.push(withId);
+          return Promise.resolve(withId);
+        }),
+        getRepository: jest.fn().mockReturnValue(createMockRepository()),
+      };
+      return cb(mockManager);
+    }),
+    txSavedEntities,
+  } as any;
 }
 
 // ─── Mock Services ───────────────────────────────────────────────────
