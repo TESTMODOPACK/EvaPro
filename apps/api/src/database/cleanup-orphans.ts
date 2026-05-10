@@ -343,6 +343,12 @@ async function main() {
       // Grupo B — billing
       { table: 'invoices', column: 'dunning', sql: `ALTER TABLE "invoices" ADD COLUMN IF NOT EXISTS "dunning" jsonb DEFAULT '{}'` },
       { table: 'subscriptions', column: 'nurture_emails_sent', sql: `ALTER TABLE "subscriptions" ADD COLUMN IF NOT EXISTS "nurture_emails_sent" jsonb DEFAULT '[]'` },
+      // Fase 1 / Tarea 1.2 — grace period configurable por plan. JSONB
+      // con keys opcionales: { reminder1, reminder2, suspend,
+      // cancelWarning, cancel } (numero de dias). Si null o falta una
+      // key, processDunning usa los defaults (3/7/14/30/37). Permite que
+      // Enterprise tenga 30d gracia y Starter 7d sin redeploy.
+      { table: 'subscription_plans', column: 'dunning_thresholds', sql: `ALTER TABLE "subscription_plans" ADD COLUMN IF NOT EXISTS "dunning_thresholds" jsonb NULL` },
       // Grupo C — auth (password policy tracking)
       { table: 'users', column: 'password_changed_at', sql: `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "password_changed_at" timestamptz NULL` },
       { table: 'users', column: 'failed_login_attempts', sql: `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "failed_login_attempts" int NOT NULL DEFAULT 0` },

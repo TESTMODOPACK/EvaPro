@@ -36,6 +36,19 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationType } from '../notifications/entities/notification.entity';
 import { runWithBlockingAdvisoryLock } from '../../common/utils/cron-lock';
 
+/**
+ * Fase 1 / Tarea 1.2 — Claves semanticas de los stages de dunning.
+ * Cada plan puede sobreescribir los dias asociados via
+ * `subscription_plan.dunning_thresholds`; si no, se usan los defaults
+ * globales (3/7/14/30/37 dias respectivamente).
+ */
+export type DunningStageKey =
+  | 'reminder1'
+  | 'reminder2'
+  | 'suspend'
+  | 'cancelWarning'
+  | 'cancel';
+
 @Injectable()
 export class InvoicesService {
   private readonly logger = new Logger(InvoicesService.name);
@@ -920,25 +933,79 @@ export class InvoicesService {
   //
   // Scans all invoices past their due date and escalates them through the
   // stages below. Invoked by a dedicated daily cron in reminders.service;
-  // idempotent — each invoice stores its current `dunning.stage` and only
-  // advances when `daysOverdue` crosses the next threshold.
+  // idempotent — each invoice stores its current `dunning.stage` (numero
+  // de dias del threshold cumplido) y solo avanza al cruzar el siguiente.
   //
-  //   stage 3  → friendly reminder
-  //   stage 7  → urgent warning (mentions suspension)
-  //   stage 14 → suspend subscription + email "cuenta suspendida"
-  //   stage 30 → final warning before cancellation
-  //   stage 37 → cancel subscription + email "cuenta cancelada"
+  // Stages semánticos (Fase 1 / Tarea 1.2):
+  //   reminder1     → friendly reminder           (default 3d)
+  //   reminder2     → urgent warning              (default 7d)
+  //   suspend       → suspend sub + email         (default 14d)
+  //   cancelWarning → final warning               (default 30d)
+  //   cancel        → cancel sub + email          (default 37d)
+  //
+  // Cada plan puede sobreescribir los thresholds via plan.dunningThresholds.
+  // Si un plan los define mal (no estrictamente crecientes) -> fallback a
+  // defaults globales con warning.
 
   private readonly appUrl =
     process.env.NEXT_PUBLIC_APP_URL || 'https://evaascenda.netlify.app';
 
-  private dunningTargetStage(daysOverdue: number): 0 | 3 | 7 | 14 | 30 | 37 {
-    if (daysOverdue >= 37) return 37;
-    if (daysOverdue >= 30) return 30;
-    if (daysOverdue >= 14) return 14;
-    if (daysOverdue >= 7) return 7;
-    if (daysOverdue >= 3) return 3;
-    return 0;
+  private static readonly DEFAULT_DUNNING_THRESHOLDS: Record<DunningStageKey, number> = {
+    reminder1: 3,
+    reminder2: 7,
+    suspend: 14,
+    cancelWarning: 30,
+    cancel: 37,
+  };
+
+  /**
+   * Fase 1 / Tarea 1.2 — Resuelve los thresholds que aplican a una sub.
+   * Si el plan no define `dunningThresholds`, retorna defaults globales.
+   * Si los define pero no son estrictamente crecientes (e.g. suspend=21
+   * pero cancelWarning=14), loggea warning y retorna defaults — preferir
+   * defaults coherentes a custom rotos.
+   */
+  private resolveDunningThresholds(
+    plan?: { code?: string; dunningThresholds?: Partial<Record<DunningStageKey, number>> | null } | null,
+  ): Record<DunningStageKey, number> {
+    const defaults = InvoicesService.DEFAULT_DUNNING_THRESHOLDS;
+    const custom = plan?.dunningThresholds;
+    if (!custom) return defaults;
+    const merged: Record<DunningStageKey, number> = {
+      reminder1: custom.reminder1 ?? defaults.reminder1,
+      reminder2: custom.reminder2 ?? defaults.reminder2,
+      suspend: custom.suspend ?? defaults.suspend,
+      cancelWarning: custom.cancelWarning ?? defaults.cancelWarning,
+      cancel: custom.cancel ?? defaults.cancel,
+    };
+    const seq = [
+      merged.reminder1,
+      merged.reminder2,
+      merged.suspend,
+      merged.cancelWarning,
+      merged.cancel,
+    ];
+    for (let i = 1; i < seq.length; i++) {
+      if (seq[i] <= seq[i - 1]) {
+        this.logger.warn(
+          `[Dunning] plan ${plan?.code ?? '?'} dunningThresholds NOT strictly increasing (${seq.join(',')}); falling back to defaults`,
+        );
+        return defaults;
+      }
+    }
+    return merged;
+  }
+
+  private dunningTargetStage(
+    daysOverdue: number,
+    thresholds: Record<DunningStageKey, number>,
+  ): { key: DunningStageKey; days: number } | null {
+    if (daysOverdue >= thresholds.cancel) return { key: 'cancel', days: thresholds.cancel };
+    if (daysOverdue >= thresholds.cancelWarning) return { key: 'cancelWarning', days: thresholds.cancelWarning };
+    if (daysOverdue >= thresholds.suspend) return { key: 'suspend', days: thresholds.suspend };
+    if (daysOverdue >= thresholds.reminder2) return { key: 'reminder2', days: thresholds.reminder2 };
+    if (daysOverdue >= thresholds.reminder1) return { key: 'reminder1', days: thresholds.reminder1 };
+    return null;
   }
 
   async processDunning(): Promise<{ processed: number; advanced: number }> {
@@ -976,6 +1043,9 @@ export class InvoicesService {
       .andWhere('i.dueDate < :now', { now })
       .leftJoinAndSelect('i.tenant', 'tenant')
       .leftJoinAndSelect('i.subscription', 'subscription')
+      // Fase 1 / Tarea 1.2.2 — JOIN al plan para resolver dunningThresholds
+      // por sub. Si el plan no define overrides, usamos defaults.
+      .leftJoinAndSelect('subscription.plan', 'plan')
       .orderBy('i.dueDate', 'ASC')
       .getMany();
 
@@ -996,10 +1066,15 @@ export class InvoicesService {
         dueDate.getUTCDate(),
       );
       const daysOverdue = Math.floor((nowUtcDay - dueUtcDay) / 86_400_000);
-      const target = this.dunningTargetStage(daysOverdue);
-      if (target === 0) continue;
+      // Fase 1 / Tarea 1.2.2 — thresholds resueltos por plan (con fallback
+      // a defaults globales si plan no los define o son invalidos).
+      const thresholds = this.resolveDunningThresholds(
+        invoice.subscription?.plan,
+      );
+      const target = this.dunningTargetStage(daysOverdue, thresholds);
+      if (!target) continue;
       const currentStage = invoice.dunning?.stage ?? 0;
-      if (currentStage >= target) continue;
+      if (currentStage >= target.days) continue;
 
       // Flip SENT → OVERDUE status once we cross any threshold.
       if (invoice.status === InvoiceStatus.SENT) {
@@ -1017,7 +1092,7 @@ export class InvoicesService {
       const subAlreadyTerminal =
         subStatus === SubscriptionStatus.SUSPENDED ||
         subStatus === SubscriptionStatus.CANCELLED;
-      const isReminderStage = target === 3 || target === 7;
+      const isReminderStage = target.key === 'reminder1' || target.key === 'reminder2';
 
       // Find a contact for the tenant. Prefer tenant_admin; fall back to any
       // active user of the tenant.
@@ -1037,9 +1112,9 @@ export class InvoicesService {
         if (isReminderStage && subAlreadyTerminal) {
           // Skip email pero avanzar el stage (idempotencia + no spam).
           this.logger.log(
-            `Dunning skip-email stage=${target} invoice=${invoice.id} — sub already ${subStatus}`,
+            `Dunning skip-email stage=${target.key}(${target.days}d) invoice=${invoice.id} — sub already ${subStatus}`,
           );
-        } else if (target === 3 && recipientEmail) {
+        } else if (target.key === 'reminder1' && recipientEmail) {
           await this.emailService.sendInvoiceOverdueFriendly(recipientEmail, {
             firstName: recipient!.firstName,
             orgName,
@@ -1050,7 +1125,9 @@ export class InvoicesService {
             payUrl,
             tenantId: invoice.tenantId,
           });
-        } else if (target === 7 && recipientEmail) {
+        } else if (target.key === 'reminder2' && recipientEmail) {
+          // Dias hasta SUSPEND segun thresholds (en defaults: 14).
+          const suspendsInDays = Math.max(0, thresholds.suspend - daysOverdue);
           await this.emailService.sendInvoiceOverdueUrgent(recipientEmail, {
             firstName: recipient!.firstName,
             orgName,
@@ -1058,11 +1135,11 @@ export class InvoicesService {
             amount,
             currency: invoice.currency,
             daysOverdue,
-            suspendsInDays: 14 - daysOverdue < 0 ? 0 : 14 - daysOverdue,
+            suspendsInDays,
             payUrl,
             tenantId: invoice.tenantId,
           });
-        } else if (target === 14) {
+        } else if (target.key === 'suspend') {
           // ORDER MATTERS: flip the subscription state FIRST, email SECOND.
           // If the email send fails mid-batch, at least the auth state is
           // consistent for the user on their next dashboard load. If the
@@ -1099,12 +1176,13 @@ export class InvoicesService {
               .catch(() => undefined);
           }
           if (didTransition && recipientEmail) {
+            const cancelsInDays = Math.max(0, thresholds.cancel - daysOverdue);
             await this.emailService.sendAccountSuspended(recipientEmail, {
               firstName: recipient!.firstName,
               orgName,
               invoiceNumber: invoice.invoiceNumber,
               payUrl,
-              cancelsInDays: 37 - daysOverdue < 0 ? 0 : 37 - daysOverdue,
+              cancelsInDays,
               tenantId: invoice.tenantId,
             });
           } else if (didTransition && !recipientEmail) {
@@ -1121,8 +1199,12 @@ export class InvoicesService {
               )
               .catch(() => undefined);
           }
-        } else if (target === 30 && recipientEmail && !subAlreadyTerminal) {
-          // El email "tu cuenta sera cancelada en 7 dias" pierde sentido
+        } else if (
+          target.key === 'cancelWarning' &&
+          recipientEmail &&
+          subStatus !== SubscriptionStatus.CANCELLED
+        ) {
+          // El email "tu cuenta sera cancelada en X dias" pierde sentido
           // si la sub ya esta CANCELLED. SUSPENDED si tiene sentido (es
           // el flujo natural). Solo skipeamos si CANCELLED.
           await this.emailService.sendAccountCancellationWarning(
@@ -1134,18 +1216,7 @@ export class InvoicesService {
               tenantId: invoice.tenantId,
             },
           );
-        } else if (target === 30 && subStatus === SubscriptionStatus.SUSPENDED && recipientEmail) {
-          // Sub suspended (camino feliz) — enviar warning de cancelacion.
-          await this.emailService.sendAccountCancellationWarning(
-            recipientEmail,
-            {
-              firstName: recipient!.firstName,
-              orgName,
-              payUrl,
-              tenantId: invoice.tenantId,
-            },
-          );
-        } else if (target === 37) {
+        } else if (target.key === 'cancel') {
           // Cancellation is the most destructive step — flip state first
           // so no further billing side-effects happen on the cancelled sub,
           // then notify. If the email fails, the user still finds out from
@@ -1184,12 +1255,15 @@ export class InvoicesService {
       } catch (err: any) {
         // Email/DB failure on one invoice must not abort the rest of the batch.
         this.logger.error(
-          `Dunning stage=${target} failed for invoice ${invoice.id}: ${err?.message || err}`,
+          `Dunning stage=${target.key}(${target.days}d) failed for invoice ${invoice.id}: ${err?.message || err}`,
         );
         continue;
       }
 
-      invoice.dunning = { stage: target, lastEmailAt: now.toISOString() };
+      // Persistimos `stage = target.days` (numero) para retrocompatibilidad
+      // con datos viejos: invoices con `dunning.stage=14` siguen siendo
+      // validas y matcheables. La key semantica vive solo en runtime.
+      invoice.dunning = { stage: target.days, lastEmailAt: now.toISOString() };
       await this.invoiceRepo.save(invoice);
       advanced++;
     }

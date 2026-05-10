@@ -52,6 +52,29 @@ export class SubscriptionPlan {
   @Column({ type: 'int', name: 'display_order', default: 0 })
   displayOrder: number;
 
+  /**
+   * Fase 1 / Tarea 1.2 — Grace period configurable por plan.
+   *
+   * Si null o falta una key, processDunning usa el default global
+   * (3/7/14/30/37). Permite por ejemplo:
+   *   - Enterprise: { reminder1: 7, reminder2: 14, suspend: 30,
+   *     cancelWarning: 60, cancel: 90 } (90 dias gracia total)
+   *   - Starter:    { reminder1: 1, reminder2: 3, suspend: 7,
+   *     cancelWarning: 14, cancel: 21 } (21 dias gracia total)
+   *
+   * Cada key representa "daysOverdue >= N -> aplicar este stage".
+   * Los valores deben ser estrictamente crecientes; si no, processDunning
+   * loggea warning y usa defaults.
+   */
+  @Column({ type: 'jsonb', name: 'dunning_thresholds', nullable: true })
+  dunningThresholds: {
+    reminder1?: number;
+    reminder2?: number;
+    suspend?: number;
+    cancelWarning?: number;
+    cancel?: number;
+  } | null;
+
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
   createdAt: Date;
 

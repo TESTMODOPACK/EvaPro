@@ -80,6 +80,12 @@ export class SubscriptionsService {
     if (existing)
       throw new ConflictException('Ya existe un plan con ese código');
 
+    // Fase 1 / Tarea 1.2.3 — Validar dunningThresholds antes de persistir.
+    // Si el caller envia thresholds invalidos (no estrictamente crecientes
+    // o valores no numericos), rechazamos con 400 explicito en vez de
+    // persistir basura que processDunning ignoraria silenciosamente.
+    const dunningThresholds = this.validateDunningThresholdsDto(dto.dunningThresholds);
+
     const plan = this.planRepo.create({
       name: dto.name,
       code: dto.code,
@@ -94,8 +100,55 @@ export class SubscriptionsService {
       maxAiCallsPerMonth: dto.maxAiCallsPerMonth ?? 0,
       isActive: true,
       displayOrder: dto.displayOrder ?? 0,
+      dunningThresholds,
     });
     return this.planRepo.save(plan);
+  }
+
+  /**
+   * Fase 1 / Tarea 1.2.3 — Valida un dunningThresholds DTO.
+   * - undefined / null -> retorna null (usar defaults).
+   * - Objeto con keys numericas estrictamente crecientes en orden
+   *   reminder1 < reminder2 < suspend < cancelWarning < cancel -> OK.
+   * - Cualquier otra cosa -> BadRequestException con mensaje claro.
+   *
+   * Permite definicion parcial: si el caller solo envia
+   * { suspend: 21 }, las demas keys se consideran null y processDunning
+   * usara los defaults para esas. La validacion de "estrictamente
+   * crecientes" se aplica luego del merge con defaults (ver
+   * resolveDunningThresholds en invoices.service).
+   */
+  private validateDunningThresholdsDto(
+    raw: unknown,
+  ): { reminder1?: number; reminder2?: number; suspend?: number; cancelWarning?: number; cancel?: number } | null {
+    if (raw === null || raw === undefined) return null;
+    if (typeof raw !== 'object' || Array.isArray(raw)) {
+      throw new BadRequestException('dunningThresholds debe ser un objeto.');
+    }
+    const t = raw as Record<string, unknown>;
+    const allowed = ['reminder1', 'reminder2', 'suspend', 'cancelWarning', 'cancel'];
+    const result: Record<string, number> = {};
+    for (const k of allowed) {
+      if (t[k] === undefined || t[k] === null) continue;
+      const v = t[k];
+      if (typeof v !== 'number' || !Number.isInteger(v) || v < 0 || v > 365) {
+        throw new BadRequestException(
+          `dunningThresholds.${k} debe ser un entero >= 0 y <= 365.`,
+        );
+      }
+      result[k] = v;
+    }
+    // Validacion final: si el caller define varias keys, deben ser
+    // estrictamente crecientes (entre las definidas, no contra defaults).
+    const orderedKeys = allowed.filter((k) => k in result);
+    for (let i = 1; i < orderedKeys.length; i++) {
+      if (result[orderedKeys[i]] <= result[orderedKeys[i - 1]]) {
+        throw new BadRequestException(
+          `dunningThresholds: los valores deben ser estrictamente crecientes (recibido ${orderedKeys[i - 1]}=${result[orderedKeys[i - 1]]} >= ${orderedKeys[i]}=${result[orderedKeys[i]]}).`,
+        );
+      }
+    }
+    return Object.keys(result).length > 0 ? (result as any) : null;
   }
 
   async findAllPlans(): Promise<SubscriptionPlan[]> {
@@ -127,6 +180,12 @@ export class SubscriptionsService {
       plan.maxAiCallsPerMonth = dto.maxAiCallsPerMonth;
     if (dto.isActive !== undefined) plan.isActive = dto.isActive;
     if (dto.displayOrder !== undefined) plan.displayOrder = dto.displayOrder;
+    // Fase 1 / Tarea 1.2.3 — Validar y persistir dunningThresholds.
+    // Convencion: pasar `null` explicito para limpiar (volver a defaults
+    // globales); omitir el campo deja el valor previo intacto.
+    if (dto.dunningThresholds !== undefined) {
+      plan.dunningThresholds = this.validateDunningThresholdsDto(dto.dunningThresholds);
+    }
     const saved = await this.planRepo.save(plan);
     await invalidateCache(this.cacheManager, `plan:${id}`);
     return saved;

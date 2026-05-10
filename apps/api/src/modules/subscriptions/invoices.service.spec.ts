@@ -663,5 +663,141 @@ describe('InvoicesService', () => {
         expect.any(Object),
       );
     });
+
+    // ─── Fase 1 / Tarea 1.2 — Custom thresholds por plan ───────────────
+
+    describe('custom dunning thresholds per plan', () => {
+      it('Enterprise plan with grace 30d does NOT suspend at default 14d', async () => {
+        // Plan Enterprise con suspend=30 (vs default 14). daysOverdue=20
+        // -> bajo defaults estaria stage 14 (suspend). Bajo Enterprise
+        // estaria solo stage reminder2=14.
+        const { userRepo, emailService } = getDeps();
+        const enterprisePlan = {
+          code: 'enterprise',
+          dunningThresholds: {
+            reminder1: 7,
+            reminder2: 14,
+            suspend: 30,
+            cancelWarning: 60,
+            cancel: 90,
+          },
+        };
+        const inv = buildOverdueInvoice(20, {
+          subscription: {
+            id: fakeUuid(800),
+            status: 'active',
+            plan: enterprisePlan,
+          },
+        });
+        mockDunningCandidates([inv]);
+        userRepo.findOne.mockResolvedValue({
+          id: fakeUuid(900), email: 'a@b.cl', firstName: 'A',
+        });
+
+        await service.processDunning();
+
+        // Bajo plan Enterprise + 20d overdue: cae en reminder2 (14d).
+        expect(emailService.sendInvoiceOverdueUrgent).toHaveBeenCalledTimes(1);
+        // NO se debe suspender la sub (suspend=30, daysOverdue=20).
+        expect(subRepo.update).not.toHaveBeenCalled();
+      });
+
+      it('Starter plan with aggressive thresholds suspends at 7d', async () => {
+        const { userRepo, emailService } = getDeps();
+        const starterPlan = {
+          code: 'starter',
+          dunningThresholds: {
+            reminder1: 1,
+            reminder2: 3,
+            suspend: 7,
+            cancelWarning: 14,
+            cancel: 21,
+          },
+        };
+        const inv = buildOverdueInvoice(8, {
+          subscription: {
+            id: fakeUuid(800),
+            status: 'active',
+            plan: starterPlan,
+          },
+        });
+        mockDunningCandidates([inv]);
+        userRepo.findOne.mockResolvedValue({
+          id: fakeUuid(900), email: 'a@b.cl', firstName: 'A',
+        });
+
+        await service.processDunning();
+
+        // 8d overdue + suspend=7 -> stage suspend.
+        expect(subRepo.update).toHaveBeenCalledWith(
+          expect.any(String),
+          expect.objectContaining({ status: 'suspended' }),
+        );
+        expect(emailService.sendAccountSuspended).toHaveBeenCalledTimes(1);
+      });
+
+      it('falls back to defaults if plan thresholds are non-strictly-increasing', async () => {
+        const { userRepo, emailService } = getDeps();
+        const brokenPlan = {
+          code: 'broken',
+          dunningThresholds: {
+            // suspend (21) < cancelWarning (15): incoherente
+            reminder1: 3,
+            reminder2: 7,
+            suspend: 21,
+            cancelWarning: 15,
+            cancel: 30,
+          },
+        };
+        const inv = buildOverdueInvoice(14, {
+          subscription: {
+            id: fakeUuid(800),
+            status: 'active',
+            plan: brokenPlan,
+          },
+        });
+        mockDunningCandidates([inv]);
+        userRepo.findOne.mockResolvedValue({
+          id: fakeUuid(900), email: 'a@b.cl', firstName: 'A',
+        });
+
+        await service.processDunning();
+
+        // Fallback a defaults (suspend=14) -> 14d overdue cruza el threshold.
+        expect(subRepo.update).toHaveBeenCalledWith(
+          expect.any(String),
+          expect.objectContaining({ status: 'suspended' }),
+        );
+      });
+
+      it('plan with partial thresholds merges remaining keys with defaults', async () => {
+        const { userRepo, emailService } = getDeps();
+        const partialPlan = {
+          code: 'partial',
+          dunningThresholds: {
+            // Solo redefine suspend; el resto debe venir de defaults.
+            suspend: 21,
+          },
+        };
+        // 20 dias overdue. Defaults: reminder1=3, reminder2=7. Custom suspend=21.
+        // 20 dias cae en reminder2 (>=7) sin alcanzar suspend(21).
+        const inv = buildOverdueInvoice(20, {
+          subscription: {
+            id: fakeUuid(800),
+            status: 'active',
+            plan: partialPlan,
+          },
+        });
+        mockDunningCandidates([inv]);
+        userRepo.findOne.mockResolvedValue({
+          id: fakeUuid(900), email: 'a@b.cl', firstName: 'A',
+        });
+
+        await service.processDunning();
+
+        expect(emailService.sendInvoiceOverdueUrgent).toHaveBeenCalledTimes(1);
+        expect(subRepo.update).not.toHaveBeenCalled();
+      });
+    });
   });
 });

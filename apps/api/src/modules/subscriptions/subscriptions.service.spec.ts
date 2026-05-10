@@ -145,6 +145,93 @@ describe('SubscriptionsService', () => {
       expect(result.code).toBe('new-plan');
       expect(planRepo.save).toHaveBeenCalled();
     });
+
+    // ─── Fase 1 / Tarea 1.2.3 — Validacion de dunningThresholds ─────────
+
+    describe('dunningThresholds validation', () => {
+      beforeEach(() => {
+        planRepo.findOne.mockResolvedValue(null);
+        planRepo.save.mockImplementation((entity: any) =>
+          Promise.resolve({ id: fakeUuid(500), ...entity }),
+        );
+      });
+
+      it('accepts strictly increasing thresholds', async () => {
+        const result = await service.createPlan({
+          name: 'Enterprise',
+          code: 'ent',
+          dunningThresholds: {
+            reminder1: 7,
+            reminder2: 14,
+            suspend: 30,
+            cancelWarning: 60,
+            cancel: 90,
+          },
+        });
+        expect((result as any).dunningThresholds.suspend).toBe(30);
+      });
+
+      it('accepts partial thresholds (only suspend)', async () => {
+        const result = await service.createPlan({
+          name: 'Custom',
+          code: 'cust',
+          dunningThresholds: { suspend: 21 },
+        });
+        expect((result as any).dunningThresholds).toEqual({ suspend: 21 });
+      });
+
+      it('null/undefined thresholds become null in entity', async () => {
+        const result1 = await service.createPlan({
+          name: 'A', code: 'a', dunningThresholds: null,
+        });
+        expect((result1 as any).dunningThresholds).toBeNull();
+
+        const result2 = await service.createPlan({
+          name: 'B', code: 'b', // no dunningThresholds key
+        });
+        expect((result2 as any).dunningThresholds).toBeNull();
+      });
+
+      it('rejects non-object thresholds', async () => {
+        await expect(
+          service.createPlan({ name: 'X', code: 'x', dunningThresholds: 'invalid' as any }),
+        ).rejects.toThrow(/objeto/);
+      });
+
+      it('rejects array thresholds', async () => {
+        await expect(
+          service.createPlan({ name: 'X', code: 'x', dunningThresholds: [1, 2, 3] as any }),
+        ).rejects.toThrow(/objeto/);
+      });
+
+      it('rejects non-integer values', async () => {
+        await expect(
+          service.createPlan({ name: 'X', code: 'x', dunningThresholds: { suspend: 14.5 } }),
+        ).rejects.toThrow(/entero/);
+      });
+
+      it('rejects negative values', async () => {
+        await expect(
+          service.createPlan({ name: 'X', code: 'x', dunningThresholds: { suspend: -1 } }),
+        ).rejects.toThrow(/entero/);
+      });
+
+      it('rejects values > 365 days', async () => {
+        await expect(
+          service.createPlan({ name: 'X', code: 'x', dunningThresholds: { cancel: 400 } }),
+        ).rejects.toThrow(/entero/);
+      });
+
+      it('rejects non-strictly-increasing values', async () => {
+        await expect(
+          service.createPlan({
+            name: 'X',
+            code: 'x',
+            dunningThresholds: { reminder1: 7, reminder2: 7 }, // igual, no estrictamente creciente
+          }),
+        ).rejects.toThrow(/estrictamente crecientes/);
+      });
+    });
   });
 
   // ─── findByTenantId ────────────────────────────────────────────────
