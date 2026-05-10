@@ -22,6 +22,7 @@ import { AuditService } from '../audit/audit.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { EmailService } from '../notifications/email.service';
 import { SubscriptionsService } from './subscriptions.service';
+import { InvoicesService } from './invoices.service';
 import {
   createMockRepository,
   createMockAuditService,
@@ -38,12 +39,27 @@ describe('SubscriptionsService', () => {
   let subRepo: any;
   let tenantRepo: any;
   let cacheManager: any;
+  let invoicesService: any;
+  let auditService: any;
 
   beforeEach(async () => {
     planRepo = createMockRepository();
     subRepo = createMockRepository();
     tenantRepo = createMockRepository();
     cacheManager = createMockCacheManager();
+
+    // Fase 0 / Tarea 0.2.1 — InvoicesService ahora es dep de
+    // SubscriptionsService (forwardRef) para que processAutoRenewals
+    // pueda generar facturas. Mock con generateInvoice() para tests
+    // del cron.
+    invoicesService = {
+      generateInvoice: jest.fn().mockResolvedValue({
+        id: fakeUuid(700),
+        invoiceNumber: 'EVA-2026-0001',
+        total: 11.9,
+      }),
+    };
+    auditService = createMockAuditService();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -55,11 +71,12 @@ describe('SubscriptionsService', () => {
         { provide: getRepositoryToken(Tenant), useValue: tenantRepo },
         { provide: getRepositoryToken(User), useValue: createMockRepository() },
         { provide: getRepositoryToken(EvaluationCycle), useValue: createMockRepository() },
-        { provide: AuditService, useValue: createMockAuditService() },
+        { provide: AuditService, useValue: auditService },
         { provide: NotificationsService, useValue: createMockNotificationsService() },
         // Pre-fix Fase 1: agregado EmailService (constructor lo inyecta para
         // emails de welcome/cancelacion). Pre-existente, no causado por Fase 1.
         { provide: EmailService, useValue: createMockEmailService() },
+        { provide: InvoicesService, useValue: invoicesService },
         { provide: CACHE_MANAGER, useValue: cacheManager },
       ],
     }).compile();
@@ -173,6 +190,150 @@ describe('SubscriptionsService', () => {
       expect(result.name).toBe('Updated Pro');
       // Verify cache was invalidated
       expect(cacheManager.del).toHaveBeenCalledWith(`plan:${plan.id}`);
+    });
+  });
+
+  // ─── processAutoRenewals (Fase 0 / Tarea 0.2) ──────────────────────
+
+  describe('processAutoRenewals', () => {
+    /**
+     * Helper: configura el queryBuilder mock de subRepo para retornar
+     * la lista de subs vencidas. processAutoRenewals usa
+     * `createQueryBuilder(...).where(...).andWhere(...).getMany()`.
+     */
+    function mockOverdueSubs(subs: any[]) {
+      const qb = {
+        leftJoinAndSelect: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue(subs),
+      };
+      subRepo.createQueryBuilder.mockReturnValue(qb);
+    }
+
+    function buildSub(overrides: Record<string, any> = {}) {
+      return {
+        id: fakeUuid(601),
+        tenantId: fakeUuid(100),
+        plan: createMockPlan(),
+        billingPeriod: 'monthly',
+        startDate: new Date('2026-04-01'),
+        nextBillingDate: new Date('2026-05-01'), // ya vencida
+        autoRenew: true,
+        status: 'active',
+        ...overrides,
+      };
+    }
+
+    it('generates invoice and advances nextBillingDate when autoRenew=true', async () => {
+      const sub = buildSub();
+      mockOverdueSubs([sub]);
+
+      const result = await service.processAutoRenewals();
+
+      expect(invoicesService.generateInvoice).toHaveBeenCalledWith(sub.id, 'system');
+      expect(invoicesService.generateInvoice).toHaveBeenCalledTimes(1);
+      expect(result.renewed).toBe(1);
+      expect(result.invoicesGenerated).toBe(1);
+      expect(result.invoiceErrors).toBe(0);
+      expect(result.suspended).toBe(0);
+      // nextBillingDate fue avanzado
+      expect(subRepo.save).toHaveBeenCalled();
+      const savedSub = subRepo.save.mock.calls[0][0];
+      expect(savedSub.nextBillingDate.getTime()).toBeGreaterThan(
+        new Date('2026-05-01').getTime(),
+      );
+    });
+
+    it('does NOT advance nextBillingDate if generateInvoice fails (so next cron retries)', async () => {
+      const sub = buildSub();
+      mockOverdueSubs([sub]);
+      // Simulate falla persistente (e.g. plan sin precio)
+      invoicesService.generateInvoice.mockRejectedValueOnce(
+        new Error('plan sin precio configurado'),
+      );
+
+      const result = await service.processAutoRenewals();
+
+      expect(result.invoiceErrors).toBe(1);
+      expect(result.invoicesGenerated).toBe(0);
+      expect(result.renewed).toBe(0); // NO incrementado
+      // subRepo.save NO debe haber sido llamado para esta sub —
+      // significa que nextBillingDate NO se avanzo y el proximo cron run
+      // la encontrara aun overdue para reintento.
+      expect(subRepo.save).not.toHaveBeenCalled();
+      // Audit log de fallo registrado.
+      expect(auditService.log).toHaveBeenCalledWith(
+        sub.tenantId,
+        'system',
+        'subscription.renewal_invoice_failed',
+        'subscription',
+        sub.id,
+        expect.objectContaining({ error: expect.stringContaining('sin precio') }),
+      );
+    });
+
+    it('audits subscription.renewed_invoice_generated with invoice number on success', async () => {
+      const sub = buildSub();
+      mockOverdueSubs([sub]);
+      invoicesService.generateInvoice.mockResolvedValueOnce({
+        id: fakeUuid(701),
+        invoiceNumber: 'EVA-2026-0042',
+        total: 23.45,
+      });
+
+      await service.processAutoRenewals();
+
+      expect(auditService.log).toHaveBeenCalledWith(
+        sub.tenantId,
+        'system',
+        'subscription.renewed_invoice_generated',
+        'subscription',
+        sub.id,
+        expect.objectContaining({
+          invoiceNumber: 'EVA-2026-0042',
+          total: 23.45,
+        }),
+      );
+    });
+
+    it('suspends sub (no invoice) when autoRenew=false', async () => {
+      const sub = buildSub({ autoRenew: false });
+      mockOverdueSubs([sub]);
+
+      const result = await service.processAutoRenewals();
+
+      expect(invoicesService.generateInvoice).not.toHaveBeenCalled();
+      expect(result.suspended).toBe(1);
+      expect(result.renewed).toBe(0);
+      expect(result.invoicesGenerated).toBe(0);
+      expect(auditService.log).toHaveBeenCalledWith(
+        sub.tenantId,
+        'system',
+        'subscription.auto_suspended',
+        'subscription',
+        sub.id,
+        expect.any(Object),
+      );
+    });
+
+    it('isolates failures: bad sub does not block good ones in same batch', async () => {
+      const goodSub = buildSub({ id: fakeUuid(602) });
+      const badSub = buildSub({ id: fakeUuid(603) });
+      mockOverdueSubs([badSub, goodSub]);
+      invoicesService.generateInvoice
+        .mockRejectedValueOnce(new Error('boom')) // primera (badSub) falla
+        .mockResolvedValueOnce({
+          id: fakeUuid(800),
+          invoiceNumber: 'EVA-2026-0099',
+          total: 11.9,
+        });
+
+      const result = await service.processAutoRenewals();
+
+      expect(result.renewed).toBe(1); // solo goodSub
+      expect(result.invoicesGenerated).toBe(1);
+      expect(result.invoiceErrors).toBe(1);
     });
   });
 });

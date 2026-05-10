@@ -37,6 +37,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { EmailService } from '../notifications/email.service';
 import { NotificationType } from '../notifications/entities/notification.entity';
 import { PlanFeature } from '../../common/constants/plan-features';
+import { InvoicesService } from './invoices.service';
 
 @Injectable()
 export class SubscriptionsService {
@@ -62,6 +63,13 @@ export class SubscriptionsService {
     private readonly notificationsService: NotificationsService,
     @Inject(forwardRef(() => EmailService))
     private readonly emailService: EmailService,
+    // Fase 0 / Tarea 0.2.1: forwardRef para evitar dependencia circular
+    // potencial. Aunque InvoicesService y SubscriptionsService viven en
+    // el mismo modulo, InvoicesService podria a futuro consumir methods
+    // de SubscriptionsService (calculateProration, etc.) y Nest necesita
+    // la indireccion para resolver el ciclo.
+    @Inject(forwardRef(() => InvoicesService))
+    private readonly invoicesService: InvoicesService,
     @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
   ) {}
 
@@ -1058,10 +1066,17 @@ export class SubscriptionsService {
    *
    * Returns count of processed subscriptions.
    */
-  async processAutoRenewals(): Promise<{ renewed: number; suspended: number }> {
+  async processAutoRenewals(): Promise<{
+    renewed: number;
+    suspended: number;
+    invoicesGenerated: number;
+    invoiceErrors: number;
+  }> {
     const now = new Date();
     let renewed = 0;
     let suspended = 0;
+    let invoicesGenerated = 0;
+    let invoiceErrors = 0;
 
     // Find active subscriptions past their billing date
     const overdue = await this.subRepo
@@ -1074,7 +1089,60 @@ export class SubscriptionsService {
 
     for (const sub of overdue) {
       if (sub.autoRenew) {
-        // Auto-renew: advance billing date forward
+        // Fase 0 / Tarea 0.2.2 — ORDER MATTERS:
+        //   1. Generar factura del nuevo periodo PRIMERO.
+        //   2. Solo si la factura se genero OK, avanzar nextBillingDate.
+        //
+        // Pre-fix: el cron avanzaba nextBillingDate sin generar factura,
+        // dejando el ciclo recurrente roto (super_admin debia clickear
+        // "Generar facturas del periodo" manualmente). Pero ademas, si
+        // hubieramos avanzado primero y la generacion fallaba, el next
+        // cron run no encontraria la sub como overdue (next_billing_date
+        // > now) y ese periodo NUNCA se facturaria. Por eso generar
+        // primero: si falla, log + skip; el proximo cron lo reintenta.
+        //
+        // generateInvoice ya usa continuidad historica (Tarea 0.1.1), por
+        // lo que cubre `[lastInvoice.periodEnd, +1 ciclo]` correctamente
+        // sin depender de nextBillingDate.
+        let invoiceResult: { id: string; invoiceNumber: string; total: number } | null =
+          null;
+        try {
+          const generated = await this.invoicesService.generateInvoice(
+            sub.id,
+            'system',
+          );
+          invoiceResult = {
+            id: generated.id,
+            invoiceNumber: generated.invoiceNumber,
+            total: Number(generated.total),
+          };
+          invoicesGenerated++;
+        } catch (err: any) {
+          invoiceErrors++;
+          this.logger.error(
+            `[AutoRenew] generateInvoice failed for subscription ${sub.id} (tenant ${sub.tenantId}): ${err?.message || err}`,
+          );
+          await this.auditService
+            .log(
+              sub.tenantId,
+              'system',
+              'subscription.renewal_invoice_failed',
+              'subscription',
+              sub.id,
+              {
+                error: String(err?.message || err).slice(0, 500),
+                billingPeriod: sub.billingPeriod,
+                nextBillingDate: sub.nextBillingDate?.toISOString?.() || null,
+              },
+            )
+            .catch(() => undefined);
+          // SKIP el avance de nextBillingDate: el proximo cron run vera
+          // la sub aun overdue y reintentara. Si el error es persistente
+          // (plan sin precio, etc.), super_admin tiene que intervenir.
+          continue;
+        }
+
+        // Auto-renew: advance billing date forward (post-invoice success)
         let nextDate = this.calculateNextBillingDate(
           sub.nextBillingDate!,
           sub.billingPeriod || BillingPeriod.MONTHLY,
@@ -1090,8 +1158,28 @@ export class SubscriptionsService {
         await this.subRepo.save(sub);
         renewed++;
 
+        // Fase 0 / Tarea 0.2.3 — Audit log de renovacion exitosa con
+        // referencia a la factura generada. Util para reconciliacion
+        // contable (saber que invoice corresponde a que renovacion).
+        await this.auditService
+          .log(
+            sub.tenantId,
+            'system',
+            'subscription.renewed_invoice_generated',
+            'subscription',
+            sub.id,
+            {
+              invoiceId: invoiceResult.id,
+              invoiceNumber: invoiceResult.invoiceNumber,
+              total: invoiceResult.total,
+              nextBillingDate: nextDate.toISOString(),
+              billingPeriod: sub.billingPeriod,
+            },
+          )
+          .catch(() => undefined);
+
         this.logger.log(
-          `[AutoRenew] Subscription ${sub.id} (tenant ${sub.tenantId}) renewed, next billing: ${nextDate.toISOString().split('T')[0]}`,
+          `[AutoRenew] Subscription ${sub.id} (tenant ${sub.tenantId}) renewed, invoice ${invoiceResult.invoiceNumber} generated, next billing: ${nextDate.toISOString().split('T')[0]}`,
         );
       } else {
         // No auto-renew: suspend the subscription
@@ -1119,7 +1207,7 @@ export class SubscriptionsService {
       }
     }
 
-    return { renewed, suspended };
+    return { renewed, suspended, invoicesGenerated, invoiceErrors };
   }
 
   // ─── AI Add-on Packs ──────────────────────────────────────────────────

@@ -1386,8 +1386,12 @@ export class RemindersService {
         this.logger.log('[Cron] Processing auto-renewals...');
         try {
           const result = await this.subscriptionsService.processAutoRenewals();
-          if (result.renewed > 0 || result.suspended > 0) {
-            this.logger.log(`[Cron] Auto-renewals: ${result.renewed} renewed, ${result.suspended} suspended`);
+          if (result.renewed > 0 || result.suspended > 0 || result.invoiceErrors > 0) {
+            // Fase 0 / Tarea 0.2 — log expandido: ahora incluye invoices
+            // generadas y errores de generacion (cron ahora factura).
+            this.logger.log(
+              `[Cron] Auto-renewals: ${result.renewed} renewed, ${result.suspended} suspended, ${result.invoicesGenerated} invoices generated, ${result.invoiceErrors} invoice errors`,
+            );
           }
         } catch (error) {
           this.logger.error(`[Cron] Error in processAutoRenewals: ${error}`);
