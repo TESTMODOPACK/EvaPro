@@ -436,4 +436,232 @@ describe('InvoicesService', () => {
       }
     });
   });
+
+  // ─── processDunning (Fase 1 / Tarea 1.1) ───────────────────────────
+
+  describe('processDunning', () => {
+    /**
+     * Acceso a los repos+services internos del service via reflection
+     * para configurar mocks especificos de cada test sin reconstruir
+     * todo el modulo. Justificacion: el mock global en beforeEach es
+     * suficiente para los tests existentes; los de dunning necesitan
+     * mocks puntuales por test.
+     */
+    function getDeps() {
+      const userRepo = (service as any).userRepo;
+      const emailService = (service as any).emailService;
+      const auditService = (service as any).auditService;
+      // Inyectar metodos de dunning que el helper global no tiene.
+      emailService.sendInvoiceOverdueFriendly = jest.fn().mockResolvedValue(undefined);
+      emailService.sendInvoiceOverdueUrgent = jest.fn().mockResolvedValue(undefined);
+      emailService.sendAccountSuspended = jest.fn().mockResolvedValue(undefined);
+      emailService.sendAccountCancellationWarning = jest.fn().mockResolvedValue(undefined);
+      emailService.sendAccountCancelled = jest.fn().mockResolvedValue(undefined);
+      return { userRepo, emailService, auditService };
+    }
+
+    /**
+     * Helper para mockear el resultado del query builder de dunning.
+     * processDunning hace createQueryBuilder('i').where().andWhere()
+     * .leftJoinAndSelect().leftJoinAndSelect().orderBy().getMany().
+     */
+    function mockDunningCandidates(invoices: any[]) {
+      const qb: any = {
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        leftJoinAndSelect: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue(invoices),
+      };
+      // Mantener el queryBuilder de getNextInvoiceNumber separado.
+      // El de dunning entra solo cuando se llama processDunning.
+      invoiceRepo.createQueryBuilder.mockReturnValueOnce(qb);
+    }
+
+    function buildOverdueInvoice(daysOverdue: number, overrides: Record<string, any> = {}) {
+      // Construye dueDate UTC midnight - daysOverdue dias.
+      const fixedNow = new Date('2026-05-15T10:00:00Z');
+      const due = new Date(fixedNow);
+      due.setUTCDate(due.getUTCDate() - daysOverdue);
+      const tid = overrides.tenantId ?? fakeUuid(100);
+      return {
+        id: fakeUuid(700 + Math.floor(Math.random() * 100)),
+        tenantId: tid,
+        invoiceNumber: 'EVA-2026-0001',
+        status: InvoiceStatus.SENT,
+        dueDate: due,
+        total: 11.9,
+        currency: 'UF',
+        dunning: {},
+        tenant: { id: tid, name: 'Demo Org' },
+        subscription: { id: fakeUuid(800), status: 'active' },
+        subscriptionId: fakeUuid(800),
+        ...overrides,
+      };
+    }
+
+    beforeEach(() => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-05-15T10:00:00Z'));
+    });
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('stage 3: sends friendly reminder', async () => {
+      const { userRepo, emailService } = getDeps();
+      mockDunningCandidates([buildOverdueInvoice(3)]);
+      userRepo.findOne.mockResolvedValue({
+        id: fakeUuid(900),
+        email: 'admin@demo.cl',
+        firstName: 'Ana',
+      });
+
+      const result = await service.processDunning();
+
+      expect(result.advanced).toBe(1);
+      expect(emailService.sendInvoiceOverdueFriendly).toHaveBeenCalledTimes(1);
+    });
+
+    it('stage 14: suspends sub and sends "account suspended" email exactly once', async () => {
+      const { userRepo, emailService } = getDeps();
+      mockDunningCandidates([buildOverdueInvoice(14)]);
+      userRepo.findOne.mockResolvedValue({
+        id: fakeUuid(900),
+        email: 'admin@demo.cl',
+        firstName: 'Ana',
+      });
+
+      await service.processDunning();
+
+      expect(subRepo.update).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ status: 'suspended' }),
+      );
+      expect(emailService.sendAccountSuspended).toHaveBeenCalledTimes(1);
+    });
+
+    it('B1.9 dedup: 3 invoices same tenant in stage 14 -> sub suspended ONCE, email sent ONCE', async () => {
+      // Pre-fix: el tenant recibia 3 emails identicos "cuenta suspendida".
+      // Post-fix: el email solo se envia con la transicion ACTIVE->SUSPENDED;
+      // las invoices subsiguientes ven sub.status='suspended' y skipean.
+      const { userRepo, emailService } = getDeps();
+      const tid = fakeUuid(100);
+      const subId = fakeUuid(800);
+      const sub = { id: subId, status: 'active' };
+      const invoices = [
+        buildOverdueInvoice(20, { tenantId: tid, subscription: sub, subscriptionId: subId }),
+        buildOverdueInvoice(17, { tenantId: tid, subscription: sub, subscriptionId: subId }),
+        buildOverdueInvoice(14, { tenantId: tid, subscription: sub, subscriptionId: subId }),
+      ];
+      mockDunningCandidates(invoices);
+      userRepo.findOne.mockResolvedValue({
+        id: fakeUuid(900),
+        email: 'admin@demo.cl',
+        firstName: 'Ana',
+      });
+
+      await service.processDunning();
+
+      // subRepo.update llamado UNA sola vez (transicion).
+      expect(subRepo.update).toHaveBeenCalledTimes(1);
+      // Email "suspended" enviado UNA sola vez, no 3.
+      expect(emailService.sendAccountSuspended).toHaveBeenCalledTimes(1);
+    });
+
+    it('B1.4 dedup: stage 7 reminder NOT sent if sub already SUSPENDED (other invoice triggered it)', async () => {
+      // Caso: tenant tiene invoice A (stage 14, sub suspended) e invoice B
+      // (stage 7). B no debe mandar email "te suspendemos en X dias"
+      // porque la sub ya esta suspendida.
+      const { userRepo, emailService } = getDeps();
+      const tid = fakeUuid(100);
+      const subId = fakeUuid(800);
+      const subActive = { id: subId, status: 'active' };
+      const invoiceA = buildOverdueInvoice(14, {
+        tenantId: tid, subscription: subActive, subscriptionId: subId,
+      });
+      const invoiceB = buildOverdueInvoice(7, {
+        tenantId: tid, subscription: subActive, subscriptionId: subId,
+      });
+      // Order by dueDate ASC -> A primero (mas antigua), luego B.
+      mockDunningCandidates([invoiceA, invoiceB]);
+      userRepo.findOne.mockResolvedValue({
+        id: fakeUuid(900),
+        email: 'admin@demo.cl',
+        firstName: 'Ana',
+      });
+
+      await service.processDunning();
+
+      // A dispara stage 14 -> suspende + envia email "suspended" (1 vez).
+      expect(emailService.sendAccountSuspended).toHaveBeenCalledTimes(1);
+      // B veria sub ya 'suspended' (refrescado in-memory) y skipea email
+      // urgent. Persiste el stage para no reintentar.
+      expect(emailService.sendInvoiceOverdueUrgent).not.toHaveBeenCalled();
+    });
+
+    it('idempotent: 2nd run on same invoice already in stage X does nothing', async () => {
+      const { userRepo, emailService } = getDeps();
+      const inv = buildOverdueInvoice(7, { dunning: { stage: 7, lastEmailAt: '2026-05-13T09:00:00Z' } });
+      mockDunningCandidates([inv]);
+      userRepo.findOne.mockResolvedValue({
+        id: fakeUuid(900), email: 'a@b.cl', firstName: 'A',
+      });
+
+      const result = await service.processDunning();
+
+      expect(result.advanced).toBe(0);
+      expect(emailService.sendInvoiceOverdueFriendly).not.toHaveBeenCalled();
+      expect(emailService.sendInvoiceOverdueUrgent).not.toHaveBeenCalled();
+    });
+
+    it('skips emails when target=0 (daysOverdue < 3)', async () => {
+      const { userRepo, emailService } = getDeps();
+      mockDunningCandidates([buildOverdueInvoice(2)]);
+      userRepo.findOne.mockResolvedValue({
+        id: fakeUuid(900), email: 'a@b.cl', firstName: 'A',
+      });
+
+      const result = await service.processDunning();
+
+      expect(result.advanced).toBe(0);
+      expect(emailService.sendInvoiceOverdueFriendly).not.toHaveBeenCalled();
+    });
+
+    it('UTC-safe: invoice with dueDate as YYYY-MM-DD string still computes correct daysOverdue', async () => {
+      // Caso real: PG `date` columns vienen como string '2026-05-08'.
+      // Pre-fix Tarea 1.1.2 calculaba daysOverdue con drift.
+      // Post-fix: comparacion UTC-day vs UTC-day, sin importar la hora.
+      const { userRepo, emailService } = getDeps();
+      // 7 dias antes de 2026-05-15 UTC = 2026-05-08
+      const inv = buildOverdueInvoice(7);
+      inv.dueDate = '2026-05-08' as any; // string, como llega de PG
+      mockDunningCandidates([inv]);
+      userRepo.findOne.mockResolvedValue({
+        id: fakeUuid(900), email: 'a@b.cl', firstName: 'A',
+      });
+
+      await service.processDunning();
+
+      // Debe ejecutar stage 7 (urgent), no stage 3 ni quedarse en target=0.
+      expect(emailService.sendInvoiceOverdueUrgent).toHaveBeenCalledTimes(1);
+    });
+
+    it('tenant without active admin: suspension audit logs subscription.suspended_no_contact', async () => {
+      const { userRepo, auditService, emailService } = getDeps();
+      mockDunningCandidates([buildOverdueInvoice(14)]);
+      userRepo.findOne.mockResolvedValue(null); // sin admin
+
+      await service.processDunning();
+
+      expect(emailService.sendAccountSuspended).not.toHaveBeenCalled();
+      expect(auditService.log).toHaveBeenCalledWith(
+        expect.any(String),
+        null,
+        'subscription.suspended_no_contact',
+        'Subscription',
+        expect.any(String),
+        expect.any(Object),
+      );
+    });
+  });
 });

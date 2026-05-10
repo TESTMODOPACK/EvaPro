@@ -943,8 +943,31 @@ export class InvoicesService {
 
   async processDunning(): Promise<{ processed: number; advanced: number }> {
     const now = new Date();
+    // Fase 1 / Tarea 1.1.2 — Comparacion UTC-safe de daysOverdue.
+    // Pre-fix: usabamos `(now.getTime() - dueDate.getTime()) / 86400000`
+    // con `now=new Date()` y `dueDate=new Date(invoice.dueDate)`. La
+    // columna PG es `type: 'date'` (sin tz) y se serializa como string
+    // 'YYYY-MM-DD'; al parsear con `new Date()` cuenta como UTC midnight.
+    // Pero `now` esta en hora actual local, lo que causaba drift de
+    // hasta ~1 dia segun la hora del cron y la TZ del servidor. Bajo
+    // TZ Chile (UTC-4) un cron a las 9am local = 13:00 UTC -> el calculo
+    // sumaba 13h al diff y a veces redondeaba al dia siguiente.
+    // Post-fix: comparar dia UTC vs dia UTC ignorando horas.
+    const nowUtcDay = Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      now.getUTCDate(),
+    );
+
     // Only invoices still owed. `dueDate < now` catches both SENT-but-overdue
     // rows that haven't been flipped yet and explicit OVERDUE rows.
+    //
+    // Fase 1 / Tarea 1.1.4 — ORDER BY dueDate ASC: las invoices mas
+    // antiguas (mayor daysOverdue) se procesan PRIMERO. Asi cuando un
+    // tenant tiene varias invoices vencidas, la transicion de la sub a
+    // SUSPENDED/CANCELLED ocurre con la invoice mas grave; las menos
+    // graves del mismo tenant ven la sub ya en estado terminal y
+    // skipean correctamente sus emails (ver guard mas abajo).
     const candidates = await this.invoiceRepo
       .createQueryBuilder('i')
       .where('i.status IN (:...statuses)', {
@@ -953,15 +976,26 @@ export class InvoicesService {
       .andWhere('i.dueDate < :now', { now })
       .leftJoinAndSelect('i.tenant', 'tenant')
       .leftJoinAndSelect('i.subscription', 'subscription')
+      .orderBy('i.dueDate', 'ASC')
       .getMany();
 
     let advanced = 0;
 
     for (const invoice of candidates) {
-      const daysOverdue = Math.floor(
-        (now.getTime() - new Date(invoice.dueDate).getTime()) /
-          (24 * 60 * 60 * 1000),
+      const dueDateRaw = invoice.dueDate as any;
+      const dueDate = new Date(dueDateRaw);
+      if (isNaN(dueDate.getTime())) {
+        this.logger.warn(
+          `Dunning skip: invalid dueDate for invoice ${invoice.id}: ${String(dueDateRaw)}`,
+        );
+        continue;
+      }
+      const dueUtcDay = Date.UTC(
+        dueDate.getUTCFullYear(),
+        dueDate.getUTCMonth(),
+        dueDate.getUTCDate(),
       );
+      const daysOverdue = Math.floor((nowUtcDay - dueUtcDay) / 86_400_000);
       const target = this.dunningTargetStage(daysOverdue);
       if (target === 0) continue;
       const currentStage = invoice.dunning?.stage ?? 0;
@@ -971,6 +1005,19 @@ export class InvoicesService {
       if (invoice.status === InvoiceStatus.SENT) {
         invoice.status = InvoiceStatus.OVERDUE;
       }
+
+      // Fase 1 / Tarea 1.1.4 — Skip stages REMINDER (3, 7) si la sub ya
+      // esta SUSPENDED o CANCELLED por dunning previo. Razon: si una
+      // invoice vencida 14d ya causo SUSPENDED de la sub, otra invoice
+      // vencida 5d del mismo tenant NO debe mandarle un email
+      // "tu factura esta vencida en 5 dias" — el cliente ya sabe que
+      // esta suspendido y suena disonante. Persistimos el avance del
+      // stage para no reintentar mas, pero skipeamos el email.
+      const subStatus = invoice.subscription?.status;
+      const subAlreadyTerminal =
+        subStatus === SubscriptionStatus.SUSPENDED ||
+        subStatus === SubscriptionStatus.CANCELLED;
+      const isReminderStage = target === 3 || target === 7;
 
       // Find a contact for the tenant. Prefer tenant_admin; fall back to any
       // active user of the tenant.
@@ -987,7 +1034,12 @@ export class InvoicesService {
       const orgName = invoice.tenant?.name || '';
 
       try {
-        if (target === 3 && recipientEmail) {
+        if (isReminderStage && subAlreadyTerminal) {
+          // Skip email pero avanzar el stage (idempotencia + no spam).
+          this.logger.log(
+            `Dunning skip-email stage=${target} invoice=${invoice.id} — sub already ${subStatus}`,
+          );
+        } else if (target === 3 && recipientEmail) {
           await this.emailService.sendInvoiceOverdueFriendly(recipientEmail, {
             firstName: recipient!.firstName,
             orgName,
@@ -1016,13 +1068,25 @@ export class InvoicesService {
           // consistent for the user on their next dashboard load. If the
           // DB update fails, no email is sent and the stage does not
           // advance — the cron will retry tomorrow.
-          if (
-            invoice.subscription?.status !== SubscriptionStatus.SUSPENDED &&
-            invoice.subscription?.status !== SubscriptionStatus.CANCELLED
-          ) {
+          //
+          // Fase 1 / Tarea 1.1.3 — DEDUP de email "cuenta suspendida":
+          // si el tenant tiene N invoices todas en stage 14 (caso real:
+          // se acumularon 2-3 facturas vencidas), pre-fix enviabamos N
+          // emails identicos al cliente. Post-fix: el email solo se manda
+          // cuando se REALIZA la transicion ACTIVE/TRIAL -> SUSPENDED;
+          // las siguientes invoices del mismo tenant ven sub ya
+          // SUSPENDED y skipean el email (pero avanzan stage).
+          let didTransition = false;
+          if (!subAlreadyTerminal) {
             await this.subRepo.update(invoice.subscriptionId, {
               status: SubscriptionStatus.SUSPENDED,
             });
+            // Refrescar in-memory para que las siguientes invoices del
+            // mismo batch vean el nuevo status.
+            if (invoice.subscription) {
+              invoice.subscription.status = SubscriptionStatus.SUSPENDED;
+            }
+            didTransition = true;
             await this.auditService
               .log(
                 invoice.tenantId,
@@ -1034,7 +1098,7 @@ export class InvoicesService {
               )
               .catch(() => undefined);
           }
-          if (recipientEmail) {
+          if (didTransition && recipientEmail) {
             await this.emailService.sendAccountSuspended(recipientEmail, {
               firstName: recipient!.firstName,
               orgName,
@@ -1043,7 +1107,7 @@ export class InvoicesService {
               cancelsInDays: 37 - daysOverdue < 0 ? 0 : 37 - daysOverdue,
               tenantId: invoice.tenantId,
             });
-          } else {
+          } else if (didTransition && !recipientEmail) {
             // No recipient — the tenant will be suspended silently. Flag
             // for ops review so they can chase a contact out-of-band.
             await this.auditService
@@ -1057,7 +1121,21 @@ export class InvoicesService {
               )
               .catch(() => undefined);
           }
-        } else if (target === 30 && recipientEmail) {
+        } else if (target === 30 && recipientEmail && !subAlreadyTerminal) {
+          // El email "tu cuenta sera cancelada en 7 dias" pierde sentido
+          // si la sub ya esta CANCELLED. SUSPENDED si tiene sentido (es
+          // el flujo natural). Solo skipeamos si CANCELLED.
+          await this.emailService.sendAccountCancellationWarning(
+            recipientEmail,
+            {
+              firstName: recipient!.firstName,
+              orgName,
+              payUrl,
+              tenantId: invoice.tenantId,
+            },
+          );
+        } else if (target === 30 && subStatus === SubscriptionStatus.SUSPENDED && recipientEmail) {
+          // Sub suspended (camino feliz) — enviar warning de cancelacion.
           await this.emailService.sendAccountCancellationWarning(
             recipientEmail,
             {
@@ -1072,10 +1150,18 @@ export class InvoicesService {
           // so no further billing side-effects happen on the cancelled sub,
           // then notify. If the email fails, the user still finds out from
           // their dashboard / login attempt.
-          if (invoice.subscription?.status !== SubscriptionStatus.CANCELLED) {
+          //
+          // Mismo patron de DEDUP que stage 14: solo enviar email si esta
+          // invoice fue la que disparo la transicion.
+          let didCancel = false;
+          if (subStatus !== SubscriptionStatus.CANCELLED) {
             await this.subRepo.update(invoice.subscriptionId, {
               status: SubscriptionStatus.CANCELLED,
             });
+            if (invoice.subscription) {
+              invoice.subscription.status = SubscriptionStatus.CANCELLED;
+            }
+            didCancel = true;
             await this.auditService
               .log(
                 invoice.tenantId,
@@ -1087,7 +1173,7 @@ export class InvoicesService {
               )
               .catch(() => undefined);
           }
-          if (recipientEmail) {
+          if (didCancel && recipientEmail) {
             await this.emailService.sendAccountCancelled(recipientEmail, {
               firstName: recipient!.firstName,
               orgName,
