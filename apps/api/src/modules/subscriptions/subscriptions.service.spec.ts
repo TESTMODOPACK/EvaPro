@@ -336,4 +336,45 @@ describe('SubscriptionsService', () => {
       expect(result.invoiceErrors).toBe(1);
     });
   });
+
+  // ─── getPaymentsBySubscription (Fase 0 / Tarea 0.5) ─────────────────
+
+  describe('getPaymentsBySubscription', () => {
+    it('returns [] when subscription does not exist', async () => {
+      // Pre-fix: hubiese hecho find directamente con subscriptionId y
+      // potencialmente devuelto rows si el subscriptionId apuntaba a
+      // payments huerfanos. Post-fix: gateway por sub.findOne primero.
+      subRepo.findOne.mockResolvedValue(null);
+
+      const result = await service.getPaymentsBySubscription(fakeUuid(999));
+
+      expect(result).toEqual([]);
+      // paymentRepo.find NO debe haber sido invocado.
+    });
+
+    it('filters payments by both subscriptionId AND tenantId from the sub', async () => {
+      // Defense-in-depth: aunque el endpoint hoy es super_admin only, si
+      // por bug los payments quedaran con tenantId distinto al de la sub,
+      // no los mezclamos.
+      const subId = fakeUuid(601);
+      const ownerTenantId = fakeUuid(100);
+      subRepo.findOne.mockResolvedValue({ id: subId, tenantId: ownerTenantId });
+      // Configuramos el mock del paymentRepo a traves del provider;
+      // aprovechamos que el service utiliza this.paymentRepo (no expuesto
+      // directo en el mock root). Lo accedemos via reflection.
+      const paymentRepo = (service as any).paymentRepo;
+      paymentRepo.find = jest.fn().mockResolvedValue([
+        { id: fakeUuid(900), tenantId: ownerTenantId, subscriptionId: subId },
+      ]);
+
+      await service.getPaymentsBySubscription(subId);
+
+      // Verificamos que el WHERE incluye AMBOS subscriptionId y tenantId.
+      expect(paymentRepo.find).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { subscriptionId: subId, tenantId: ownerTenantId },
+        }),
+      );
+    });
+  });
 });

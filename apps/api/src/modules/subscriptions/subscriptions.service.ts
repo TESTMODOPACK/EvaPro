@@ -745,8 +745,26 @@ export class SubscriptionsService {
   async getPaymentsBySubscription(
     subscriptionId: string,
   ): Promise<PaymentHistory[]> {
+    // Fase 0 / Tarea 0.5 — Defense-in-depth de aislamiento multi-tenant.
+    //
+    // Pre-fix: solo filtrabamos por subscriptionId. Hoy el unico caller
+    // expuesto es GET /subscriptions/:id/payments con @Roles('super_admin'),
+    // por lo que cross-tenant queries son legitimas. PERO el patron del
+    // resto del modulo es scopear por tenantId siempre — y si manana
+    // alguien expone este metodo a tenant_admin sin agregar el filtro,
+    // hay leak directo.
+    //
+    // Fix: resolver tenantId desde la sub y filtrar payments por ese
+    // mismo tenantId. Si por alguna corrupcion los payments quedaran con
+    // tenantId divergente del de la sub (data inconsistency), no los
+    // mezclamos. Si la sub no existe, retornamos [].
+    const sub = await this.subRepo.findOne({
+      where: { id: subscriptionId },
+      select: ['id', 'tenantId'],
+    });
+    if (!sub) return [];
     return this.paymentRepo.find({
-      where: { subscriptionId },
+      where: { subscriptionId, tenantId: sub.tenantId },
       order: { createdAt: 'DESC' },
     });
   }
