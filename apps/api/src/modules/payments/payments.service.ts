@@ -14,6 +14,7 @@ import { Tenant } from '../tenants/entities/tenant.entity';
 import { StripeProvider } from './providers/stripe-provider';
 import { MercadoPagoProvider } from './providers/mercadopago-provider';
 import { PaymentProvider, RefundResult, WebhookEvent } from './providers/payment-provider.interface';
+import { PaymentMethodsService } from './payment-methods.service';
 import { convertToCLP } from '../../common/utils/currency-converter';
 import { InvoicesService } from '../subscriptions/invoices.service';
 import { EmailService } from '../notifications/email.service';
@@ -40,6 +41,9 @@ export class PaymentsService {
     private readonly invoicesService: InvoicesService,
     private readonly emailService: EmailService,
     private readonly auditService: AuditService,
+    // Fase 3 / Tarea 3.4 — Para procesar webhooks de setup_intent y
+    // payment_method lifecycle desde applyPaymentMethodWebhook.
+    private readonly paymentMethodsService: PaymentMethodsService,
   ) {}
 
   /** Lookup a provider adapter by name. Throws if not enabled. */
@@ -231,6 +235,17 @@ export class PaymentsService {
     if (event.isIgnorable || event.type === 'unknown') {
       return { handled: false, reason: 'event type not relevant' };
     }
+
+    // Fase 3 / Tarea 3.4 — Eventos de payment_method lifecycle no
+    // matchean contra PaymentSession (no son cobros, son setup/detach
+    // del medio de pago guardado). Enrutamos a su handler dedicado.
+    if (
+      event.type === 'setup_intent.succeeded' ||
+      event.type === 'payment_method.detached'
+    ) {
+      return this.applyPaymentMethodWebhook(event);
+    }
+
     if (!event.externalId) {
       return { handled: false, reason: 'event missing externalId' };
     }
@@ -290,6 +305,44 @@ export class PaymentsService {
     }
 
     return { handled: false, reason: 'unhandled event type' };
+  }
+
+  /**
+   * Fase 3 / Tarea 3.4 — Procesa eventos lifecycle de payment methods.
+   * Separado de applyWebhookEvent porque NO requieren matching contra
+   * PaymentSession: matchean contra SavedPaymentMethod.
+   *
+   * Llamado desde WebhooksController para eventos:
+   *   - setup_intent.succeeded -> confirma DRAFT -> ACTIVE.
+   *   - payment_method.attached -> mismo (con metadata de card).
+   *   - payment_method.detached -> marca REVOKED.
+   */
+  async applyPaymentMethodWebhook(
+    event: WebhookEvent,
+  ): Promise<{ handled: boolean; reason?: string }> {
+    if (event.type === 'setup_intent.succeeded') {
+      if (!event.paymentMethodId || !event.customerId) {
+        return { handled: false, reason: 'missing paymentMethodId or customerId' };
+      }
+      await this.paymentMethodsService.confirmFromWebhook({
+        setupIntentId: event.externalId,
+        paymentMethodId: event.paymentMethodId,
+        customerId: event.customerId,
+        cardBrand: event.cardBrand,
+        cardLast4: event.cardLast4,
+        cardExpMonth: event.cardExpMonth,
+        cardExpYear: event.cardExpYear,
+      });
+      return { handled: true };
+    }
+    if (event.type === 'payment_method.detached') {
+      if (!event.paymentMethodId) {
+        return { handled: false, reason: 'missing paymentMethodId' };
+      }
+      await this.paymentMethodsService.handleDetachedFromWebhook(event.paymentMethodId);
+      return { handled: true };
+    }
+    return { handled: false, reason: 'not a payment_method webhook' };
   }
 
   /**

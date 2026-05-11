@@ -15,12 +15,17 @@ import { InvoicesService } from './invoices.service';
 import { InvoicesController } from './invoices.controller';
 import { AuditModule } from '../audit/audit.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { PaymentsModule } from '../payments/payments.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Subscription, SubscriptionPlan, PaymentHistory, SubscriptionRequest, Invoice, InvoiceLine, Tenant, User, EvaluationCycle]),
     AuditModule,
     forwardRef(() => NotificationsModule),
+    // Fase 3 / Tarea 1.3 (reincorporada) — PaymentMethodsService usado
+    // por processAutoRenewals para cobrar automaticamente la factura
+    // del nuevo periodo con la tarjeta guardada por default.
+    forwardRef(() => PaymentsModule),
   ],
   controllers: [SubscriptionsController, InvoicesController],
   providers: [SubscriptionsService, InvoicesService],

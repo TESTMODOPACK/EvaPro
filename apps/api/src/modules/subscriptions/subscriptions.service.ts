@@ -38,6 +38,7 @@ import { EmailService } from '../notifications/email.service';
 import { NotificationType } from '../notifications/entities/notification.entity';
 import { PlanFeature } from '../../common/constants/plan-features';
 import { InvoicesService } from './invoices.service';
+import { PaymentMethodsService } from '../payments/payment-methods.service';
 
 @Injectable()
 export class SubscriptionsService {
@@ -70,6 +71,10 @@ export class SubscriptionsService {
     // la indireccion para resolver el ciclo.
     @Inject(forwardRef(() => InvoicesService))
     private readonly invoicesService: InvoicesService,
+    // Fase 3 / Tarea 1.3 — Cobra automaticamente con tarjeta guardada
+    // en processAutoRenewals.
+    @Inject(forwardRef(() => PaymentMethodsService))
+    private readonly paymentMethodsService: PaymentMethodsService,
     @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
   ) {}
 
@@ -1299,6 +1304,78 @@ export class SubscriptionsService {
           // la sub aun overdue y reintentara. Si el error es persistente
           // (plan sin precio, etc.), super_admin tiene que intervenir.
           continue;
+        }
+
+        // Fase 3 / Tarea 1.3 (reincorporada) — Intentar cobro automatico
+        // off-session con la tarjeta default del tenant. Si tiene
+        // metodo activo y succeed, marcamos la invoice como PAID y el
+        // tenant evita el flow de pago manual. Si no hay metodo o el
+        // cobro falla, dejamos la invoice en DRAFT/SENT y el cron de
+        // dunning + email de aviso se encargaran.
+        try {
+          const chargeResult = await this.paymentMethodsService.chargeWithDefault({
+            tenantId: sub.tenantId,
+            // Invoice total -> CLP conversion la hace el chargeStored
+            // si la moneda no es CLP. Aqui pasamos el valor en la
+            // moneda de la invoice; provider convierte si es UF/USD.
+            amount: invoiceResult.total,
+            currency: 'CLP', // TODO multi-currency Fase 5
+            description: `Eva360 — Factura ${invoiceResult.invoiceNumber}`,
+            metadata: {
+              tenant_id: sub.tenantId,
+              subscription_id: sub.id,
+              invoice_id: invoiceResult.id,
+              invoice_number: invoiceResult.invoiceNumber,
+              source: 'auto_renewal_charge',
+            },
+            // Idempotency deterministica: misma invoice -> mismo key
+            // -> Stripe retorna el cargo existente sin duplicar.
+            idempotencyKey: `auto-renew-${invoiceResult.id}`,
+          });
+          if (chargeResult && chargeResult.status === 'succeeded') {
+            // Cobro OK: marcar invoice PAID.
+            await this.invoicesService.markAsPaid(
+              invoiceResult.id,
+              {
+                paymentMethod: 'stripe_auto',
+                transactionRef: chargeResult.chargeId,
+                notes: 'Cobro automatico con tarjeta default en renovacion.',
+              },
+              'system',
+            );
+            this.logger.log(
+              `[AutoRenew] tenant=${sub.tenantId} invoice=${invoiceResult.invoiceNumber} cobrado automaticamente (charge=${chargeResult.chargeId}).`,
+            );
+            await this.auditService
+              .log(sub.tenantId, 'system', 'invoice.auto_charged', 'invoice', invoiceResult.id, {
+                chargeId: chargeResult.chargeId,
+                amount: invoiceResult.total,
+              })
+              .catch(() => undefined);
+          } else if (chargeResult && chargeResult.status === 'requires_action') {
+            // Stripe pide 3DS interactivo — cliente debe completar manual.
+            // Dejamos la invoice DRAFT y email normal lo notificara.
+            this.logger.warn(
+              `[AutoRenew] tenant=${sub.tenantId} invoice=${invoiceResult.invoiceNumber} requiere autenticacion 3DS — fallback a flow manual.`,
+            );
+          } else if (chargeResult && chargeResult.status === 'failed') {
+            // Tarjeta declinada / expirada / fondos insuficientes.
+            this.logger.warn(
+              `[AutoRenew] tenant=${sub.tenantId} invoice=${invoiceResult.invoiceNumber} cobro automatico fallido: ${chargeResult.failureReason}`,
+            );
+            await this.auditService
+              .log(sub.tenantId, 'system', 'invoice.auto_charge_failed', 'invoice', invoiceResult.id, {
+                reason: chargeResult.failureReason,
+              })
+              .catch(() => undefined);
+          }
+          // chargeResult=null: tenant no tiene metodo default, flow manual.
+        } catch (chargeErr: any) {
+          // Error inesperado del provider — no bloquea la renovacion,
+          // la invoice queda en DRAFT esperando pago manual.
+          this.logger.error(
+            `[AutoRenew] cobro automatico arrojo error para invoice ${invoiceResult.invoiceNumber}: ${chargeErr?.message || chargeErr}`,
+          );
         }
 
         // Auto-renew: advance billing date forward (post-invoice success)

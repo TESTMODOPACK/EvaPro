@@ -55,6 +55,14 @@ export class Tenant {
   @Column({ type: 'varchar', length: 200, nullable: true, name: 'billing_email' })
   billingEmail: string | null;
 
+  /**
+   * Fase 3 / Tarea 3.4 — Stripe Customer id (`cus_...`) creado on-demand
+   * la primera vez que el tenant agrega un metodo de pago. Stripe agrupa
+   * los payment_methods bajo este customer. Null hasta primera card.
+   */
+  @Column({ type: 'varchar', length: 100, nullable: true, name: 'stripe_customer_id' })
+  stripeCustomerId: string | null;
+
   @Column({ type: 'jsonb', default: {} })
   settings: TenantSettings;
 

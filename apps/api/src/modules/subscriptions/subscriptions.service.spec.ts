@@ -23,6 +23,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { EmailService } from '../notifications/email.service';
 import { SubscriptionsService } from './subscriptions.service';
 import { InvoicesService } from './invoices.service';
+import { PaymentMethodsService } from '../payments/payment-methods.service';
 import {
   createMockRepository,
   createMockAuditService,
@@ -85,6 +86,15 @@ describe('SubscriptionsService', () => {
         // emails de welcome/cancelacion). Pre-existente, no causado por Fase 1.
         { provide: EmailService, useValue: createMockEmailService() },
         { provide: InvoicesService, useValue: invoicesService },
+        // Fase 3 / Tarea 1.3 — PaymentMethodsService usado por
+        // processAutoRenewals. Default mock: tenant sin tarjeta (retorna
+        // null) -> auto-renewal procede via flow manual, igual que pre-T1.3.
+        {
+          provide: PaymentMethodsService,
+          useValue: {
+            chargeWithDefault: jest.fn().mockResolvedValue(null),
+          },
+        },
         { provide: CACHE_MANAGER, useValue: cacheManager },
       ],
     }).compile();

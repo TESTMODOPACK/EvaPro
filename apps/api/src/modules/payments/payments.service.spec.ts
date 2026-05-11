@@ -89,6 +89,16 @@ describe('PaymentsService — applyWebhookEvent (Fase 0 / Tarea 0.4)', () => {
         { provide: InvoicesService, useValue: invoicesService },
         { provide: EmailService, useValue: createMockEmailService() },
         { provide: AuditService, useValue: auditService },
+        // Fase 3 / Tarea 3.4 — PaymentMethodsService usado por
+        // applyPaymentMethodWebhook (eventos setup_intent.* y
+        // payment_method.detached).
+        {
+          provide: require('./payment-methods.service').PaymentMethodsService,
+          useValue: {
+            confirmFromWebhook: jest.fn().mockResolvedValue(undefined),
+            handleDetachedFromWebhook: jest.fn().mockResolvedValue(undefined),
+          },
+        },
       ],
     }).compile();
 

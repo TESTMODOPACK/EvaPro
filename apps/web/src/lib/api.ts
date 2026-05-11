@@ -1973,6 +1973,38 @@ export const api = {
     },
   },
 
+  /**
+   * Fase 3 / Tarea 3.4 — Gestion de medios de pago guardados.
+   * Solo tenant_admin.
+   */
+  paymentMethods: {
+    list: (token: string) =>
+      request<Array<{
+        id: string;
+        brand: string | null;
+        last4: string | null;
+        expMonth: number | null;
+        expYear: number | null;
+        isDefault: boolean;
+        provider: string;
+        createdAt: string;
+      }>>(`/payment-methods`, {}, token),
+    startAdd: (token: string) =>
+      request<{ checkoutUrl: string; setupIntentId: string }>(
+        `/payment-methods/add`,
+        { method: 'POST' },
+        token,
+      ),
+    setDefault: (token: string, id: string) =>
+      request<void>(
+        `/payment-methods/${id}/default`,
+        { method: 'PATCH' },
+        token,
+      ),
+    delete: (token: string, id: string) =>
+      request<void>(`/payment-methods/${id}`, { method: 'DELETE' }, token),
+  },
+
   // ─── Impersonation (super_admin) ───────────────────────────────────────
   impersonation: {
     /** Start an impersonation session. Caller must be super_admin.

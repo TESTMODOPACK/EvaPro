@@ -62,6 +62,9 @@ export default function MiSuscripcionPage() {
   const [sub, setSub] = useState<any>(null);
   const [payments, setPayments] = useState<any[]>([]);
   const [paymentsTotal, setPaymentsTotal] = useState(0);
+  // Fase 3 / Tarea 3.4 — Medios de pago guardados.
+  const [paymentMethods, setPaymentMethods] = useState<any[]>([]);
+  const [addingMethod, setAddingMethod] = useState(false);
   // Fase 3 / Tarea 3.3 — Estado del formulario de datos de facturacion.
   const [tenant, setTenant] = useState<any>(null);
   const [billingForm, setBillingForm] = useState({
@@ -116,6 +119,60 @@ export default function MiSuscripcionPage() {
   function showToast(msg: string) {
     setAutoRenewToast(msg);
     setTimeout(() => setAutoRenewToast(''), 3000);
+  }
+
+  /**
+   * Fase 3 / Tarea 3.4 — Inicia el flow de agregar tarjeta.
+   * Redirige a Stripe Checkout en mode='setup' para capturar la card.
+   * Al volver, webhook confirma + reload.
+   */
+  async function addPaymentMethod() {
+    if (!token || addingMethod) return;
+    setAddingMethod(true);
+    try {
+      const { checkoutUrl } = await api.paymentMethods.startAdd(token);
+      // Redirect — la URL es hosted Stripe Checkout.
+      window.location.href = checkoutUrl;
+    } catch (err: any) {
+      showToast(err?.message || 'Error al iniciar el flujo de agregar tarjeta.');
+      setAddingMethod(false);
+    }
+  }
+
+  /**
+   * Fase 3 / Tarea 3.4 — Marca un metodo como default. Confirm en UI
+   * porque cambia la tarjeta que se cobrara en retries automaticos.
+   */
+  async function setDefaultMethod(id: string) {
+    if (!token) return;
+    try {
+      await api.paymentMethods.setDefault(token, id);
+      // Re-fetch para reflejar el nuevo default.
+      const list = await api.paymentMethods.list(token);
+      setPaymentMethods(list);
+      showToast('Método predeterminado actualizado.');
+    } catch (err: any) {
+      showToast(err?.message || 'Error al actualizar el predeterminado.');
+    }
+  }
+
+  /**
+   * Fase 3 / Tarea 3.4 — Borra un metodo (revoca del provider).
+   * Confirm en UI porque es accion destructiva.
+   */
+  async function deletePaymentMethod(id: string, label: string) {
+    if (!token) return;
+    if (!confirm(`¿Eliminar el método ${label}? Esta acción no se puede deshacer.`)) {
+      return;
+    }
+    try {
+      await api.paymentMethods.delete(token, id);
+      const list = await api.paymentMethods.list(token);
+      setPaymentMethods(list);
+      showToast('Método eliminado.');
+    } catch (err: any) {
+      showToast(err?.message || 'Error al eliminar el método.');
+    }
   }
 
   /**
@@ -190,8 +247,10 @@ export default function MiSuscripcionPage() {
       api.subscriptions.getAiAddon(token).catch(() => ({ calls: 0, price: 0, packId: null })),
       // Fase 3 / Tarea 3.3 — Tenant data para precargar formulario billing.
       api.tenants.me(token).catch(() => null),
+      // Fase 3 / Tarea 3.4 — Metodos de pago guardados.
+      api.paymentMethods.list(token).catch(() => []),
     ])
-      .then(([s, count, pays, prot, plns, reqs, aiUse, packs, addon, ten]) => {
+      .then(([s, count, pays, prot, plns, reqs, aiUse, packs, addon, ten, methods]) => {
         setSub(s);
         setUserCount(count as number);
         // Fase 3 / Tarea 3.1 — shape paginado.
@@ -204,6 +263,8 @@ export default function MiSuscripcionPage() {
         setAiUsage(aiUse);
         setAiPacks(packs as any[]);
         setAiAddon(addon as any);
+        // Fase 3 / Tarea 3.4 — Cargar metodos de pago.
+        setPaymentMethods((methods as any[]) || []);
         // Fase 3 / Tarea 3.3 — Precargar form con datos actuales del tenant.
         if (ten) {
           setTenant(ten);
@@ -921,6 +982,92 @@ export default function MiSuscripcionPage() {
                     </div>
                   ))}
                 </div>
+              </div>
+            )}
+          </div>
+
+          {/* Medios de pago guardados (Fase 3 / Tarea 3.4) */}
+          <div className="card animate-fade-up-delay-3" style={{ padding: '1.75rem', marginBottom: '1.5rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.5rem' }}>
+              <h2 style={{ fontSize: '1rem', fontWeight: 700 }}>Métodos de Pago Guardados</h2>
+              <button
+                type="button"
+                className="btn btn-primary"
+                style={{ fontSize: '0.8rem' }}
+                onClick={addPaymentMethod}
+                disabled={addingMethod}
+              >
+                {addingMethod ? 'Cargando…' : '+ Agregar tarjeta'}
+              </button>
+            </div>
+            <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
+              Las tarjetas guardadas se usan para cobros automáticos de tu suscripción y reintentos de facturas vencidas.
+              Nunca almacenamos el número completo — solo los últimos 4 dígitos.
+            </p>
+            {paymentMethods.length === 0 ? (
+              <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                No tienes tarjetas guardadas. Agrega una para habilitar cobros automáticos.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {paymentMethods.map((m) => (
+                  <div
+                    key={m.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '0.75rem 1rem',
+                      border: '1px solid var(--border)',
+                      borderRadius: 'var(--radius-sm)',
+                      background: m.isDefault ? 'rgba(99,102,241,0.05)' : 'transparent',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                      <span style={{ fontWeight: 600, fontSize: '0.9rem', textTransform: 'capitalize' }}>
+                        {m.brand || 'Card'}
+                      </span>
+                      <span style={{ fontFamily: 'monospace', color: 'var(--text-muted)' }}>
+                        •••• {m.last4 || '????'}
+                      </span>
+                      {m.expMonth && m.expYear && (
+                        <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                          Vence {String(m.expMonth).padStart(2, '0')}/{String(m.expYear).slice(-2)}
+                        </span>
+                      )}
+                      {m.isDefault && (
+                        <span className="badge badge-accent" style={{ fontSize: '0.7rem', padding: '2px 6px' }}>
+                          Predeterminada
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      {!m.isDefault && (
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          style={{ fontSize: '0.75rem' }}
+                          onClick={() => setDefaultMethod(m.id)}
+                        >
+                          Hacer predeterminada
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        style={{ fontSize: '0.75rem', color: 'var(--danger)' }}
+                        onClick={() =>
+                          deletePaymentMethod(
+                            m.id,
+                            `${m.brand || 'Card'} •••• ${m.last4 || '????'}`,
+                          )
+                        }
+                      >
+                        Eliminar
+                      </button>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>

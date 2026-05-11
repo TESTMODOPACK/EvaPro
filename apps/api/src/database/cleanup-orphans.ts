@@ -315,6 +315,30 @@ async function main() {
       `CREATE INDEX IF NOT EXISTS idx_ris_evaluator_scheduled ON recruitment_interview_slots(evaluator_id, scheduled_at)`,
       `CREATE INDEX IF NOT EXISTS idx_ris_candidate_scheduled ON recruitment_interview_slots(candidate_id, scheduled_at)`,
       `CREATE INDEX IF NOT EXISTS idx_ris_tenant_status ON recruitment_interview_slots(tenant_id, status)`,
+      // Fase 3 / Tarea 3.4 — Metodos de pago guardados (cards) por tenant.
+      // NUNCA almacena PAN/CVV — solo metadata + opaque provider id.
+      `CREATE TABLE IF NOT EXISTS saved_payment_methods (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id uuid NOT NULL,
+        provider_customer_id varchar(100) NULL,
+        provider_payment_method_id varchar(100) NOT NULL,
+        provider varchar(20) NOT NULL,
+        type varchar(20) NOT NULL DEFAULT 'card',
+        brand varchar(50) NULL,
+        last4 varchar(4) NULL,
+        exp_month int NULL,
+        exp_year int NULL,
+        status varchar(20) NOT NULL DEFAULT 'draft',
+        is_default boolean NOT NULL DEFAULT false,
+        setup_intent_id varchar(100) NULL,
+        created_by uuid NULL,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now(),
+        UNIQUE (tenant_id, provider, provider_payment_method_id)
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_spm_tenant ON saved_payment_methods(tenant_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_spm_tenant_default ON saved_payment_methods(tenant_id, is_default)`,
+      `CREATE INDEX IF NOT EXISTS idx_spm_status ON saved_payment_methods(status)`,
     ];
     for (const sql of tableFixes) {
       try { await client.query(sql); } catch { /* already exists */ }
@@ -352,6 +376,9 @@ async function main() {
       // Fase 3 / Tarea 3.3 — Email separado de facturacion para tenants.
       // Si null, fallback al tenant_admin activo (comportamiento previo).
       { table: 'tenants', column: 'billing_email', sql: `ALTER TABLE "tenants" ADD COLUMN IF NOT EXISTS "billing_email" varchar(200) NULL` },
+      // Fase 3 / Tarea 3.4 — Stripe Customer id por tenant (creado
+      // on-demand al agregar primera card).
+      { table: 'tenants', column: 'stripe_customer_id', sql: `ALTER TABLE "tenants" ADD COLUMN IF NOT EXISTS "stripe_customer_id" varchar(100) NULL` },
       // Fase 2 / Tarea 2.1 — Credit notes:
       //   original_invoice_id: factura origen que la credit note revierte.
       //   applied_to_invoice_id + applied_at: rastreo de credit notes

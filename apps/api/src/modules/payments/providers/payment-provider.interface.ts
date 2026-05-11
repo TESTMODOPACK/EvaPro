@@ -56,6 +56,9 @@ export interface WebhookEvent {
     // chargebacks sin alerta, dunning siguiendo en facturas pagadas.
     | 'payment.refunded'
     | 'payment.disputed'
+    // Fase 3 / Tarea 3.4 — Saved payment methods lifecycle.
+    | 'setup_intent.succeeded'
+    | 'payment_method.detached'
     | 'unknown';
   externalId: string;
   amount?: number;
@@ -64,6 +67,17 @@ export interface WebhookEvent {
   /** True if we parsed the payload but the event type is not in our vocabulary.
    *  Callers should 200-OK without side-effects. */
   isIgnorable?: boolean;
+  /**
+   * Fase 3 / Tarea 3.4 — Payload extra para eventos de payment_methods.
+   * En `setup_intent.succeeded`: paymentMethodId final + customerId.
+   * En `payment_method.detached`: paymentMethodId.
+   */
+  paymentMethodId?: string;
+  customerId?: string;
+  cardBrand?: string;
+  cardLast4?: string;
+  cardExpMonth?: number;
+  cardExpYear?: number;
 }
 
 /**
@@ -115,4 +129,56 @@ export interface PaymentProvider {
    * en vez de duplicarlo.
    */
   refundPayment?(input: RefundInput): Promise<RefundResult>;
+
+  // ─── Fase 3 / Tarea 3.4 — Saved payment methods ────────────────────
+
+  /**
+   * Crea (o retorna existente) un Customer en el provider para este
+   * tenant. Idempotente por `tenantId` — caller debe pasar el
+   * customerId existente si lo tiene para evitar duplicados.
+   */
+  ensureCustomer?(input: {
+    tenantId: string;
+    tenantName: string;
+    email: string;
+    existingCustomerId?: string | null;
+  }): Promise<{ customerId: string }>;
+
+  /**
+   * Inicia un Checkout en mode='setup' (Stripe). Retorna URL hosted que
+   * captura la tarjeta sin cobrar. Webhook `checkout.session.completed`
+   * con mode='setup' confirma + entrega el `payment_method` id final.
+   * Mas simple que SetupIntent + Elements: 0 deps frontend nuevas,
+   * mismo patron de redirect que checkout de pago.
+   */
+  createSetupIntent?(input: {
+    customerId: string;
+    successUrl: string;
+    cancelUrl: string;
+  }): Promise<{ setupIntentId: string; checkoutUrl: string }>;
+
+  /**
+   * Cobra usando un payment_method previamente guardado (off_session=true).
+   * Para retries automaticos de dunning, renovaciones, etc. NO crea un
+   * checkout — el cobro es directo, el cliente no esta presente.
+   */
+  chargeStoredMethod?(input: {
+    customerId: string;
+    paymentMethodId: string;
+    amount: number;
+    currency: 'CLP' | 'USD';
+    description: string;
+    metadata: Record<string, string>;
+    idempotencyKey: string;
+  }): Promise<{
+    chargeId: string;
+    status: 'succeeded' | 'requires_action' | 'failed';
+    failureReason?: string;
+  }>;
+
+  /**
+   * Borra un payment_method del provider (revoca el token). Idempotente:
+   * si ya esta detached, retorna OK silenciosamente.
+   */
+  detachPaymentMethod?(paymentMethodId: string): Promise<void>;
 }

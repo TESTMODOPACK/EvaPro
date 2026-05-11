@@ -137,6 +137,23 @@ export class StripeProvider implements PaymentProvider {
       case 'checkout.session.completed':
       case 'checkout.session.async_payment_succeeded': {
         const s = event.data.object as any;
+        // Fase 3 / Tarea 3.4 — Diferenciar checkout de pago vs checkout
+        // de setup (guardar tarjeta sin cobrar). El campo `mode` lo
+        // discrimina. En setup, el session.id es el setupIntentId que
+        // creamos en startAddMethod; el payment_method final llega via
+        // `payment_method.attached` separado, asi que aqui solo
+        // marcamos ignorable (idempotente).
+        if (s.mode === 'setup') {
+          return {
+            type: 'setup_intent.succeeded',
+            externalId: s.id,
+            // payment_method y customer estaran en el evento
+            // `payment_method.attached` que sigue. Aqui marcamos
+            // ignorable para que el controller responda 200 sin
+            // side-effects pero el log capture el evento.
+            isIgnorable: true,
+          };
+        }
         const paid = s.payment_status === 'paid' || s.payment_status === 'no_payment_required';
         return {
           type: paid ? 'payment.succeeded' : 'unknown',
@@ -213,6 +230,51 @@ export class StripeProvider implements PaymentProvider {
           currency: dispute.currency?.toUpperCase(),
           failureReason: dispute.reason || 'dispute_opened',
           isIgnorable: !metaSessionId,
+        };
+      }
+      // Fase 3 / Tarea 3.4 — Saved payment methods lifecycle.
+      case 'setup_intent.succeeded': {
+        const si = event.data.object as any;
+        // El payment_method final ya esta attached al customer.
+        const pmId =
+          typeof si.payment_method === 'string'
+            ? si.payment_method
+            : si.payment_method?.id;
+        const customerId =
+          typeof si.customer === 'string' ? si.customer : si.customer?.id;
+        return {
+          type: 'setup_intent.succeeded',
+          externalId: si.id,
+          paymentMethodId: pmId || undefined,
+          customerId: customerId || undefined,
+          isIgnorable: !pmId || !customerId,
+        };
+      }
+      case 'payment_method.detached': {
+        const pm = event.data.object as any;
+        return {
+          type: 'payment_method.detached',
+          externalId: pm.id,
+          paymentMethodId: pm.id,
+        };
+      }
+      // Capturamos `payment_method.attached` separadamente para enriquecer
+      // con metadata de la card (brand/last4/exp). Se trata como
+      // setup_intent.succeeded para el handler.
+      case 'payment_method.attached': {
+        const pm = event.data.object as any;
+        const customerId =
+          typeof pm.customer === 'string' ? pm.customer : pm.customer?.id;
+        return {
+          type: 'setup_intent.succeeded',
+          externalId: pm.id,
+          paymentMethodId: pm.id,
+          customerId: customerId || undefined,
+          cardBrand: pm.card?.brand,
+          cardLast4: pm.card?.last4,
+          cardExpMonth: pm.card?.exp_month,
+          cardExpYear: pm.card?.exp_year,
+          isIgnorable: !pm.id || !customerId,
         };
       }
       default:
@@ -300,5 +362,143 @@ export class StripeProvider implements PaymentProvider {
     if (r.includes('duplicate') || r.includes('duplicad')) return 'duplicate';
     if (r.includes('fraud')) return 'fraudulent';
     return 'requested_by_customer';
+  }
+
+  // ─── Fase 3 / Tarea 3.4 — Saved payment methods ────────────────────
+
+  async ensureCustomer(input: {
+    tenantId: string;
+    tenantName: string;
+    email: string;
+    existingCustomerId?: string | null;
+  }): Promise<{ customerId: string }> {
+    if (!this.client) throw new Error('Stripe no está configurado.');
+    // Reuso idempotente: si el caller ya tiene un customerId, lo verifica
+    // y lo retorna. Solo creamos uno nuevo si no existe o si Stripe lo
+    // borro/desconoce (Customer deleted).
+    if (input.existingCustomerId) {
+      try {
+        const existing = await this.client.customers.retrieve(input.existingCustomerId);
+        if (existing && !(existing as any).deleted) {
+          return { customerId: input.existingCustomerId };
+        }
+      } catch {
+        // Customer no encontrado o eliminado en Stripe — crear uno nuevo.
+      }
+    }
+    const customer = await this.client.customers.create({
+      email: input.email,
+      name: input.tenantName,
+      metadata: {
+        tenant_id: input.tenantId,
+      },
+    });
+    return { customerId: customer.id };
+  }
+
+  async createSetupIntent(input: {
+    customerId: string;
+    successUrl: string;
+    cancelUrl: string;
+  }): Promise<{ setupIntentId: string; checkoutUrl: string }> {
+    if (!this.client) throw new Error('Stripe no está configurado.');
+    // Stripe Checkout mode='setup' genera URL hosted que captura la
+    // tarjeta sin cobrarla. Cuando el cliente completa, Stripe envia
+    // `checkout.session.completed` con setup_intent attached. El
+    // payment_method final viaja en `payment_method.attached` separado.
+    const session = await this.client.checkout.sessions.create({
+      mode: 'setup',
+      customer: input.customerId,
+      payment_method_types: ['card'],
+      success_url: input.successUrl,
+      cancel_url: input.cancelUrl,
+      // off-session usage para retries futuros.
+      setup_intent_data: {
+        metadata: {
+          tenant_customer_id: input.customerId,
+          purpose: 'save_card_for_future_use',
+        },
+      },
+      expires_at: Math.floor(Date.now() / 1000) + 24 * 60 * 60,
+    });
+    if (!session.id || !session.url) {
+      throw new Error('Stripe Checkout setup session sin id o url');
+    }
+    return { setupIntentId: session.id, checkoutUrl: session.url };
+  }
+
+  async chargeStoredMethod(input: {
+    customerId: string;
+    paymentMethodId: string;
+    amount: number;
+    currency: 'CLP' | 'USD';
+    description: string;
+    metadata: Record<string, string>;
+    idempotencyKey: string;
+  }): Promise<{
+    chargeId: string;
+    status: 'succeeded' | 'requires_action' | 'failed';
+    failureReason?: string;
+  }> {
+    if (!this.client) throw new Error('Stripe no está configurado.');
+    const zeroDecimal = input.currency === 'CLP';
+    const unitAmount = zeroDecimal
+      ? Math.round(input.amount)
+      : Math.round(input.amount * 100);
+
+    try {
+      const pi = await this.client.paymentIntents.create(
+        {
+          amount: unitAmount,
+          currency: input.currency.toLowerCase(),
+          customer: input.customerId,
+          payment_method: input.paymentMethodId,
+          // off_session=true + confirm=true: cobrar inmediato, cliente
+          // ausente. Si la tarjeta requiere 3DS interactivo, Stripe
+          // responde status=requires_action y el caller debe notificar
+          // al cliente para autenticar (no implementado aqui).
+          off_session: true,
+          confirm: true,
+          description: input.description,
+          metadata: input.metadata,
+        },
+        { idempotencyKey: input.idempotencyKey },
+      );
+      const status: 'succeeded' | 'requires_action' | 'failed' =
+        pi.status === 'succeeded'
+          ? 'succeeded'
+          : pi.status === 'requires_action'
+            ? 'requires_action'
+            : 'failed';
+      return {
+        chargeId: pi.id,
+        status,
+        failureReason: pi.last_payment_error?.message ?? undefined,
+      };
+    } catch (err: any) {
+      // Stripe lanza CardError con codes como 'authentication_required'.
+      const reason =
+        err?.raw?.message ||
+        err?.message ||
+        'unknown_card_error';
+      return {
+        chargeId: '',
+        status: 'failed',
+        failureReason: reason,
+      };
+    }
+  }
+
+  async detachPaymentMethod(paymentMethodId: string): Promise<void> {
+    if (!this.client) throw new Error('Stripe no está configurado.');
+    try {
+      await this.client.paymentMethods.detach(paymentMethodId);
+    } catch (err: any) {
+      // Idempotencia: si ya esta detached, Stripe responde 400 con
+      // code='resource_missing'. Lo tratamos como exito.
+      const code = err?.code || err?.raw?.code;
+      if (code === 'resource_missing') return;
+      throw err;
+    }
   }
 }
