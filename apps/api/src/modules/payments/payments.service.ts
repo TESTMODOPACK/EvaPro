@@ -99,6 +99,20 @@ export class PaymentsService {
       return { sessionId: pending.id, checkoutUrl: pending.checkoutUrl, provider };
     }
 
+    // Fase 3 / Tarea 3.2 — Determinar si es un RETRY (cliente reintentando
+    // pago tras un fallo previo) vs first-attempt. Heuristica:
+    //   - invoice OVERDUE -> definitivamente retry (vencio sin pagar).
+    //   - invoice SENT con N sesiones previas != pending -> retry.
+    //
+    // Util para analytics (medir conversion de retries, decidir si
+    // ofrecer descuento/asistencia en retry #3+) y para inyectar en el
+    // metadata del provider (Stripe dashboard puede agrupar attempts).
+    const isOverdue = invoice.status === InvoiceStatus.OVERDUE;
+    const priorFailedCount = await this.sessionRepo.count({
+      where: { invoiceId, status: 'failed' },
+    });
+    const isRetry = isOverdue || priorFailedCount > 0;
+
     // 3. Load payer + tenant for the checkout display.
     const user = await this.userRepo.findOne({ where: { id: userId } });
     if (!user) throw new NotFoundException('Usuario no encontrado.');
@@ -125,6 +139,9 @@ export class PaymentsService {
           originalCurrency: conversion.originalCurrency,
           conversionRate: conversion.rate,
           invoiceNumber: invoice.invoiceNumber,
+          // Fase 3 / T3.2 — Observabilidad de retries.
+          isRetry,
+          priorFailedAttempts: priorFailedCount,
         },
       }),
     );
@@ -148,6 +165,11 @@ export class PaymentsService {
           invoice_id: invoice.id,
           invoice_number: invoice.invoiceNumber,
           tenant_id: tenantId,
+          // Fase 3 / T3.2 — Flag visible en provider dashboard para
+          // diferenciar retries de primeros intentos. Stripe agrupa
+          // PaymentIntents por metadata.
+          is_retry: String(isRetry),
+          prior_failed_attempts: String(priorFailedCount),
         },
       });
       session.externalId = res.externalId;

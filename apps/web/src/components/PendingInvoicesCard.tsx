@@ -159,43 +159,73 @@ export default function PendingInvoicesCard() {
               </tr>
             </thead>
             <tbody>
-              {data.map((inv) => (
-                <tr
-                  key={inv.id}
-                  style={{ borderBottom: '1px solid var(--border)' }}
-                >
-                  <td style={{ padding: '10px', fontWeight: 600 }}>
-                    {inv.invoiceNumber}
-                  </td>
-                  <td style={{ padding: '10px', color: 'var(--text-secondary)' }}>
-                    {formatDate(inv.periodStart)} → {formatDate(inv.periodEnd)}
-                  </td>
-                  <td style={{ padding: '10px', textAlign: 'right', fontWeight: 600 }}>
-                    {formatAmount(Number(inv.total), inv.currency)}
-                  </td>
-                  <td style={{ padding: '10px', color: 'var(--text-secondary)' }}>
-                    {formatDate(inv.dueDate)}
-                  </td>
-                  <td style={{ padding: '10px', textAlign: 'right' }}>
-                    <button
-                      type="button"
-                      onClick={() => setSelected(inv)}
-                      style={{
-                        padding: '6px 16px',
-                        borderRadius: 'var(--radius-sm)',
-                        background: 'var(--accent)',
-                        color: '#fff',
-                        border: 'none',
-                        cursor: 'pointer',
-                        fontSize: '0.82rem',
-                        fontWeight: 600,
-                      }}
-                    >
-                      Pagar
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {data.map((inv) => {
+                // Fase 3 / Tarea 3.2 — Diferenciar visualmente "Pagar"
+                // de "Reintentar" cuando la factura ya esta vencida.
+                // Reglas de negocio:
+                //   - status='sent': cliente esta pagando dentro del plazo
+                //     -> label "Pagar", boton color accent.
+                //   - status='overdue': ya paso el vencimiento; muy
+                //     probablemente hubo un intento previo declinado o el
+                //     cliente nunca pago. Label "Reintentar pago", boton
+                //     color danger para dar urgencia visual sin ser alarmante.
+                const isOverdue =
+                  (inv.status || '').toLowerCase() === 'overdue';
+                return (
+                  <tr
+                    key={inv.id}
+                    style={{ borderBottom: '1px solid var(--border)' }}
+                  >
+                    <td style={{ padding: '10px', fontWeight: 600 }}>
+                      {inv.invoiceNumber}
+                      {isOverdue && (
+                        <span
+                          className="badge badge-danger"
+                          style={{
+                            marginLeft: '0.5rem',
+                            fontSize: '0.65rem',
+                            padding: '2px 6px',
+                          }}
+                        >
+                          VENCIDA
+                        </span>
+                      )}
+                    </td>
+                    <td style={{ padding: '10px', color: 'var(--text-secondary)' }}>
+                      {formatDate(inv.periodStart)} → {formatDate(inv.periodEnd)}
+                    </td>
+                    <td style={{ padding: '10px', textAlign: 'right', fontWeight: 600 }}>
+                      {formatAmount(Number(inv.total), inv.currency)}
+                    </td>
+                    <td style={{ padding: '10px', color: 'var(--text-secondary)' }}>
+                      {formatDate(inv.dueDate)}
+                    </td>
+                    <td style={{ padding: '10px', textAlign: 'right' }}>
+                      <button
+                        type="button"
+                        onClick={() => setSelected(inv)}
+                        style={{
+                          padding: '6px 16px',
+                          borderRadius: 'var(--radius-sm)',
+                          background: isOverdue ? 'var(--danger)' : 'var(--accent)',
+                          color: '#fff',
+                          border: 'none',
+                          cursor: 'pointer',
+                          fontSize: '0.82rem',
+                          fontWeight: 600,
+                        }}
+                        aria-label={
+                          isOverdue
+                            ? `Reintentar pago de la factura ${inv.invoiceNumber}`
+                            : `Pagar factura ${inv.invoiceNumber}`
+                        }
+                      >
+                        {isOverdue ? 'Reintentar pago' : 'Pagar'}
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
