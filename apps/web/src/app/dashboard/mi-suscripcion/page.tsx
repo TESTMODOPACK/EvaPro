@@ -341,6 +341,52 @@ export default function MiSuscripcionPage() {
     }
   }
 
+  /**
+   * Fase 3 / Tarea 3.5 — Pausa voluntaria de la suscripcion.
+   * Pide al usuario una fecha de reactivacion (opcional). Confirm para
+   * evitar pausas accidentales con confirm().
+   */
+  async function handlePauseSubscription() {
+    if (!token || !sub) return;
+    const dateStr = prompt(
+      '¿Hasta qué fecha quieres pausar? (formato YYYY-MM-DD, déjalo vacío para pausa indefinida)',
+    );
+    if (dateStr === null) return; // canceled
+    const resumeAt = dateStr.trim() ? dateStr.trim() : null;
+    if (resumeAt && isNaN(Date.parse(resumeAt))) {
+      showToast('Fecha inválida. Usa formato YYYY-MM-DD.');
+      return;
+    }
+    if (!confirm('Durante la pausa no se facturará ni cobrará nada. Las facturas previas siguen siendo exigibles. ¿Confirmar?')) {
+      return;
+    }
+    try {
+      const updated = await api.subscriptionPause.pause(
+        token,
+        resumeAt ? new Date(resumeAt + 'T00:00:00').toISOString() : null,
+      );
+      setSub(updated);
+      showToast('Suscripción pausada.');
+    } catch (err: any) {
+      showToast(err?.message || 'Error al pausar.');
+    }
+  }
+
+  /** Fase 3 / Tarea 3.5 — Reactivacion manual. */
+  async function handleResumeSubscription() {
+    if (!token || !sub) return;
+    if (!confirm('Reactivar la suscripción. Se reanudará la facturación según tu ciclo. ¿Confirmar?')) {
+      return;
+    }
+    try {
+      const updated = await api.subscriptionPause.resume(token);
+      setSub(updated);
+      showToast('Suscripción reactivada.');
+    } catch (err: any) {
+      showToast(err?.message || 'Error al reactivar.');
+    }
+  }
+
   async function handleSubmitRequest(e: React.FormEvent) {
     e.preventDefault();
     if (!token) return;
@@ -566,6 +612,57 @@ export default function MiSuscripcionPage() {
                   boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
                 }} />
               </button>
+            </div>
+
+            {/* Pausar suscripción (Fase 3 / Tarea 3.5) */}
+            <div style={{
+              marginTop: '0.75rem',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              gap: '0.75rem',
+              padding: '1rem 1.25rem',
+              background: 'var(--bg-surface)',
+              borderRadius: 'var(--radius)',
+              border: '1px solid var(--border)',
+            }}>
+              <div>
+                <div style={{ fontWeight: 600, fontSize: '0.9rem', marginBottom: '0.15rem' }}>
+                  {sub.status === 'paused' ? 'Suscripción pausada' : 'Pausar suscripción'}
+                </div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                  {sub.status === 'paused' ? (
+                    sub.resumeAt
+                      ? `Se reactivará automáticamente el ${new Date(sub.resumeAt).toLocaleDateString('es-CL')}.`
+                      : 'Pausada indefinidamente. Reactiva cuando quieras.'
+                  ) : (
+                    'Detén temporalmente la facturación. Útil para negocios estacionales o vacaciones.'
+                  )}
+                </div>
+              </div>
+              {sub.status === 'paused' ? (
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  style={{ fontSize: '0.8rem' }}
+                  onClick={handleResumeSubscription}
+                >
+                  Reactivar ahora
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  style={{ fontSize: '0.8rem' }}
+                  onClick={handlePauseSubscription}
+                  disabled={sub.status !== 'active' && sub.status !== 'trial'}
+                  title={
+                    sub.status !== 'active' && sub.status !== 'trial'
+                      ? 'Solo suscripciones activas o en prueba pueden pausarse'
+                      : ''
+                  }
+                >
+                  Pausar
+                </button>
+              )}
             </div>
           </div>
 

@@ -1674,6 +1674,30 @@ export class RemindersService {
     });
   }
 
+  // ─── Fase 3 / Tarea 3.5 — Reactivacion automatica de pausas ──────────
+  //
+  // Diario 8:30am UTC: scan subscriptions PAUSED con resumeAt <= ahora
+  // y reactivar via SubscriptionsService.processScheduledResumes. Si el
+  // cliente pidio pausa indefinida (resumeAt=null), nunca entra a este
+  // batch — solo reactiva manual.
+  @Cron('30 8 * * *')
+  async processScheduledResumes() {
+    await runWithCronLock('processScheduledResumes', this.dataSource, this.logger, async () => {
+      await this.tenantCronRunner.runAsSystem('processScheduledResumes', async () => {
+        this.logger.log('[Cron] Processing scheduled subscription resumes...');
+        try {
+          const result = await this.subscriptionsService.processScheduledResumes();
+          if (result.reactivated > 0) {
+            this.logger.log(`[Cron] Reactivated ${result.reactivated} paused subscription(s)`);
+          }
+        } catch (error) {
+          this.logger.error(`[Cron] Error in processScheduledResumes: ${error}`);
+          await this.recordCronFailure('processScheduledResumes', error);
+        }
+      });
+    });
+  }
+
   // ─── B3 Trial nurture (daily 9:15am) ─────────────────────────────────
   //
   // Walks all subscriptions in TRIAL or recently-EXPIRED state and emits

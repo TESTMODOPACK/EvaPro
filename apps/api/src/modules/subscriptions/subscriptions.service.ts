@@ -575,6 +575,162 @@ export class SubscriptionsService {
     }
   }
 
+  // ─── Fase 3 / Tarea 3.5 — Pausa voluntaria ──────────────────────────
+
+  /**
+   * Pausa la suscripcion del tenant. Reglas:
+   *   - Solo subs ACTIVE o TRIAL pueden pausarse. SUSPENDED, CANCELLED,
+   *     EXPIRED, PAUSED -> 400.
+   *   - `resumeAt` opcional: si null -> pausa indefinida (cliente
+   *     reactiva manual). Si presente -> validar > ahora + 1 dia
+   *     (evita pausas instantaneas/pasadas).
+   *   - Tarea 3.5.4: processAutoRenewals y dunning excluyen PAUSED, no
+   *     factura ni envia recordatorios.
+   *
+   * Audit: subscription.paused con previousStatus + resumeAt.
+   */
+  async pauseSubscription(
+    tenantId: string,
+    resumeAt: Date | null,
+    changedBy: string,
+  ): Promise<Subscription> {
+    const sub = await this.findByTenantId(tenantId);
+    if (!sub) throw new NotFoundException('No hay suscripcion activa para pausar.');
+    if (
+      sub.status !== SubscriptionStatus.ACTIVE &&
+      sub.status !== SubscriptionStatus.TRIAL
+    ) {
+      throw new BadRequestException(
+        `Solo suscripciones activas o en trial pueden pausarse (estado actual: ${sub.status}).`,
+      );
+    }
+    if (resumeAt) {
+      const minResume = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      if (resumeAt.getTime() < minResume.getTime()) {
+        throw new BadRequestException(
+          'La fecha de reactivacion debe ser al menos 24h en el futuro.',
+        );
+      }
+      const maxResume = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+      if (resumeAt.getTime() > maxResume.getTime()) {
+        throw new BadRequestException(
+          'La fecha de reactivacion no puede ser mas de 1 ano en el futuro. Considere cancelar.',
+        );
+      }
+    }
+
+    const previousStatus = sub.status;
+    sub.status = SubscriptionStatus.PAUSED;
+    sub.pausedAt = new Date();
+    sub.resumeAt = resumeAt;
+    await this.subRepo.save(sub);
+
+    await this.auditService
+      .log(tenantId, changedBy, 'subscription.paused', 'subscription', sub.id, {
+        previousStatus,
+        resumeAt: resumeAt ? resumeAt.toISOString() : null,
+      })
+      .catch(() => undefined);
+
+    this.logger.log(
+      `[Pause] Subscription ${sub.id} (tenant ${tenantId}) paused. Resume: ${
+        resumeAt ? resumeAt.toISOString().split('T')[0] : 'manual'
+      }`,
+    );
+
+    return sub;
+  }
+
+  /**
+   * Reactiva una suscripcion PAUSED. Reglas:
+   *   - Solo PAUSED puede reactivarse via este metodo. Otros estados ->
+   *     400 (use el endpoint correspondiente).
+   *   - Vuelve a ACTIVE (no TRIAL — el trial pre-pausa ya consumio sus
+   *     dias; si quedaba trial, simplemente lo retomamos pero el
+   *     trialEndsAt sigue siendo el original).
+   *   - nextBillingDate: si quedo en el pasado durante la pausa,
+   *     avanzamos hasta el siguiente ciclo posterior a ahora (cron de
+   *     auto-renewal aceptara y facturara).
+   */
+  async resumeSubscription(
+    tenantId: string,
+    changedBy: string,
+  ): Promise<Subscription> {
+    const sub = await this.findByTenantId(tenantId);
+    if (!sub) throw new NotFoundException('No hay suscripcion para reactivar.');
+    if (sub.status !== SubscriptionStatus.PAUSED) {
+      throw new BadRequestException(
+        `Solo suscripciones PAUSED pueden reactivarse aqui (estado actual: ${sub.status}).`,
+      );
+    }
+
+    const previousStatus = sub.status;
+    sub.status = SubscriptionStatus.ACTIVE;
+    sub.pausedAt = null;
+    sub.resumeAt = null;
+
+    // Avanzar nextBillingDate si quedo en el pasado durante la pausa.
+    const now = new Date();
+    if (sub.nextBillingDate && new Date(sub.nextBillingDate).getTime() <= now.getTime()) {
+      let next = this.calculateNextBillingDate(
+        now,
+        sub.billingPeriod || BillingPeriod.MONTHLY,
+      );
+      // Loop defensivo (caso edge: ciclo muy corto).
+      while (next.getTime() <= now.getTime()) {
+        next = this.calculateNextBillingDate(
+          next,
+          sub.billingPeriod || BillingPeriod.MONTHLY,
+        );
+      }
+      sub.nextBillingDate = next;
+    }
+
+    await this.subRepo.save(sub);
+
+    await this.auditService
+      .log(tenantId, changedBy, 'subscription.resumed', 'subscription', sub.id, {
+        previousStatus,
+        newNextBillingDate: sub.nextBillingDate?.toISOString?.() || null,
+      })
+      .catch(() => undefined);
+
+    this.logger.log(
+      `[Resume] Subscription ${sub.id} (tenant ${tenantId}) reactivated. Next billing: ${
+        sub.nextBillingDate?.toISOString?.().split('T')[0] || 'n/a'
+      }`,
+    );
+
+    return sub;
+  }
+
+  /**
+   * Cron diario: reactiva automaticamente subs PAUSED con resumeAt <= ahora.
+   * Llamado por reminders.service @Cron.
+   */
+  async processScheduledResumes(): Promise<{ reactivated: number }> {
+    const now = new Date();
+    const pausedReady = await this.subRepo
+      .createQueryBuilder('s')
+      .where('s.status = :status', { status: SubscriptionStatus.PAUSED })
+      .andWhere('s.resume_at IS NOT NULL')
+      .andWhere('s.resume_at <= :now', { now })
+      .getMany();
+
+    let reactivated = 0;
+    for (const sub of pausedReady) {
+      try {
+        await this.resumeSubscription(sub.tenantId, 'system');
+        reactivated++;
+      } catch (err: any) {
+        this.logger.error(
+          `[ScheduledResume] failed for sub ${sub.id} (tenant ${sub.tenantId}): ${err?.message || err}`,
+        );
+      }
+    }
+    return { reactivated };
+  }
+
   async getStats(): Promise<any> {
     const total = await this.subRepo.count();
     const active = await this.subRepo.count({
@@ -1242,7 +1398,10 @@ export class SubscriptionsService {
     let invoicesGenerated = 0;
     let invoiceErrors = 0;
 
-    // Find active subscriptions past their billing date
+    // Find active subscriptions past their billing date.
+    // Fase 3 / Tarea 3.5.4 — PAUSED EXCLUIDO explicitamente: las subs
+    // pausadas no facturan ni entran a dunning. El cron de
+    // processScheduledResumes las reactiva cuando llegue resumeAt.
     const overdue = await this.subRepo
       .createQueryBuilder('s')
       .leftJoinAndSelect('s.plan', 'p')

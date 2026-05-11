@@ -12,6 +12,7 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
+  BadRequestException,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -124,6 +125,40 @@ export class SubscriptionsController {
     @Body() body: { autoRenew: boolean },
   ) {
     return this.subscriptionsService.toggleAutoRenew(req.user.tenantId, body.autoRenew);
+  }
+
+  /**
+   * Fase 3 / Tarea 3.5 — Pausa voluntaria de la suscripcion.
+   * Body: { resumeAt?: ISO-8601 string }.
+   * Si resumeAt omitido -> pausa indefinida, reactivacion manual.
+   * Si resumeAt presente -> cron processScheduledResumes la reactiva
+   * automaticamente al llegar la fecha.
+   */
+  @Post('my-subscription/pause')
+  @Roles('tenant_admin')
+  pauseSubscription(
+    @Request() req: any,
+    @Body() body: { resumeAt?: string },
+  ) {
+    const resumeAt = body?.resumeAt ? new Date(body.resumeAt) : null;
+    if (body?.resumeAt && isNaN((resumeAt as Date).getTime())) {
+      throw new BadRequestException('resumeAt no es una fecha valida.');
+    }
+    return this.subscriptionsService.pauseSubscription(
+      req.user.tenantId,
+      resumeAt,
+      req.user.userId || req.user.id,
+    );
+  }
+
+  /** Fase 3 / Tarea 3.5 — Reactivacion manual de suscripcion PAUSED. */
+  @Post('my-subscription/resume')
+  @Roles('tenant_admin')
+  resumeSubscription(@Request() req: any) {
+    return this.subscriptionsService.resumeSubscription(
+      req.user.tenantId,
+      req.user.userId || req.user.id,
+    );
   }
 
   // ─── Subscription Requests ─────────────────────────────────────────────

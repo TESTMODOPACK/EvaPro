@@ -483,6 +483,118 @@ describe('SubscriptionsService', () => {
     });
   });
 
+  // ─── pauseSubscription / resumeSubscription (Fase 3 / Tarea 3.5) ───
+
+  describe('pauseSubscription', () => {
+    const tid = fakeUuid(100);
+    const userId = fakeUuid(200);
+
+    function setupActiveSub() {
+      subRepo.find.mockResolvedValue([
+        {
+          id: fakeUuid(601),
+          tenantId: tid,
+          status: 'active',
+          billingPeriod: 'monthly',
+          startDate: new Date(),
+          nextBillingDate: new Date(Date.now() + 30 * 24 * 3600 * 1000),
+          plan: createMockPlan(),
+        },
+      ]);
+    }
+
+    it('pausa ACTIVE -> PAUSED + audit log', async () => {
+      setupActiveSub();
+      subRepo.save.mockImplementation((entity: any) => Promise.resolve(entity));
+
+      const resumeAt = new Date(Date.now() + 30 * 24 * 3600 * 1000);
+      const result = await service.pauseSubscription(tid, resumeAt, userId);
+
+      expect(result.status).toBe('paused');
+      expect((result as any).pausedAt).toBeInstanceOf(Date);
+      expect(auditService.log).toHaveBeenCalledWith(
+        tid,
+        userId,
+        'subscription.paused',
+        'subscription',
+        expect.any(String),
+        expect.objectContaining({ previousStatus: 'active' }),
+      );
+    });
+
+    it('pausa indefinida (resumeAt=null) OK', async () => {
+      setupActiveSub();
+      subRepo.save.mockImplementation((entity: any) => Promise.resolve(entity));
+      const result = await service.pauseSubscription(tid, null, userId);
+      expect(result.status).toBe('paused');
+      expect((result as any).resumeAt).toBeNull();
+    });
+
+    it('rechaza si sub no esta ACTIVE ni TRIAL', async () => {
+      subRepo.find.mockResolvedValue([
+        { id: fakeUuid(601), tenantId: tid, status: 'cancelled', billingPeriod: 'monthly', plan: createMockPlan(), startDate: new Date() },
+      ]);
+      await expect(
+        service.pauseSubscription(tid, null, userId),
+      ).rejects.toThrow(/Solo suscripciones activas o en trial/);
+    });
+
+    it('rechaza resumeAt en el pasado o muy proximo (<24h)', async () => {
+      setupActiveSub();
+      const tooSoon = new Date(Date.now() + 1 * 3600 * 1000); // +1h
+      await expect(
+        service.pauseSubscription(tid, tooSoon, userId),
+      ).rejects.toThrow(/al menos 24h/);
+    });
+
+    it('rechaza resumeAt > 1 ano en el futuro', async () => {
+      setupActiveSub();
+      const tooFar = new Date(Date.now() + 400 * 24 * 3600 * 1000);
+      await expect(
+        service.pauseSubscription(tid, tooFar, userId),
+      ).rejects.toThrow(/no puede ser mas de 1 ano/);
+    });
+  });
+
+  describe('resumeSubscription', () => {
+    const tid = fakeUuid(100);
+    const userId = fakeUuid(200);
+
+    it('reactiva PAUSED -> ACTIVE y limpia pausedAt/resumeAt', async () => {
+      subRepo.find.mockResolvedValue([
+        {
+          id: fakeUuid(601),
+          tenantId: tid,
+          status: 'paused',
+          billingPeriod: 'monthly',
+          pausedAt: new Date(Date.now() - 10 * 24 * 3600 * 1000),
+          resumeAt: new Date(Date.now() - 24 * 3600 * 1000), // ya vencio
+          nextBillingDate: new Date(Date.now() - 5 * 24 * 3600 * 1000), // ya vencio
+          plan: createMockPlan(),
+          startDate: new Date(),
+        },
+      ]);
+      subRepo.save.mockImplementation((entity: any) => Promise.resolve(entity));
+
+      const result = await service.resumeSubscription(tid, userId);
+
+      expect(result.status).toBe('active');
+      expect((result as any).pausedAt).toBeNull();
+      expect((result as any).resumeAt).toBeNull();
+      // nextBillingDate avanzado al futuro porque estaba en el pasado.
+      expect(new Date((result as any).nextBillingDate).getTime()).toBeGreaterThan(Date.now());
+    });
+
+    it('rechaza si sub no esta PAUSED', async () => {
+      subRepo.find.mockResolvedValue([
+        { id: fakeUuid(601), tenantId: tid, status: 'active', billingPeriod: 'monthly', plan: createMockPlan(), startDate: new Date() },
+      ]);
+      await expect(
+        service.resumeSubscription(tid, userId),
+      ).rejects.toThrow(/Solo suscripciones PAUSED/);
+    });
+  });
+
   // ─── approveRequest (Fase 2 / Tarea 2.4.1) ─────────────────────────
 
   describe('approveRequest', () => {

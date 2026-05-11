@@ -2005,6 +2005,25 @@ export const api = {
       request<void>(`/payment-methods/${id}`, { method: 'DELETE' }, token),
   },
 
+  /**
+   * Fase 3 / Tarea 3.5 — Pausa/reactivacion voluntaria de la
+   * suscripcion. Solo tenant_admin.
+   */
+  subscriptionPause: {
+    pause: (token: string, resumeAt: string | null) =>
+      request<any>(
+        `/subscriptions/my-subscription/pause`,
+        { method: 'POST', body: JSON.stringify({ resumeAt }) },
+        token,
+      ),
+    resume: (token: string) =>
+      request<any>(
+        `/subscriptions/my-subscription/resume`,
+        { method: 'POST' },
+        token,
+      ),
+  },
+
   // ─── Impersonation (super_admin) ───────────────────────────────────────
   impersonation: {
     /** Start an impersonation session. Caller must be super_admin.

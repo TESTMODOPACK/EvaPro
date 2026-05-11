@@ -20,6 +20,13 @@ export enum SubscriptionStatus {
   SUSPENDED = 'suspended',
   CANCELLED = 'cancelled',
   EXPIRED = 'expired',
+  // Fase 3 / Tarea 3.5 — Pausa voluntaria del cliente. Distinto de
+  // SUSPENDED (involuntario por falta de pago). Reglas:
+  //   - PAUSED no factura ni entra a dunning ni MRR/ARR.
+  //   - Reactivacion via cron al llegar resumeAt, o manual.
+  //   - Service access (guards) sera read-only durante pausa — defer
+  //     Fase 5 (wiring con auth guards).
+  PAUSED = 'paused',
 }
 
 export const SUBSCRIPTION_STATUS_VALUES: readonly SubscriptionStatus[] = Object.values(SubscriptionStatus);
@@ -66,6 +73,19 @@ export class Subscription {
 
   @Column({ type: 'boolean', name: 'auto_renew', default: true })
   autoRenew: boolean;
+
+  /**
+   * Fase 3 / Tarea 3.5 — Pausa voluntaria.
+   * `pausedAt`: cuando el cliente solicito la pausa.
+   * `resumeAt`: cuando debe reactivarse automaticamente (cron). NULL =
+   *   pausa indefinida (el cliente debe reactivar manualmente).
+   * Si status != PAUSED, ambos NULL.
+   */
+  @Column({ type: 'timestamptz', name: 'paused_at', nullable: true })
+  pausedAt: Date | null;
+
+  @Column({ type: 'timestamptz', name: 'resume_at', nullable: true })
+  resumeAt: Date | null;
 
   @Column({ type: 'date', name: 'last_payment_date', nullable: true })
   lastPaymentDate: Date | null;

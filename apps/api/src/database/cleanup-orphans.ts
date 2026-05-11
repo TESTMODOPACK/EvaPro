@@ -379,6 +379,9 @@ async function main() {
       // Fase 3 / Tarea 3.4 — Stripe Customer id por tenant (creado
       // on-demand al agregar primera card).
       { table: 'tenants', column: 'stripe_customer_id', sql: `ALTER TABLE "tenants" ADD COLUMN IF NOT EXISTS "stripe_customer_id" varchar(100) NULL` },
+      // Fase 3 / Tarea 3.5 — Pausa voluntaria de suscripciones.
+      { table: 'subscriptions', column: 'paused_at', sql: `ALTER TABLE "subscriptions" ADD COLUMN IF NOT EXISTS "paused_at" timestamptz NULL` },
+      { table: 'subscriptions', column: 'resume_at', sql: `ALTER TABLE "subscriptions" ADD COLUMN IF NOT EXISTS "resume_at" timestamptz NULL` },
       // Fase 2 / Tarea 2.1 — Credit notes:
       //   original_invoice_id: factura origen que la credit note revierte.
       //   applied_to_invoice_id + applied_at: rastreo de credit notes
@@ -466,6 +469,8 @@ async function main() {
       // no puede usarse de nuevo. La columna invoices.applied_to_invoice_id
       // guarda la referencia al destino.
       `ALTER TYPE invoices_status_enum ADD VALUE IF NOT EXISTS 'applied';`,
+      // Fase 3 / Tarea 3.5 — pausa voluntaria del cliente.
+      `ALTER TYPE subscriptions_status_enum ADD VALUE IF NOT EXISTS 'paused';`,
     ];
 
     for (const sql of enumFixes) {
