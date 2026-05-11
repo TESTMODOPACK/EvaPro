@@ -1053,6 +1053,63 @@ export class SubscriptionsService {
     // Calculate proration before making the change
     const { credit } = await this.calculateProration(req.tenantId);
 
+    // Fase 2 / Tarea 2.4.1 — Emitir credit note auto cuando hay credito
+    // por prorrateo. Pre-fix calculabamos el credito y lo descartabamos
+    // (solo quedaba como `prorationCredit` informativo en el request).
+    // Post-fix: emitimos NC vinculada a la ultima factura PAID del
+    // tenant; cuando se genere la primera factura del plan nuevo
+    // (T2.4.2), generateInvoice aplicara automaticamente las NCs
+    // disponibles como linea negativa.
+    //
+    // Solo aplica para plan_change. En 'cancel' el credito tambien
+    // existe, pero no hay factura futura donde aplicarlo — se emite NC
+    // como reembolso pendiente que el super_admin puede usar via refund
+    // manual o transferencia.
+    let creditNoteIssuedId: string | null = null;
+    let creditNoteIssuedNumber: string | null = null;
+    if (credit > 0) {
+      try {
+        const lastPaid = await this.invoicesService.findLatestPaidInvoiceByTenant(
+          req.tenantId,
+        );
+        if (lastPaid) {
+          const reason =
+            req.type === 'plan_change'
+              ? `Prorrateo por cambio de plan a ${req.targetPlan ?? '(s/d)'}`
+              : 'Prorrateo por cancelacion de suscripcion';
+          const cn = await this.invoicesService.issueCreditNote(
+            lastPaid.id,
+            { amount: credit, reason, notes: `Solicitud ${req.id}` },
+            processedBy,
+            req.tenantId,
+          );
+          creditNoteIssuedId = cn.id;
+          creditNoteIssuedNumber = cn.invoiceNumber;
+        } else {
+          // Sin factura PAID previa, no hay donde anclar la NC. Caso
+          // raro: tenant esta en TRIAL y nunca pago. credit deberia ser
+          // 0 en ese caso (calculateProration lo verifica), pero por si
+          // acaso loggeamos.
+          this.logger.warn(
+            `[Proration] tenant=${req.tenantId} credit=${credit} pero sin invoice PAID — credit note NO emitida.`,
+          );
+        }
+      } catch (err: any) {
+        // Si la NC falla, NO bloqueamos el cambio de plan — el cliente
+        // necesita su upgrade. Audit log + flag manual.
+        this.logger.error(
+          `[Proration] issueCreditNote fallo para tenant=${req.tenantId}: ${err?.message}. Cambio de plan procede sin NC.`,
+        );
+        await this.auditService
+          .log(req.tenantId, processedBy, 'invoice.credit_note_pending_manual', 'subscription_request', req.id, {
+            error: String(err?.message || err).slice(0, 500),
+            credit,
+            requiresImmediateAction: true,
+          })
+          .catch(() => undefined);
+      }
+    }
+
     if (req.type === 'plan_change' && req.targetPlan) {
       const plan = await this.planRepo.findOne({
         where: { code: req.targetPlan, isActive: true },
@@ -1086,7 +1143,14 @@ export class SubscriptionsService {
       'subscription_request.approved',
       'subscription_request',
       req.id,
-      { type: req.type, targetPlan: req.targetPlan, prorationCredit: credit },
+      {
+        type: req.type,
+        targetPlan: req.targetPlan,
+        prorationCredit: credit,
+        // Fase 2 / Tarea 2.4.1 — referencia a la NC auto-emitida (si aplica).
+        creditNoteId: creditNoteIssuedId,
+        creditNoteNumber: creditNoteIssuedNumber,
+      },
     );
   }
 

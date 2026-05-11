@@ -5,6 +5,8 @@ import {
   CreateCheckoutResult,
   PaymentProvider,
   PaymentProviderName,
+  RefundInput,
+  RefundResult,
   WebhookEvent,
 } from './payment-provider.interface';
 
@@ -210,6 +212,66 @@ export class MercadoPagoProvider implements PaymentProvider {
     } catch (err: any) {
       this.logger.warn(`MP webhook payment fetch failed: ${err?.message}`);
       return null;
+    }
+  }
+
+  /**
+   * Fase 2 / Tarea 2.3.2 — Emite refund MercadoPago.
+   *
+   * MP API: `POST /v1/payments/{payment_id}/refunds` con body opcional
+   * { amount } para refund parcial. Sin amount = total.
+   *
+   * Idempotencia: MP soporta header `X-Idempotency-Key`. La SDK Node v2
+   * lo expone via `requestOptions`.
+   *
+   * `externalChargeId` aqui es el MP payment id (numerico, viene del
+   * webhook como `data.id`). Si el caller pasa el preference id, MP
+   * rechaza — no se puede refund a un Preference, solo a un Payment.
+   */
+  async refundPayment(input: RefundInput): Promise<RefundResult> {
+    if (!this.mp) {
+      throw new Error('MercadoPago no está configurado.');
+    }
+    try {
+      const PaymentRefund = (this.mp as any).PaymentRefund;
+      if (!PaymentRefund) {
+        throw new Error(
+          'MercadoPago SDK no expone PaymentRefund — actualizar @mercadopago/sdk',
+        );
+      }
+      const refundClient = new PaymentRefund(this.mp.config);
+      const body: any = {};
+      if (input.amount !== undefined) {
+        // MP espera amount en mismo formato que el payment original (CLP
+        // sin decimales). El caller ya envia entero CLP.
+        body.amount = Math.round(input.amount);
+      }
+      const refund = await refundClient.create({
+        payment_id: input.externalChargeId,
+        body,
+        requestOptions: {
+          idempotencyKey: input.idempotencyKey,
+        },
+      });
+      // MP refund states: approved | pending | rejected.
+      const status: RefundResult['status'] =
+        refund?.status === 'approved'
+          ? 'succeeded'
+          : refund?.status === 'pending'
+            ? 'pending'
+            : 'failed';
+      return {
+        refundId: String(refund?.id || ''),
+        status,
+        amount: Number(refund?.amount || 0),
+        currency: 'CLP',
+        failureReason: refund?.status_detail ? String(refund.status_detail) : undefined,
+      };
+    } catch (err: any) {
+      this.logger.error(
+        `MP refund failed for payment=${input.externalChargeId}: ${err?.message}`,
+      );
+      throw new Error(`MP refund failed: ${err?.message || 'unknown'}`);
     }
   }
 }

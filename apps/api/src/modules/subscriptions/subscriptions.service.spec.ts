@@ -58,6 +58,14 @@ describe('SubscriptionsService', () => {
         invoiceNumber: 'EVA-2026-0001',
         total: 11.9,
       }),
+      // Fase 2 / Tarea 2.4.1 — approveRequest llama estos metodos para
+      // emitir credit note auto cuando hay prorrateo > 0.
+      findLatestPaidInvoiceByTenant: jest.fn().mockResolvedValue(null),
+      issueCreditNote: jest.fn().mockResolvedValue({
+        id: fakeUuid(800),
+        invoiceNumber: 'EVA-NC-2026-0001',
+        total: 5.5,
+      }),
     };
     auditService = createMockAuditService();
 
@@ -461,6 +469,182 @@ describe('SubscriptionsService', () => {
         expect.objectContaining({
           where: { subscriptionId: subId, tenantId: ownerTenantId },
         }),
+      );
+    });
+  });
+
+  // ─── approveRequest (Fase 2 / Tarea 2.4.1) ─────────────────────────
+
+  describe('approveRequest', () => {
+    const tid = fakeUuid(100);
+    const requestId = fakeUuid(900);
+    const userId = fakeUuid(200);
+
+    function setupRequest(overrides: Record<string, any> = {}) {
+      const req = {
+        id: requestId,
+        tenantId: tid,
+        type: 'plan_change',
+        targetPlan: 'pro',
+        targetBillingPeriod: 'monthly',
+        status: 'pending',
+        ...overrides,
+      };
+      // 1. requestRepo.findOne -> req
+      // 2. calculateProration calls: subRepo.find (active subs lookup),
+      //    no payment_history -> credit=0 unless we set lastPaymentAmount
+      const requestRepo = (service as any).requestRepo;
+      requestRepo.findOne.mockResolvedValue(req);
+      requestRepo.save.mockImplementation((entity: any) =>
+        Promise.resolve({ ...req, ...entity }),
+      );
+      // create() llama findById(saved.id) -> subRepo.findOne. Default null
+      // rompe el flow. Mockeamos un sub minimal post-create para que
+      // findById no lance NotFound.
+      subRepo.findOne.mockResolvedValue({
+        id: fakeUuid(601),
+        tenantId: tid,
+        plan: createMockPlan(),
+        tenant: { id: tid, name: 'Demo' },
+        status: 'active',
+        billingPeriod: 'monthly',
+      });
+      return req;
+    }
+
+    function setupSubWithPayment(lastPaymentAmount: number, daysRemaining: number) {
+      // calculateProration usa findByTenantId que llama subRepo.find
+      // con order by createdAt DESC; tomamos el primero. Para tener
+      // credito > 0 necesitamos lastPaymentAmount, lastPaymentDate y
+      // nextBillingDate.
+      const now = new Date();
+      const nextBilling = new Date(now);
+      nextBilling.setDate(nextBilling.getDate() + daysRemaining);
+      const startDate = new Date(now);
+      startDate.setDate(startDate.getDate() - (30 - daysRemaining));
+      subRepo.find.mockResolvedValue([
+        {
+          id: fakeUuid(601),
+          tenantId: tid,
+          status: 'active',
+          billingPeriod: 'monthly',
+          startDate,
+          nextBillingDate: nextBilling,
+          lastPaymentDate: startDate,
+          lastPaymentAmount,
+          plan: createMockPlan(),
+        },
+      ]);
+    }
+
+    it('plan_change con credit > 0: emite credit note auto y la registra en audit', async () => {
+      setupRequest();
+      // Tenant pago $30 hace 15 dias, quedan 15 dias del periodo -> credit ~ 15.
+      setupSubWithPayment(30, 15);
+
+      // findLatestPaidInvoiceByTenant retorna invoice valida.
+      invoicesService.findLatestPaidInvoiceByTenant.mockResolvedValue({
+        id: fakeUuid(700),
+        invoiceNumber: 'EVA-2026-0042',
+      });
+      // Plan target existe.
+      planRepo.findOne.mockResolvedValue({
+        id: fakeUuid(401), code: 'pro', isActive: true, maxEmployees: 200,
+      });
+
+      await service.approveRequest(requestId, userId);
+
+      expect(invoicesService.issueCreditNote).toHaveBeenCalledWith(
+        fakeUuid(700),
+        expect.objectContaining({
+          amount: expect.any(Number),
+          reason: expect.stringContaining('Prorrateo por cambio de plan'),
+        }),
+        userId,
+        tid,
+      );
+      // Audit log incluye creditNoteNumber.
+      expect(auditService.log).toHaveBeenCalledWith(
+        tid,
+        userId,
+        'subscription_request.approved',
+        'subscription_request',
+        requestId,
+        expect.objectContaining({
+          creditNoteNumber: 'EVA-NC-2026-0001',
+          prorationCredit: expect.any(Number),
+        }),
+      );
+    });
+
+    it('plan_change sin invoice PAID previa: skipea NC, no rompe', async () => {
+      setupRequest();
+      setupSubWithPayment(30, 15);
+      invoicesService.findLatestPaidInvoiceByTenant.mockResolvedValue(null);
+      planRepo.findOne.mockResolvedValue({
+        id: fakeUuid(401), code: 'pro', isActive: true, maxEmployees: 200,
+      });
+
+      await service.approveRequest(requestId, userId);
+
+      // NO emite credit note.
+      expect(invoicesService.issueCreditNote).not.toHaveBeenCalled();
+      // El cambio de plan procede igualmente (audit log queda).
+      expect(auditService.log).toHaveBeenCalledWith(
+        tid,
+        userId,
+        'subscription_request.approved',
+        'subscription_request',
+        requestId,
+        expect.objectContaining({ creditNoteNumber: null }),
+      );
+    });
+
+    it('credit = 0 (sub sin pagos): NO intenta emitir credit note', async () => {
+      setupRequest();
+      // Sin lastPaymentAmount: credit = 0
+      subRepo.find.mockResolvedValue([
+        {
+          id: fakeUuid(601), tenantId: tid, status: 'active',
+          startDate: new Date(), nextBillingDate: new Date(),
+          billingPeriod: 'monthly', plan: createMockPlan(),
+        },
+      ]);
+      planRepo.findOne.mockResolvedValue({
+        id: fakeUuid(401), code: 'pro', isActive: true, maxEmployees: 200,
+      });
+
+      await service.approveRequest(requestId, userId);
+
+      expect(invoicesService.findLatestPaidInvoiceByTenant).not.toHaveBeenCalled();
+      expect(invoicesService.issueCreditNote).not.toHaveBeenCalled();
+    });
+
+    it('issueCreditNote falla: cambio de plan procede + audit pending_manual', async () => {
+      setupRequest();
+      setupSubWithPayment(30, 15);
+      invoicesService.findLatestPaidInvoiceByTenant.mockResolvedValue({
+        id: fakeUuid(700),
+      });
+      invoicesService.issueCreditNote.mockRejectedValueOnce(
+        new Error('DB constraint'),
+      );
+      planRepo.findOne.mockResolvedValue({
+        id: fakeUuid(401), code: 'pro', isActive: true, maxEmployees: 200,
+      });
+
+      // Debe NO lanzar — el cambio de plan procede aunque NC falle.
+      await expect(
+        service.approveRequest(requestId, userId),
+      ).resolves.not.toThrow();
+
+      expect(auditService.log).toHaveBeenCalledWith(
+        tid,
+        userId,
+        'invoice.credit_note_pending_manual',
+        'subscription_request',
+        requestId,
+        expect.objectContaining({ requiresImmediateAction: true }),
       );
     });
   });

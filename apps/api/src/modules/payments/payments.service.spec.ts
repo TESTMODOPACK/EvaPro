@@ -28,7 +28,11 @@ import {
 describe('PaymentsService — applyWebhookEvent (Fase 0 / Tarea 0.4)', () => {
   let service: PaymentsService;
   let sessionRepo: any;
+  let invoiceRepo: any;
   let auditService: any;
+  let invoicesService: any;
+  let stripeProvider: any;
+  let mercadopagoProvider: any;
 
   const tenantId = fakeUuid(100);
   const sessionId = fakeUuid(500);
@@ -36,6 +40,7 @@ describe('PaymentsService — applyWebhookEvent (Fase 0 / Tarea 0.4)', () => {
 
   beforeEach(async () => {
     sessionRepo = createMockRepository();
+    invoiceRepo = createMockRepository();
     auditService = createMockAuditService();
 
     // applyPaymentRefunded/Disputed usan createQueryBuilder().update().set().where().execute()
@@ -48,25 +53,40 @@ describe('PaymentsService — applyWebhookEvent (Fase 0 / Tarea 0.4)', () => {
     };
     sessionRepo.createQueryBuilder = jest.fn().mockReturnValue(updateQb);
 
+    // Fase 2 / Tarea 2.3 — InvoicesService mock incluye issueCreditNote
+    // (necesario para applyPaymentRefunded webhook-originated y para
+    // refundInvoice manual). Default: retorna una credit note exitosa.
+    invoicesService = {
+      markAsPaid: jest.fn(),
+      issueCreditNote: jest.fn().mockResolvedValue({
+        id: fakeUuid(800),
+        invoiceNumber: 'EVA-NC-2026-0001',
+        total: 11.9,
+      }),
+    };
+
+    stripeProvider = {
+      name: 'stripe',
+      isEnabled: true,
+      refundPayment: jest.fn().mockResolvedValue({
+        refundId: 're_test_123',
+        status: 'succeeded',
+        amount: 1190,
+        currency: 'CLP',
+      }),
+    };
+    mercadopagoProvider = { name: 'mercadopago', isEnabled: false };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         PaymentsService,
         { provide: getRepositoryToken(PaymentSession), useValue: sessionRepo },
-        { provide: getRepositoryToken(Invoice), useValue: createMockRepository() },
+        { provide: getRepositoryToken(Invoice), useValue: invoiceRepo },
         { provide: getRepositoryToken(User), useValue: createMockRepository() },
         { provide: getRepositoryToken(Tenant), useValue: createMockRepository() },
-        {
-          provide: StripeProvider,
-          useValue: { name: 'stripe', isEnabled: false } as any,
-        },
-        {
-          provide: MercadoPagoProvider,
-          useValue: { name: 'mercadopago', isEnabled: false } as any,
-        },
-        {
-          provide: InvoicesService,
-          useValue: { markAsPaid: jest.fn() },
-        },
+        { provide: StripeProvider, useValue: stripeProvider as any },
+        { provide: MercadoPagoProvider, useValue: mercadopagoProvider as any },
+        { provide: InvoicesService, useValue: invoicesService },
         { provide: EmailService, useValue: createMockEmailService() },
         { provide: AuditService, useValue: auditService },
       ],
@@ -105,6 +125,9 @@ describe('PaymentsService — applyWebhookEvent (Fase 0 / Tarea 0.4)', () => {
       });
 
       expect(result.handled).toBe(true);
+      // Fase 2 / Tarea 2.3.5 — el handler ahora auto-emite credit note
+      // cuando el webhook llega primero. El audit incluye creditNoteId
+      // y manualRefund=false (refund originado en provider, no Eva360).
       expect(auditService.log).toHaveBeenCalledWith(
         tenantId,
         expect.any(String),
@@ -115,7 +138,8 @@ describe('PaymentsService — applyWebhookEvent (Fase 0 / Tarea 0.4)', () => {
           provider: 'stripe',
           invoiceId,
           amount: 5000,
-          requiresManualCreditNote: true,
+          manualRefund: false,
+          requiresManualCreditNote: false,
         }),
       );
     });
@@ -224,5 +248,252 @@ describe('PaymentsService — applyWebhookEvent (Fase 0 / Tarea 0.4)', () => {
 
     expect(result.handled).toBe(false);
     expect(result.reason).toBe('session not found');
+  });
+
+  // ─── Fase 2 / Tarea 2.3 — Refund flow ──────────────────────────────
+
+  describe('applyPaymentRefunded (webhook-originated, Tarea 2.3.5)', () => {
+    it('webhook llega primero: emite credit note auto y audita manualRefund=false', async () => {
+      sessionRepo.findOne.mockResolvedValue(buildSession({ status: 'paid' }));
+
+      await service.applyWebhookEvent('stripe', {
+        type: 'payment.refunded',
+        externalId: 'ext_abc',
+        amount: 11.9,
+        currency: 'CLP',
+      });
+
+      expect(invoicesService.issueCreditNote).toHaveBeenCalledWith(
+        invoiceId,
+        expect.objectContaining({
+          amount: 11.9,
+          reason: expect.stringContaining('Refund recibido via webhook'),
+        }),
+        'system',
+        tenantId,
+      );
+      expect(auditService.log).toHaveBeenCalledWith(
+        tenantId,
+        expect.any(String),
+        'payment.refunded',
+        'PaymentSession',
+        sessionId,
+        expect.objectContaining({
+          manualRefund: false,
+          creditNoteNumber: 'EVA-NC-2026-0001',
+          requiresManualCreditNote: false,
+        }),
+      );
+    });
+
+    it('refund manual primero (session ya en refunded): webhook noop y NO emite NC duplicada', async () => {
+      sessionRepo.findOne.mockResolvedValue(buildSession({ status: 'paid' }));
+      // Simulate la atomic UPDATE pierde el lock (refund manual ya
+      // habia transitionado).
+      const updateQb: any = {
+        update: jest.fn().mockReturnThis(),
+        set: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        execute: jest.fn().mockResolvedValue({ affected: 0 }),
+      };
+      sessionRepo.createQueryBuilder = jest.fn().mockReturnValue(updateQb);
+
+      const result = await service.applyWebhookEvent('stripe', {
+        type: 'payment.refunded',
+        externalId: 'ext_abc',
+        amount: 11.9,
+      });
+
+      expect(result.handled).toBe(true);
+      expect(result.reason).toContain('refund already processed manually');
+      // CLAVE: NO se llama issueCreditNote (la NC ya existe del refund manual).
+      expect(invoicesService.issueCreditNote).not.toHaveBeenCalled();
+    });
+
+    it('webhook OK pero issueCreditNote falla: audit invoice.credit_note_pending_manual', async () => {
+      sessionRepo.findOne.mockResolvedValue(buildSession({ status: 'paid' }));
+      invoicesService.issueCreditNote.mockRejectedValueOnce(
+        new Error('invoice no en PAID — no se puede credit'),
+      );
+
+      await service.applyWebhookEvent('stripe', {
+        type: 'payment.refunded',
+        externalId: 'ext_abc',
+        amount: 11.9,
+      });
+
+      expect(auditService.log).toHaveBeenCalledWith(
+        tenantId,
+        null,
+        'invoice.credit_note_pending_manual',
+        'invoice',
+        invoiceId,
+        expect.objectContaining({ requiresImmediateAction: true }),
+      );
+    });
+  });
+
+  describe('refundInvoice (manual, Tarea 2.3.3)', () => {
+    function setupPaidInvoice() {
+      invoiceRepo.findOne.mockResolvedValue({
+        id: invoiceId,
+        tenantId,
+        status: 'paid',
+        total: 11.9,
+        currency: 'CLP',
+      });
+      sessionRepo.findOne.mockResolvedValue(
+        buildSession({ status: 'paid', externalId: 'cs_test_123' }),
+      );
+    }
+
+    it('happy path: llama provider, marca session refunded, emite NC, audita manualRefund=true', async () => {
+      setupPaidInvoice();
+
+      const result = await service.refundInvoice(
+        invoiceId,
+        { reason: 'Cliente solicito reembolso' },
+        fakeUuid(200),
+      );
+
+      expect(stripeProvider.refundPayment).toHaveBeenCalledWith(
+        expect.objectContaining({
+          externalChargeId: 'cs_test_123',
+          amount: 11.9,
+          reason: 'Cliente solicito reembolso',
+          idempotencyKey: expect.any(String),
+        }),
+      );
+      expect(invoicesService.issueCreditNote).toHaveBeenCalled();
+      expect(result.refundId).toBe('re_test_123');
+      expect(result.creditNoteNumber).toBe('EVA-NC-2026-0001');
+      expect(auditService.log).toHaveBeenCalledWith(
+        tenantId,
+        expect.any(String),
+        'payment.refunded',
+        'PaymentSession',
+        sessionId,
+        expect.objectContaining({ manualRefund: true }),
+      );
+    });
+
+    it('rechaza si invoice no esta PAID', async () => {
+      invoiceRepo.findOne.mockResolvedValue({
+        id: invoiceId,
+        tenantId,
+        status: 'draft',
+        total: 11.9,
+      });
+
+      await expect(
+        service.refundInvoice(invoiceId, { reason: 'test' }, fakeUuid(200)),
+      ).rejects.toThrow(/Solo facturas pagadas/);
+      expect(stripeProvider.refundPayment).not.toHaveBeenCalled();
+    });
+
+    it('rechaza si reason es vacio o muy corto', async () => {
+      await expect(
+        service.refundInvoice(invoiceId, { reason: '' } as any, fakeUuid(200)),
+      ).rejects.toThrow(/reason es obligatorio/);
+      await expect(
+        service.refundInvoice(invoiceId, { reason: 'ok' }, fakeUuid(200)),
+      ).rejects.toThrow(/min 3 chars/);
+    });
+
+    it('rechaza si amount excede el cobrado', async () => {
+      setupPaidInvoice();
+
+      await expect(
+        service.refundInvoice(
+          invoiceId,
+          { amount: 9999, reason: 'too much' },
+          fakeUuid(200),
+        ),
+      ).rejects.toThrow(/excede el monto cobrado/);
+    });
+
+    it('si provider responde failed: audit refund_failed y throw', async () => {
+      setupPaidInvoice();
+      stripeProvider.refundPayment.mockResolvedValueOnce({
+        refundId: 're_failed',
+        status: 'failed',
+        amount: 0,
+        currency: 'CLP',
+        failureReason: 'card_expired',
+      });
+
+      await expect(
+        service.refundInvoice(
+          invoiceId,
+          { reason: 'test refund' },
+          fakeUuid(200),
+        ),
+      ).rejects.toThrow(/Refund rechazado por el proveedor/);
+      expect(auditService.log).toHaveBeenCalledWith(
+        tenantId,
+        expect.any(String),
+        'payment.refund_failed',
+        'PaymentSession',
+        sessionId,
+        expect.objectContaining({ providerReason: 'card_expired' }),
+      );
+      // No se llama issueCreditNote en falla.
+      expect(invoicesService.issueCreditNote).not.toHaveBeenCalled();
+    });
+
+    it('si provider throws: audit refund_failed con error y rethrow', async () => {
+      setupPaidInvoice();
+      stripeProvider.refundPayment.mockRejectedValueOnce(
+        new Error('Stripe API timeout'),
+      );
+
+      await expect(
+        service.refundInvoice(
+          invoiceId,
+          { reason: 'test refund' },
+          fakeUuid(200),
+        ),
+      ).rejects.toThrow(/Refund rechazado por el proveedor: Stripe API timeout/);
+    });
+
+    it('si refund OK pero issueCreditNote falla: audit credit_note_pending_manual y throw', async () => {
+      setupPaidInvoice();
+      invoicesService.issueCreditNote.mockRejectedValueOnce(
+        new Error('DB constraint violated'),
+      );
+
+      await expect(
+        service.refundInvoice(
+          invoiceId,
+          { reason: 'test refund' },
+          fakeUuid(200),
+        ),
+      ).rejects.toThrow(/credit note fallo/);
+      expect(auditService.log).toHaveBeenCalledWith(
+        tenantId,
+        expect.any(String),
+        'invoice.credit_note_pending_manual',
+        'invoice',
+        invoiceId,
+        expect.objectContaining({ requiresImmediateAction: true }),
+      );
+    });
+
+    it('rechaza si tenantId scoping falla (otro tenant)', async () => {
+      invoiceRepo.findOne.mockResolvedValue({
+        id: invoiceId,
+        tenantId: fakeUuid(999), // tenant distinto
+        status: 'paid',
+      });
+
+      await expect(
+        service.refundInvoice(
+          invoiceId,
+          { reason: 'attack' },
+          fakeUuid(200),
+          tenantId, // expected tenant
+        ),
+      ).rejects.toThrow(/no pertenece al tenant/);
+    });
   });
 });

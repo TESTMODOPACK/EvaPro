@@ -135,6 +135,9 @@ export function createMockDataSource(): Partial<DataSource> {
           }
           return Promise.resolve(entity);
         }),
+        // Fase 2 / Tarea 2.4.2 — txManager.update() para marcar NCs
+        // APPLIED dentro del transaction.
+        update: jest.fn().mockResolvedValue({ affected: 1 }),
         getRepository: jest.fn().mockReturnValue(createMockRepository()),
       };
       return cb(mockManager);
@@ -185,6 +188,10 @@ export function createSpyableDataSource(): Partial<DataSource> & {
           txSavedEntities.push(withId);
           return Promise.resolve(withId);
         }),
+        // Fase 2 / Tarea 2.4.2 — generateInvoice usa txManager.update()
+        // para marcar credit notes APPLIED dentro del transaction.
+        // Mock simple: retorna { affected: 1 } como TypeORM real.
+        update: jest.fn().mockResolvedValue({ affected: 1 }),
         getRepository: jest.fn().mockReturnValue(createMockRepository()),
       };
       return cb(mockManager);

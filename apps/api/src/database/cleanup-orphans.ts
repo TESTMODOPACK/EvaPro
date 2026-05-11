@@ -349,6 +349,15 @@ async function main() {
       // key, processDunning usa los defaults (3/7/14/30/37). Permite que
       // Enterprise tenga 30d gracia y Starter 7d sin redeploy.
       { table: 'subscription_plans', column: 'dunning_thresholds', sql: `ALTER TABLE "subscription_plans" ADD COLUMN IF NOT EXISTS "dunning_thresholds" jsonb NULL` },
+      // Fase 2 / Tarea 2.1 — Credit notes:
+      //   original_invoice_id: factura origen que la credit note revierte.
+      //   applied_to_invoice_id + applied_at: rastreo de credit notes
+      //     consumidas como descuento en otra invoice (status='applied').
+      // Sin FK constraint formal (se usa ManyToOne via TypeORM); la BD
+      // queda con referencia logica.
+      { table: 'invoices', column: 'original_invoice_id', sql: `ALTER TABLE "invoices" ADD COLUMN IF NOT EXISTS "original_invoice_id" uuid NULL` },
+      { table: 'invoices', column: 'applied_to_invoice_id', sql: `ALTER TABLE "invoices" ADD COLUMN IF NOT EXISTS "applied_to_invoice_id" uuid NULL` },
+      { table: 'invoices', column: 'applied_at', sql: `ALTER TABLE "invoices" ADD COLUMN IF NOT EXISTS "applied_at" timestamptz NULL` },
       // Grupo C — auth (password policy tracking)
       { table: 'users', column: 'password_changed_at', sql: `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "password_changed_at" timestamptz NULL` },
       { table: 'users', column: 'failed_login_attempts', sql: `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "failed_login_attempts" int NOT NULL DEFAULT 0` },
@@ -422,6 +431,11 @@ async function main() {
       // seleccionados cuando otro gano el proceso. Se setea automaticamente
       // en hireCandidate. Distinto de 'rejected' (rechazo activo).
       `ALTER TYPE recruitment_candidates_stage_enum ADD VALUE IF NOT EXISTS 'not_hired';`,
+      // Fase 2 / Tarea 2.1 — credit notes consumidas como descuento.
+      // Status terminal: la credit note ya se aplico a otra invoice y
+      // no puede usarse de nuevo. La columna invoices.applied_to_invoice_id
+      // guarda la referencia al destino.
+      `ALTER TYPE invoices_status_enum ADD VALUE IF NOT EXISTS 'applied';`,
     ];
 
     for (const sql of enumFixes) {

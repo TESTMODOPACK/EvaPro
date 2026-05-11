@@ -66,6 +66,30 @@ export interface WebhookEvent {
   isIgnorable?: boolean;
 }
 
+/**
+ * Fase 2 / Tarea 2.3.1 — Input para emitir un refund en el provider.
+ * `externalChargeId` es el id de la transaccion original (Stripe charge
+ * id derivado de la session, MP payment id). `amount` opcional para
+ * refund parcial — si se omite, refund total.
+ */
+export interface RefundInput {
+  externalChargeId: string;
+  amount?: number;
+  reason?: string;
+  /** Idempotency key para que reintentos del refund no creen duplicados. */
+  idempotencyKey: string;
+}
+
+export interface RefundResult {
+  /** ID del refund en el provider (Stripe `re_...`, MP refund id). */
+  refundId: string;
+  status: 'succeeded' | 'pending' | 'failed';
+  amount: number;
+  currency: string;
+  /** Mensaje detallado si status='failed'. */
+  failureReason?: string;
+}
+
 export interface PaymentProvider {
   /** Compile-time identifier. Matches the `provider` column in `payment_sessions`. */
   readonly name: PaymentProviderName;
@@ -80,4 +104,15 @@ export interface PaymentProvider {
    *  `rawBody` is the exact bytes received on the wire; any body-parser must
    *  be bypassed for webhook routes or Stripe's signature check will fail. */
   verifyWebhook(rawBody: Buffer, signature: string): Promise<WebhookEvent | null>;
+  /**
+   * Fase 2 / Tarea 2.3.1 — Emite un refund (parcial o total) sobre una
+   * transaccion previa. Opcional: providers que no implementen retornan
+   * `undefined` y el caller debe manualmente registrar el refund sin
+   * llamar al provider (e.g. transferencia manual).
+   *
+   * MUST ser idempotente respecto a `idempotencyKey`: si el mismo key
+   * llega 2 veces, el provider debe responder con el refund existente
+   * en vez de duplicarlo.
+   */
+  refundPayment?(input: RefundInput): Promise<RefundResult>;
 }

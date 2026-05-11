@@ -13,7 +13,7 @@ import { User } from '../users/entities/user.entity';
 import { Tenant } from '../tenants/entities/tenant.entity';
 import { StripeProvider } from './providers/stripe-provider';
 import { MercadoPagoProvider } from './providers/mercadopago-provider';
-import { PaymentProvider, WebhookEvent } from './providers/payment-provider.interface';
+import { PaymentProvider, RefundResult, WebhookEvent } from './providers/payment-provider.interface';
 import { convertToCLP } from '../../common/utils/currency-converter';
 import { InvoicesService } from '../subscriptions/invoices.service';
 import { EmailService } from '../notifications/email.service';
@@ -313,16 +313,66 @@ export class PaymentsService {
       .execute();
 
     if ((result.affected ?? 0) === 0) {
+      // Fase 2 / Tarea 2.3.5 — DEDUPE. Si la session ya estaba en
+      // 'refunded' es porque el refund manual via Eva360
+      // (PaymentsService.refundInvoice) la transitiono primero y ya
+      // creo la credit note. NO emitir otra para evitar duplicado.
       this.logger.log(
-        `Session ${session.id} refund ignored — status already moved by concurrent webhook`,
+        `Session ${session.id} refund noop — webhook llego despues del refund manual (credit note ya emitida).`,
       );
-      return { handled: true, reason: 'concurrent webhook already processed' };
+      return { handled: true, reason: 'refund already processed manually' };
     }
 
     this.logger.warn(
-      `[Refund] Session ${session.id} (invoice ${session.invoiceId}, tenant ${session.tenantId}) refunded via ${provider} — amount=${event.amount} ${event.currency}. ` +
-        `Invoice status NOT auto-reverted; super_admin debe emitir credit note (Fase 2 / T2.3).`,
+      `[Refund] Session ${session.id} (invoice ${session.invoiceId}, tenant ${session.tenantId}) refunded via ${provider} (webhook-originated, NO manual call) — amount=${event.amount} ${event.currency}.`,
     );
+
+    // Fase 2 / Tarea 2.3.5 — Auto-emitir credit note cuando el webhook
+    // llega ANTES del refund manual (caso: super_admin emitio refund
+    // desde dashboard del provider, no via Eva360). Aqui Eva360 se
+    // entera del refund por webhook y debe materializar la NC para
+    // mantener consistencia contable.
+    //
+    // Si llamar issueCreditNote falla (e.g. invoice no en PAID porque
+    // markAsPaid nunca ocurrio, raro), audit log + flag manual para
+    // que ops investigue. NO revertimos session.status — el dinero ya
+    // se movio en el provider.
+    let creditNoteId: string | null = null;
+    let creditNoteNumber: string | null = null;
+    try {
+      // Provider envia amount en unidades del provider (CLP entero, USD
+      // x100). Para Stripe charge.refunded el amount viene en
+      // smallest currency unit; para CLP equivale a peso integer ya.
+      const refundAmountForNc = event.amount ?? Number(session.amount);
+      const cn = await this.invoicesService.issueCreditNote(
+        session.invoiceId,
+        {
+          amount: refundAmountForNc,
+          reason: `Refund recibido via webhook ${provider} (originado en dashboard del provider)`,
+          notes: `Provider event externalId: ${event.externalId}`,
+        },
+        // userId='system' — el refund no tiene actor humano del lado
+        // Eva360. Audit log queda con system para distinguir de
+        // refunds manuales gatillados por super_admin.
+        'system',
+        session.tenantId,
+      );
+      creditNoteId = cn.id;
+      creditNoteNumber = cn.invoiceNumber;
+    } catch (err: any) {
+      this.logger.error(
+        `[Refund] Webhook OK pero issueCreditNote fallo para invoice ${session.invoiceId}: ${err?.message}. ` +
+          'MANUAL: super_admin debe emitir credit note via POST /invoices/:id/credit-notes.',
+      );
+      await this.auditService
+        .log(session.tenantId, null, 'invoice.credit_note_pending_manual', 'invoice', session.invoiceId, {
+          providerEventId: event.externalId,
+          amount: event.amount ?? null,
+          error: String(err?.message || err).slice(0, 500),
+          requiresImmediateAction: true,
+        })
+        .catch(() => undefined);
+    }
 
     await this.auditService
       .log(session.tenantId, session.initiatedBy, 'payment.refunded', 'PaymentSession', session.id, {
@@ -332,9 +382,12 @@ export class PaymentsService {
         currency: event.currency ?? null,
         originalAmount: session.amount,
         originalCurrency: session.currency,
-        // Flag para dashboards: este caso requiere accion manual hasta
-        // que Fase 2 implemente credit notes.
-        requiresManualCreditNote: true,
+        creditNoteId,
+        creditNoteNumber,
+        // false = refund originado en webhook del provider, NO en Eva360.
+        manualRefund: false,
+        // Si la NC se emitio OK, no requiere accion. Si fallo, queda en true.
+        requiresManualCreditNote: creditNoteId === null,
       })
       .catch(() => undefined);
 
@@ -547,5 +600,231 @@ export class PaymentsService {
       .catch(() => undefined);
 
     return { handled: true };
+  }
+
+  // ─── Refunds (Fase 2 / Tarea 2.3) ────────────────────────────────────
+
+  /**
+   * Emite un refund total o parcial sobre una invoice ya pagada.
+   *
+   * Flujo:
+   *   1. Validar invoice existe, esta PAID, pertenece al tenant.
+   *   2. Buscar payment_session 'paid' para esa invoice (la que registra
+   *      el cobro real).
+   *   3. Validar amount (default total si no se pasa).
+   *   4. Llamar provider.refundPayment con idempotencyKey deterministica
+   *      basada en (paymentSessionId, amount, attempt).
+   *   5. Actualizar paymentSession.status -> 'refunded' (atomicamente con
+   *      patch UPDATE WHERE status='paid' para evitar doble-refund).
+   *   6. Auto-emitir credit note vinculada a la invoice (T2.3.3).
+   *   7. Audit log payment.refunded con flag manualRefund=true para
+   *      diferenciar de refunds que llegan via webhook desde el
+   *      dashboard del provider.
+   *
+   * Si despues de hacer este refund manual llega un webhook
+   * payment.refunded del provider para el mismo charge, el handler
+   * debe deduplicar (T2.3.5) — la session ya esta en 'refunded'.
+   *
+   * Idempotency: si el caller invoca dos veces con `idempotencyKey`
+   * unico (o sin pasarlo), el provider rechaza el 2do o retorna el
+   * mismo refund (depende del provider).
+   */
+  async refundInvoice(
+    invoiceId: string,
+    dto: { amount?: number; reason: string; idempotencyKey?: string },
+    userId: string,
+    tenantId?: string,
+  ): Promise<{
+    refundId: string;
+    status: 'succeeded' | 'pending' | 'failed';
+    amount: number;
+    creditNoteId: string;
+    creditNoteNumber: string;
+  }> {
+    if (!dto.reason || dto.reason.trim().length < 3) {
+      throw new BadRequestException('reason es obligatorio (min 3 chars).');
+    }
+
+    const invoice = await this.invoiceRepo.findOne({ where: { id: invoiceId } });
+    if (!invoice) throw new NotFoundException('Factura no encontrada.');
+    if (tenantId && invoice.tenantId !== tenantId) {
+      throw new ForbiddenException('La factura no pertenece al tenant indicado.');
+    }
+    if (invoice.status !== InvoiceStatus.PAID) {
+      throw new BadRequestException(
+        `Solo facturas pagadas admiten refund (estado actual: ${invoice.status}).`,
+      );
+    }
+
+    // Buscar payment_session que registro el cobro. Si hay varias
+    // (caso raro, intentos previos failed), tomamos la PAID — el unico
+    // candidato valido para refund.
+    const session = await this.sessionRepo.findOne({
+      where: { invoiceId: invoice.id, status: 'paid' },
+      order: { completedAt: 'DESC' },
+    });
+    if (!session) {
+      throw new BadRequestException(
+        'No se encontro payment_session pagada asociada a esta factura. ' +
+          'Si el pago fue manual (transferencia/efectivo), use issueCreditNote en su lugar.',
+      );
+    }
+    if (!session.externalId) {
+      throw new BadRequestException(
+        'La sesion de pago no tiene externalId — no se puede refund via provider.',
+      );
+    }
+
+    const refundAmount = dto.amount ?? Number(session.amount);
+    if (refundAmount <= 0) {
+      throw new BadRequestException('amount debe ser > 0.');
+    }
+    if (refundAmount > Number(session.amount) + 0.001) {
+      throw new BadRequestException(
+        `amount (${refundAmount}) excede el monto cobrado (${session.amount}).`,
+      );
+    }
+
+    const provider = this.getProvider(session.provider);
+    if (!provider.refundPayment) {
+      throw new BadRequestException(
+        `El provider ${session.provider} no soporta refund automatico. ` +
+          'Emita el refund manualmente en el dashboard y registre con issueCreditNote.',
+      );
+    }
+
+    // Idempotency key deterministico: si el caller no provee, generamos
+    // basado en (sessionId, amount). Multiples retries del mismo refund
+    // -> mismo key -> provider retorna el refund existente.
+    const idempotencyKey =
+      dto.idempotencyKey || `refund-${session.id}-${Math.round(refundAmount * 100)}`;
+
+    let refundResult: RefundResult;
+    try {
+      refundResult = await provider.refundPayment({
+        externalChargeId: session.externalId,
+        amount: refundAmount,
+        reason: dto.reason,
+        idempotencyKey,
+      });
+    } catch (err: any) {
+      this.logger.error(
+        `Refund provider call failed for session=${session.id}: ${err?.message}`,
+      );
+      await this.auditService
+        .log(session.tenantId, userId, 'payment.refund_failed', 'PaymentSession', session.id, {
+          provider: session.provider,
+          invoiceId: invoice.id,
+          amount: refundAmount,
+          error: String(err?.message || err).slice(0, 500),
+        })
+        .catch(() => undefined);
+      throw new BadRequestException(
+        `Refund rechazado por el proveedor: ${err?.message || 'desconocido'}.`,
+      );
+    }
+
+    // Si el provider responde 'failed', no creamos credit note y
+    // dejamos audit log para que ops investigue.
+    if (refundResult.status === 'failed') {
+      await this.auditService
+        .log(session.tenantId, userId, 'payment.refund_failed', 'PaymentSession', session.id, {
+          provider: session.provider,
+          invoiceId: invoice.id,
+          amount: refundAmount,
+          providerRefundId: refundResult.refundId,
+          providerReason: refundResult.failureReason,
+        })
+        .catch(() => undefined);
+      throw new BadRequestException(
+        `Refund rechazado por el proveedor: ${refundResult.failureReason || 'sin detalle'}.`,
+      );
+    }
+
+    // Atomic: marcar sesion como refunded SOLO si esta en 'paid'.
+    // Si el webhook concurrente la transitiona primero, esto es noop.
+    const updateRes = await this.sessionRepo
+      .createQueryBuilder()
+      .update(PaymentSession)
+      .set({
+        status: 'refunded',
+        metadata: () =>
+          `metadata || '${JSON.stringify({
+            refundedAt: new Date().toISOString(),
+            refundAmount,
+            refundCurrency: refundResult.currency,
+            providerRefundId: refundResult.refundId,
+            manualRefund: true,
+            reason: dto.reason,
+          }).replace(/'/g, "''")}'::jsonb`,
+      })
+      .where('id = :id AND status = :prev', { id: session.id, prev: 'paid' })
+      .execute();
+
+    if ((updateRes.affected ?? 0) === 0) {
+      this.logger.log(
+        `Session ${session.id} ya estaba en estado != 'paid' al intentar refund — webhook concurrente probablemente lo movio primero. ` +
+          'Continuando con la creacion de credit note (idempotente por providerRefundId).',
+      );
+    }
+
+    // Auto-emitir credit note vinculada (T2.3.3). InvoicesService es
+    // responsable del enum/numeracion/PDF.
+    let creditNote;
+    try {
+      creditNote = await this.invoicesService.issueCreditNote(
+        invoice.id,
+        {
+          amount: refundAmount,
+          reason: `Refund automatico via ${session.provider}: ${dto.reason}`,
+          notes: `Provider refund id: ${refundResult.refundId}`,
+        },
+        userId,
+        invoice.tenantId,
+      );
+    } catch (err: any) {
+      // Si la credit note falla, NO revertimos el refund del provider —
+      // el dinero ya se movio. Audit + alerta para que super_admin la
+      // emita manualmente.
+      this.logger.error(
+        `Refund OK en provider pero issueCreditNote fallo: ${err?.message}. ` +
+          `MANUAL action requerida: emitir credit note para invoice ${invoice.id}.`,
+      );
+      await this.auditService
+        .log(session.tenantId, userId, 'invoice.credit_note_pending_manual', 'invoice', invoice.id, {
+          providerRefundId: refundResult.refundId,
+          amount: refundAmount,
+          error: String(err?.message || err).slice(0, 500),
+          requiresImmediateAction: true,
+        })
+        .catch(() => undefined);
+      // Re-throw para que el caller sepa que el refund fue parcialmente OK.
+      throw new BadRequestException(
+        `Refund procesado por el proveedor (${refundResult.refundId}) pero ` +
+          'la generacion automatica de credit note fallo. Emitirla manualmente.',
+      );
+    }
+
+    await this.auditService
+      .log(session.tenantId, userId, 'payment.refunded', 'PaymentSession', session.id, {
+        provider: session.provider,
+        invoiceId: invoice.id,
+        amount: refundAmount,
+        currency: refundResult.currency,
+        providerRefundId: refundResult.refundId,
+        creditNoteId: creditNote.id,
+        creditNoteNumber: creditNote.invoiceNumber,
+        reason: dto.reason,
+        manualRefund: true,
+      })
+      .catch(() => undefined);
+
+    return {
+      refundId: refundResult.refundId,
+      status: refundResult.status,
+      amount: refundAmount,
+      creditNoteId: creditNote.id,
+      creditNoteNumber: creditNote.invoiceNumber,
+    };
   }
 }

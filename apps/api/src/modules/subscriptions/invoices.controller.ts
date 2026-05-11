@@ -19,8 +19,14 @@ export class InvoicesController {
 
   @Get('my')
   @Roles('tenant_admin')
-  myInvoices(@Request() req: any) {
-    return this.invoicesService.getAllInvoices({ tenantId: req.user.tenantId });
+  myInvoices(
+    @Request() req: any,
+    @Query('type') type?: 'invoice' | 'credit_note' | 'all',
+  ) {
+    // Fase 2 / Tarea 2.2.3 — el cliente puede listar invoices, sus credit
+    // notes, o todo junto. Default: solo invoices (compatibilidad con UI
+    // actual de mi-suscripcion).
+    return this.invoicesService.getAllInvoices({ tenantId: req.user.tenantId, type });
   }
 
   @Get()
@@ -29,8 +35,10 @@ export class InvoicesController {
     @Query('status') status?: string,
     @Query('tenantId', new ParseUUIDPipe({ optional: true })) tenantId?: string,
     @Query('period') period?: string,
+    @Query('type') type?: 'invoice' | 'credit_note' | 'all',
   ) {
-    return this.invoicesService.getAllInvoices({ status, tenantId, periodMonth: period });
+    // Fase 2 / Tarea 2.2.3 — type opcional (default 'invoice').
+    return this.invoicesService.getAllInvoices({ status, tenantId, periodMonth: period, type });
   }
 
   @Post('generate/:subscriptionId')
@@ -80,6 +88,23 @@ export class InvoicesController {
     @Request() req: any,
   ) {
     return this.invoicesService.cancelInvoice(id, req.user.userId);
+  }
+
+  // ─── Credit Notes (Fase 2 / Tarea 2.2) ──────────────────────────────
+
+  /**
+   * Emite una nota de credito sobre una factura ya pagada. Solo
+   * super_admin: SII Chile + impacto contable requieren rol con
+   * autoridad. El cliente ve la NC pero no la emite.
+   */
+  @Post(':id/credit-notes')
+  @Roles('super_admin')
+  issueCreditNote(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: { amount: number; reason: string; notes?: string },
+    @Request() req: any,
+  ) {
+    return this.invoicesService.issueCreditNote(id, dto, req.user.userId);
   }
 
   @Get(':id/pdf')

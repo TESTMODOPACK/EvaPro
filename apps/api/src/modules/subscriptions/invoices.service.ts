@@ -78,18 +78,30 @@ export class InvoicesService {
 
   // ─── Invoice Number Generation ──────────────────────────────────────
 
-  private async getNextInvoiceNumber(): Promise<string> {
+  /**
+   * Fase 2 / Tarea 2.1.3 — Soporta dos secuencias paralelas:
+   *   - Invoices regulares: prefijo `EVA-YYYY-NNNN`.
+   *   - Credit notes: prefijo `EVA-NC-YYYY-NNNN` (SII Chile diferencia
+   *     folios de notas de credito de los de facturas).
+   * Cada secuencia tiene su propio advisory lock (ver generateInvoice y
+   * issueCreditNote) — no se cruzan, no hay riesgo de race entre tipos.
+   *
+   * Regex `^.*-` aisla el sufijo numerico (todo lo previo al ultimo
+   * guion). Sirve para ambos formatos: `EVA-2026-0042` -> 0042 y
+   * `EVA-NC-2026-0007` -> 0007.
+   */
+  private async getNextInvoiceNumber(
+    type: InvoiceType = InvoiceType.INVOICE,
+  ): Promise<string> {
     const year = new Date().getFullYear();
-    const prefix = `EVA-${year}-`;
-    // queryBuilder to avoid TypeORM eager-relation + partial-select pitfall.
-    // Also casts suffix to integer so "EVA-2026-10" > "EVA-2026-9" numerically,
-    // not lexicographically (previous bug with non-padded legacy numbers).
+    const prefix =
+      type === InvoiceType.CREDIT_NOTE ? `EVA-NC-${year}-` : `EVA-${year}-`;
     const row = await this.invoiceRepo
       .createQueryBuilder('i')
       .select('i.invoice_number', 'invoiceNumber')
       .where('i.invoice_number LIKE :prefix', { prefix: `${prefix}%` })
       .orderBy(
-        `CAST(NULLIF(regexp_replace(i.invoice_number, '^EVA-\\d+-', ''), '') AS INTEGER)`,
+        `CAST(NULLIF(regexp_replace(i.invoice_number, '^.*-', ''), '') AS INTEGER)`,
         'DESC',
       )
       .limit(1)
@@ -251,7 +263,51 @@ export class InvoicesService {
             );
           }
 
-          const subtotal = lines.reduce((s, l) => s + (l.total || 0), 0);
+          // Fase 2 / Tarea 2.4.2 — Aplicar credit notes disponibles del
+          // tenant como lineas negativas. Solo aplicamos NCs cuyo
+          // subtotal cabe entero en el subtotal del plan; NCs mas grandes
+          // que el remaining quedan disponibles para la proxima factura.
+          //
+          // FIFO por issueDate (las mas viejas primero, prevenir
+          // expiracion contable a 1 ano segun SII).
+          //
+          // Las NCs aplicadas se marcan APPLIED + appliedToInvoiceId
+          // dentro de la transaction principal de la factura para
+          // mantener atomicidad: si la creacion de invoice rollbackea,
+          // las NCs vuelven disponibles automaticamente.
+          const availableCreditNotes = await this.invoiceRepo.find({
+            where: {
+              tenantId: sub.tenantId,
+              type: InvoiceType.CREDIT_NOTE,
+              status: In([InvoiceStatus.DRAFT, InvoiceStatus.SENT]),
+            },
+            order: { issueDate: 'ASC' },
+          });
+
+          const planSubtotal = lines.reduce((s, l) => s + (l.total || 0), 0);
+          let remainingSubtotal = planSubtotal;
+          const appliedCreditNotes: Invoice[] = [];
+          for (const cn of availableCreditNotes) {
+            if (remainingSubtotal <= 0) break;
+            const cnSubtotal = Number(cn.subtotal);
+            // Solo aplicamos NCs que caben enteras — evita estado parcial
+            // (NC partially applied) que complica tracking. Si una NC es
+            // mas grande que el remaining, la dejamos para la siguiente.
+            if (cnSubtotal > remainingSubtotal + 0.001) continue;
+            lines.push({
+              concept: `Crédito s/Nota ${cn.invoiceNumber}${cn.notes ? `: ${cn.notes}` : ''}`.slice(0, 200),
+              quantity: 1,
+              unitPrice: -cnSubtotal,
+              total: -cnSubtotal,
+            });
+            remainingSubtotal -= cnSubtotal;
+            appliedCreditNotes.push(cn);
+          }
+
+          const subtotal = Math.max(
+            0,
+            Math.round(lines.reduce((s, l) => s + (l.total || 0), 0) * 100) / 100,
+          );
           const taxRate = 19; // IVA Chile
           const taxAmount = Math.round(subtotal * (taxRate / 100) * 100) / 100;
           const total = Math.round((subtotal + taxAmount) * 100) / 100;
@@ -291,6 +347,22 @@ export class InvoicesService {
                 this.lineRepo.create({ ...line, invoiceId: persisted.id }),
               );
             }
+            // Fase 2 / Tarea 2.4.2 — Marcar NCs aplicadas como APPLIED
+            // dentro de la misma transaction. Si la save de cualquier
+            // line falla, el rollback automatico tambien revierte estos
+            // updates -> las NCs vuelven a disponibles. Atomico end-to-end.
+            const nowIso = new Date();
+            for (const cn of appliedCreditNotes) {
+              await txManager.update(
+                Invoice,
+                { id: cn.id },
+                {
+                  status: InvoiceStatus.APPLIED,
+                  appliedToInvoiceId: persisted.id,
+                  appliedAt: nowIso,
+                },
+              );
+            }
             return persisted;
           });
 
@@ -302,7 +374,21 @@ export class InvoicesService {
                 'invoice.generated',
                 'invoice',
                 saved.id,
-                { invoiceNumber, total },
+                {
+                  invoiceNumber,
+                  total,
+                  // Fase 2 / Tarea 2.4.2 — incluir NCs aplicadas en audit
+                  // para reconciliacion contable.
+                  creditNotesApplied: appliedCreditNotes.map((cn) => ({
+                    id: cn.id,
+                    invoiceNumber: cn.invoiceNumber,
+                    amount: Number(cn.subtotal),
+                  })),
+                  creditNotesAppliedTotal: appliedCreditNotes.reduce(
+                    (s, cn) => s + Number(cn.subtotal),
+                    0,
+                  ),
+                },
               )
               .catch(() => {});
           }
@@ -373,6 +459,12 @@ export class InvoicesService {
     status?: string;
     tenantId?: string;
     periodMonth?: string;
+    /**
+     * Fase 2 / Tarea 2.2.3 — Filtra por tipo: 'invoice' (default si se
+     * omite y no se piden ambos) o 'credit_note'. Para listar TODO
+     * (invoices + NCs juntas) pasar 'all'.
+     */
+    type?: 'invoice' | 'credit_note' | 'all';
   }): Promise<Invoice[]> {
     const qb = this.invoiceRepo
       .createQueryBuilder('i')
@@ -392,6 +484,18 @@ export class InvoicesService {
       const start = new Date(y, m - 1, 1);
       const end = new Date(y, m, 0);
       qb.andWhere('i.issue_date BETWEEN :start AND :end', { start, end });
+    }
+    // Fase 2 / Tarea 2.2.3 — filtro de tipo (invoice/credit_note/all).
+    // Default backward-compatible: si NO se pasa, retornamos solo
+    // invoices regulares (mismo comportamiento que pre-fix). Para incluir
+    // credit notes el caller debe pedir explicitamente 'credit_note' o
+    // 'all'.
+    if (filters?.type === 'credit_note') {
+      qb.andWhere('i.type = :t', { t: InvoiceType.CREDIT_NOTE });
+    } else if (filters?.type === 'all') {
+      // sin filtro de type
+    } else {
+      qb.andWhere('i.type = :t', { t: InvoiceType.INVOICE });
     }
 
     return qb.getMany();
@@ -688,6 +792,175 @@ export class InvoicesService {
     return invoice;
   }
 
+  /**
+   * Fase 2 / Tarea 2.4.1 — Lookup helper usado por approveRequest para
+   * encontrar la invoice destino de una credit note de prorrateo.
+   * Retorna la invoice INVOICE (no NC) PAID mas reciente del tenant.
+   */
+  async findLatestPaidInvoiceByTenant(
+    tenantId: string,
+  ): Promise<Invoice | null> {
+    return this.invoiceRepo.findOne({
+      where: {
+        tenantId,
+        status: InvoiceStatus.PAID,
+        type: InvoiceType.INVOICE,
+      },
+      order: { paidAt: 'DESC' },
+    });
+  }
+
+  // ─── Credit Notes (Fase 2 / Tarea 2.2) ──────────────────────────────
+
+  /**
+   * Emite una nota de credito (NC) que revierte total o parcialmente una
+   * invoice ya pagada. Convencion contable + SII Chile:
+   *   - NC tiene su propio folio EVA-NC-YYYY-NNNN.
+   *   - `total` se almacena POSITIVO (es el "monto del credito"); cuando
+   *     se aplique como descuento en otra factura (T2.4.2), se materializa
+   *     como linea con valor negativo.
+   *   - Status inicial DRAFT; el super_admin puede pasarla a SENT (al
+   *     emitir formalmente al cliente) o queda como DRAFT si solo se usa
+   *     internamente para descontar de la proxima factura.
+   *
+   * Validaciones:
+   *   1. Original invoice debe existir, ser de tipo INVOICE (no NC), y
+   *      estar PAID (lo que no se cobro no se puede revertir).
+   *   2. amount > 0 y suma con NCs previas <= original.total
+   *      (no se puede emitir mas credit que el total cobrado).
+   *   3. reason obligatorio para audit trail.
+   *
+   * Atomico: numeracion + creacion en transaction unica.
+   */
+  async issueCreditNote(
+    originalInvoiceId: string,
+    dto: { amount: number; reason: string; notes?: string },
+    userId: string,
+    tenantId?: string,
+  ): Promise<Invoice> {
+    if (!dto.reason || typeof dto.reason !== 'string' || dto.reason.trim().length < 3) {
+      throw new BadRequestException('reason es obligatorio (min 3 chars).');
+    }
+    if (typeof dto.amount !== 'number' || !isFinite(dto.amount) || dto.amount <= 0) {
+      throw new BadRequestException('amount debe ser > 0.');
+    }
+
+    const original = await this.invoiceRepo.findOne({
+      where: { id: originalInvoiceId },
+      relations: ['tenant'],
+    });
+    if (!original) throw new NotFoundException('Factura origen no encontrada.');
+    if (tenantId && original.tenantId !== tenantId) {
+      throw new BadRequestException('La factura no pertenece al tenant indicado.');
+    }
+    if (original.type !== InvoiceType.INVOICE) {
+      throw new BadRequestException(
+        'No se puede emitir nota de credito sobre una nota de credito. Use la factura origen.',
+      );
+    }
+    if (original.status !== InvoiceStatus.PAID) {
+      throw new BadRequestException(
+        `Solo facturas pagadas admiten credit note (estado actual: ${original.status}).`,
+      );
+    }
+
+    // Suma de NCs previas no-canceladas para evitar over-credit.
+    const existingNotes = await this.invoiceRepo.find({
+      where: {
+        originalInvoiceId: original.id,
+        type: InvoiceType.CREDIT_NOTE,
+        status: In([InvoiceStatus.DRAFT, InvoiceStatus.SENT, InvoiceStatus.APPLIED]),
+      },
+      select: ['id', 'total'],
+    });
+    const creditedSoFar = existingNotes.reduce((s, n) => s + Number(n.total), 0);
+    const originalTotal = Number(original.total);
+    if (creditedSoFar + dto.amount > originalTotal + 0.001) {
+      throw new BadRequestException(
+        `Monto excede el saldo no-creditado: original=${originalTotal} ${original.currency}, ya creditado=${creditedSoFar}, intento=${dto.amount}.`,
+      );
+    }
+
+    const now = new Date();
+
+    const saved = await runWithBlockingAdvisoryLock(
+      `invoice-numbering:NC:${now.getUTCFullYear()}`,
+      this.dataSource,
+      async () => {
+        const invoiceNumber = await this.getNextInvoiceNumber(InvoiceType.CREDIT_NOTE);
+
+        // IVA proporcional. Asumimos misma taxRate que la original (19%
+        // por defecto). El subtotal de la NC es amount / (1 + taxRate).
+        const taxRate = Number(original.taxRate) || 19;
+        const subtotal = Math.round((dto.amount / (1 + taxRate / 100)) * 100) / 100;
+        const taxAmount = Math.round((dto.amount - subtotal) * 100) / 100;
+        const total = Math.round(dto.amount * 100) / 100;
+
+        const lineConcept = `Nota de crédito s/Factura ${original.invoiceNumber} — ${dto.reason.slice(0, 200)}`;
+
+        const ncEntity = this.invoiceRepo.create({
+          tenantId: original.tenantId,
+          subscriptionId: original.subscriptionId,
+          invoiceNumber,
+          type: InvoiceType.CREDIT_NOTE,
+          status: InvoiceStatus.DRAFT,
+          issueDate: now,
+          dueDate: now, // NC no tiene "vencimiento" — se pone hoy.
+          periodStart: original.periodStart,
+          periodEnd: original.periodEnd,
+          subtotal,
+          taxRate,
+          taxAmount,
+          total,
+          currency: original.currency,
+          notes: dto.notes ?? null,
+          originalInvoiceId: original.id,
+        });
+
+        const persisted = await this.dataSource.transaction(async (txManager) => {
+          const ncSaved = await txManager.save(ncEntity);
+          await txManager.save(
+            this.lineRepo.create({
+              invoiceId: ncSaved.id,
+              concept: lineConcept,
+              quantity: 1,
+              unitPrice: subtotal,
+              total: subtotal,
+            }),
+          );
+          return ncSaved;
+        });
+
+        await this.auditService
+          .log(
+            original.tenantId,
+            userId,
+            'invoice.credit_note_issued',
+            'invoice',
+            persisted.id,
+            {
+              invoiceNumber,
+              originalInvoiceId: original.id,
+              originalInvoiceNumber: original.invoiceNumber,
+              amount: total,
+              currency: original.currency,
+              reason: dto.reason,
+              creditedSoFar: creditedSoFar + total,
+              originalTotal,
+            },
+          )
+          .catch(() => undefined);
+
+        return persisted;
+      },
+    );
+
+    return this.invoiceRepo.findOne({
+      where: { id: saved.id },
+      relations: ['tenant', 'lines', 'originalInvoice'],
+    }) as Promise<Invoice>;
+  }
+
   // ─── PDF Generation ─────────────────────────────────────────────────
 
   async generatePdf(
@@ -708,12 +981,21 @@ export class InvoicesService {
     const pageW = doc.internal.pageSize.getWidth();
     const margin = 16;
 
-    // Header
-    doc.setFillColor(26, 18, 6);
+    // Fase 2 / Tarea 2.2.4 — Header diferenciado para NC vs Factura.
+    // NCs llevan banda visual ROJA + texto "NOTA DE CRÉDITO" para que
+    // el receptor distinga inmediatamente del documento original.
+    const isCreditNote = invoice.type === InvoiceType.CREDIT_NOTE;
+    if (isCreditNote) {
+      // Banda roja oscura para credit notes.
+      doc.setFillColor(120, 30, 30);
+    } else {
+      // Banda original (cafe oscuro Eva360).
+      doc.setFillColor(26, 18, 6);
+    }
     doc.rect(0, 0, pageW, 38, 'F');
     doc.setTextColor(245, 228, 168);
     doc.setFontSize(18);
-    doc.text('FACTURA', margin, 18);
+    doc.text(isCreditNote ? 'NOTA DE CRÉDITO' : 'FACTURA', margin, 18);
     doc.setFontSize(11);
     doc.text(invoice.invoiceNumber, margin, 28);
     doc.setFontSize(9);
@@ -848,14 +1130,35 @@ export class InvoicesService {
     );
     doc.setFontSize(11);
     doc.setTextColor(201, 147, 58);
-    doc.text('TOTAL:', totX, totY + 2);
+    // Fase 2 / Tarea 2.2.4 — Para credit notes mostramos "TOTAL CRÉDITO"
+    // y el monto con prefijo "-" para reflejar que reduce el saldo a
+    // pagar. La columna BD guarda total POSITIVO (es el monto del
+    // credito); solo la presentacion lo muestra negativo.
+    doc.text(isCreditNote ? 'TOTAL CRÉDITO:' : 'TOTAL:', totX, totY + 2);
     doc.setTextColor(26, 18, 6);
+    const totalSign = isCreditNote ? '-' : '';
     doc.text(
-      `${Number(invoice.total).toFixed(2)} ${invoice.currency}`,
+      `${totalSign}${Number(invoice.total).toFixed(2)} ${invoice.currency}`,
       pageW - margin,
       totY + 2,
       { align: 'right' },
     );
+
+    // Fase 2 / Tarea 2.2.4 — Si es NC, agregar referencia a la factura
+    // origen debajo del total (datos contables / SII).
+    if (isCreditNote && invoice.originalInvoiceId) {
+      totY += 14;
+      doc.setFontSize(8);
+      doc.setTextColor(100, 116, 139);
+      const originalInvoiceLabel =
+        (invoice as any).originalInvoice?.invoiceNumber ||
+        invoice.originalInvoiceId.slice(0, 8);
+      doc.text(
+        `Documento que modifica: Factura ${originalInvoiceLabel}`,
+        totX,
+        totY,
+      );
+    }
 
     // Footer
     doc.setFontSize(7);

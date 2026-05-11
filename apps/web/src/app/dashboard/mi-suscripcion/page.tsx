@@ -603,7 +603,7 @@ export default function MiSuscripcionPage() {
                       ({proration.daysRemaining} días restantes de {proration.totalDays} del período)
                     </span>
                     <div style={{ color: 'var(--text-muted)', marginTop: '0.25rem', fontSize: '0.78rem' }}>
-                      El crédito es informativo. Eva360 lo considerará al aprobar el cambio.
+                      Al aprobarse el cambio, se emitirá una nota de crédito por este monto que se aplicará automáticamente como descuento en tu próxima factura del nuevo plan.
                     </div>
                   </div>
                 )}

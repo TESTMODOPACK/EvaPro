@@ -17,6 +17,11 @@ export enum InvoiceStatus {
   PAID = 'paid',
   OVERDUE = 'overdue',
   CANCELLED = 'cancelled',
+  // Fase 2 / Tarea 2.1 — Status terminal exclusivo de credit notes ya
+  // aplicadas como descuento en otra invoice. Permite que el motor de
+  // aplicacion automatica (T2.4.2 generateInvoice) sepa cuales credit
+  // notes estan disponibles (status='sent') vs ya gastadas ('applied').
+  APPLIED = 'applied',
 }
 
 @Entity('invoices')
@@ -85,6 +90,32 @@ export class Invoice {
 
   @Column({ type: 'timestamptz', name: 'sent_at', nullable: true })
   sentAt: Date | null;
+
+  /**
+   * Fase 2 / Tarea 2.1 — Solo poblado para credit notes (`type='credit_note'`).
+   * Apunta a la factura origen que la credit note revierte total o
+   * parcialmente. Nullable para credit notes "ajuste comercial" sin
+   * invoice especifica de referencia (caso raro).
+   */
+  @Column({ type: 'uuid', name: 'original_invoice_id', nullable: true })
+  originalInvoiceId: string | null;
+
+  @ManyToOne(() => Invoice, { nullable: true })
+  @JoinColumn({ name: 'original_invoice_id' })
+  originalInvoice: Invoice | null;
+
+  /**
+   * Fase 2 / Tarea 2.1 — Solo poblado cuando esta credit note ya fue
+   * aplicada (status='applied'). Apunta a la invoice donde se consumio
+   * el credito como linea negativa. Permite trazabilidad bidireccional:
+   *   credit_note.applied_to_invoice_id -> invoice que recibio descuento
+   *   invoice.lines[].metadata.creditNoteId -> credit notes aplicadas
+   */
+  @Column({ type: 'uuid', name: 'applied_to_invoice_id', nullable: true })
+  appliedToInvoiceId: string | null;
+
+  @Column({ type: 'timestamptz', name: 'applied_at', nullable: true })
+  appliedAt: Date | null;
 
   @OneToMany(() => InvoiceLine, (line) => line.invoice, { cascade: true, eager: true })
   lines: InvoiceLine[];

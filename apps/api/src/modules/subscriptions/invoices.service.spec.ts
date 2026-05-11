@@ -16,7 +16,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
-import { Invoice, InvoiceStatus } from './entities/invoice.entity';
+import { Invoice, InvoiceStatus, InvoiceType } from './entities/invoice.entity';
 import { InvoiceLine } from './entities/invoice-line.entity';
 import { Subscription } from './entities/subscription.entity';
 import {
@@ -846,6 +846,244 @@ describe('InvoicesService', () => {
         expect(emailService.sendInvoiceOverdueUrgent).toHaveBeenCalledTimes(1);
         expect(subRepo.update).not.toHaveBeenCalled();
       });
+    });
+  });
+
+  // ─── Fase 2 / Tarea 2.2 — issueCreditNote ───────────────────────────
+
+  describe('issueCreditNote', () => {
+    const tid = fakeUuid(100);
+
+    beforeEach(() => {
+      // El advisory lock para NC numbering usa el mismo dataSource.
+      // Ya esta configurado en el outer beforeEach.
+    });
+
+    function setupNumberMock() {
+      const numQb = createMockQueryBuilder();
+      (numQb.getRawOne as jest.Mock).mockResolvedValue(null);
+      invoiceRepo.createQueryBuilder.mockReturnValue(numQb);
+    }
+
+    function buildPaidInvoice(overrides: Record<string, any> = {}) {
+      return {
+        id: fakeUuid(700),
+        tenantId: tid,
+        invoiceNumber: 'EVA-2026-0042',
+        type: InvoiceType.INVOICE,
+        status: InvoiceStatus.PAID,
+        total: 11.9,
+        subtotal: 10,
+        taxRate: 19,
+        currency: 'UF',
+        periodStart: new Date('2026-05-01'),
+        periodEnd: new Date('2026-06-01'),
+        tenant: { id: tid, name: 'Demo' },
+        ...overrides,
+      };
+    }
+
+    it('happy path: emite NC vinculada con numero EVA-NC y status DRAFT', async () => {
+      const original = buildPaidInvoice();
+      // 1ra findOne: lookup de original.
+      // 2da find: NCs previas (vacio).
+      invoiceRepo.findOne
+        .mockResolvedValueOnce(original) // original
+        .mockResolvedValueOnce({ id: fakeUuid(800), invoiceNumber: 'EVA-NC-2026-0001' }); // final reload
+      invoiceRepo.find.mockResolvedValueOnce([]); // no NCs previas
+      setupNumberMock();
+
+      const result = await service.issueCreditNote(
+        original.id,
+        { amount: 5.95, reason: 'Refund parcial por error' },
+        fakeUuid(200),
+      );
+
+      expect(result).toBeDefined();
+      expect(dataSource.txSavedEntities[0]).toMatchObject({
+        type: InvoiceType.CREDIT_NOTE,
+        status: InvoiceStatus.DRAFT,
+        originalInvoiceId: original.id,
+        invoiceNumber: 'EVA-NC-2026-0001',
+        total: 5.95,
+        currency: 'UF',
+      });
+    });
+
+    it('rechaza si invoice origen no existe', async () => {
+      invoiceRepo.findOne.mockResolvedValueOnce(null);
+      await expect(
+        service.issueCreditNote(fakeUuid(999), { amount: 1, reason: 'test' }, fakeUuid(200)),
+      ).rejects.toThrow(/no encontrada/);
+    });
+
+    it('rechaza si invoice origen no esta PAID', async () => {
+      invoiceRepo.findOne.mockResolvedValueOnce(
+        buildPaidInvoice({ status: InvoiceStatus.DRAFT }),
+      );
+      await expect(
+        service.issueCreditNote(fakeUuid(700), { amount: 1, reason: 'test' }, fakeUuid(200)),
+      ).rejects.toThrow(/Solo facturas pagadas/);
+    });
+
+    it('rechaza si invoice origen es una credit note (no se hace NC sobre NC)', async () => {
+      invoiceRepo.findOne.mockResolvedValueOnce(
+        buildPaidInvoice({ type: InvoiceType.CREDIT_NOTE, status: InvoiceStatus.PAID }),
+      );
+      await expect(
+        service.issueCreditNote(fakeUuid(700), { amount: 1, reason: 'test' }, fakeUuid(200)),
+      ).rejects.toThrow(/nota de credito sobre una nota de credito/i);
+    });
+
+    it('rechaza si reason vacio', async () => {
+      await expect(
+        service.issueCreditNote(fakeUuid(700), { amount: 1, reason: '' }, fakeUuid(200)),
+      ).rejects.toThrow(/reason es obligatorio/);
+    });
+
+    it('rechaza si amount <= 0', async () => {
+      await expect(
+        service.issueCreditNote(fakeUuid(700), { amount: 0, reason: 'test' }, fakeUuid(200)),
+      ).rejects.toThrow(/amount debe ser > 0/);
+      await expect(
+        service.issueCreditNote(fakeUuid(700), { amount: -5, reason: 'test' }, fakeUuid(200)),
+      ).rejects.toThrow(/amount debe ser > 0/);
+    });
+
+    it('rechaza si suma con NCs previas excede el total original (over-credit)', async () => {
+      const original = buildPaidInvoice({ total: 11.9 });
+      invoiceRepo.findOne.mockResolvedValueOnce(original);
+      // NC previa de 8 -> queda 3.9 disponible. Intento 5 -> over-credit.
+      invoiceRepo.find.mockResolvedValueOnce([{ id: fakeUuid(801), total: 8 }]);
+
+      await expect(
+        service.issueCreditNote(
+          original.id,
+          { amount: 5, reason: 'segundo refund' },
+          fakeUuid(200),
+        ),
+      ).rejects.toThrow(/excede el saldo no-creditado/);
+    });
+
+    it('rechaza si tenantId no coincide (defense-in-depth)', async () => {
+      invoiceRepo.findOne.mockResolvedValueOnce(
+        buildPaidInvoice({ tenantId: fakeUuid(999) }),
+      );
+      await expect(
+        service.issueCreditNote(
+          fakeUuid(700),
+          { amount: 1, reason: 'test' },
+          fakeUuid(200),
+          tid, // expected tenant
+        ),
+      ).rejects.toThrow(/no pertenece al tenant/);
+    });
+  });
+
+  // ─── Fase 2 / Tarea 2.4.2 — Aplicacion auto de credit notes ─────────
+
+  describe('generateInvoice — credit note auto-application', () => {
+    function buildSubWithPlan(overrides: Record<string, any> = {}) {
+      return {
+        id: fakeUuid(600),
+        tenantId,
+        plan: createMockPlan({ monthlyPrice: 10 }),
+        tenant: { id: tenantId, name: 'Demo' },
+        startDate: new Date('2026-05-01'),
+        billingPeriod: BillingPeriod.MONTHLY,
+        aiAddonCalls: 0,
+        aiAddonPrice: 0,
+        ...overrides,
+      };
+    }
+
+    it('aplica credit note disponible como linea negativa y marca APPLIED', async () => {
+      const sub = buildSubWithPlan();
+      subRepo.findOne.mockResolvedValue(sub);
+      // findOne: continuidad (null), duplicate check (null), final reload.
+      invoiceRepo.findOne
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ id: fakeUuid(700) });
+      // find: NCs disponibles - una NC de subtotal 4 UF.
+      invoiceRepo.find.mockResolvedValueOnce([
+        {
+          id: fakeUuid(801),
+          invoiceNumber: 'EVA-NC-2026-0001',
+          subtotal: 4,
+          status: InvoiceStatus.DRAFT,
+          notes: null,
+        },
+      ]);
+
+      await service.generateInvoice(sub.id);
+
+      // Plan subtotal = 10, NC = 4 -> netSubtotal = 6, IVA = 1.14, total = 7.14.
+      const savedInvoice = dataSource.txSavedEntities[0];
+      expect(savedInvoice.subtotal).toBe(6);
+      expect(savedInvoice.total).toBeCloseTo(7.14, 2);
+    });
+
+    it('NCs mas grandes que el subtotal NO se aplican (quedan disponibles para proxima)', async () => {
+      const sub = buildSubWithPlan();
+      subRepo.findOne.mockResolvedValue(sub);
+      invoiceRepo.findOne
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ id: fakeUuid(700) });
+      // NC de subtotal 50 (mas grande que el plan 10) -> NO aplica.
+      invoiceRepo.find.mockResolvedValueOnce([
+        {
+          id: fakeUuid(801),
+          invoiceNumber: 'EVA-NC-2026-0001',
+          subtotal: 50,
+          status: InvoiceStatus.DRAFT,
+          notes: null,
+        },
+      ]);
+
+      await service.generateInvoice(sub.id);
+
+      // Subtotal queda intacto = 10.
+      const savedInvoice = dataSource.txSavedEntities[0];
+      expect(savedInvoice.subtotal).toBe(10);
+    });
+
+    it('FIFO: aplica varias NCs en orden de issueDate hasta cubrir subtotal', async () => {
+      const sub = buildSubWithPlan();
+      subRepo.findOne.mockResolvedValue(sub);
+      invoiceRepo.findOne
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ id: fakeUuid(700) });
+      // 3 NCs: 3 + 4 + 5. Plan subtotal 10. Aplican 3 + 4 = 7 (5 ya no cabe).
+      invoiceRepo.find.mockResolvedValueOnce([
+        { id: fakeUuid(801), invoiceNumber: 'EVA-NC-2026-0001', subtotal: 3, status: 'draft' },
+        { id: fakeUuid(802), invoiceNumber: 'EVA-NC-2026-0002', subtotal: 4, status: 'draft' },
+        { id: fakeUuid(803), invoiceNumber: 'EVA-NC-2026-0003', subtotal: 5, status: 'draft' },
+      ]);
+
+      await service.generateInvoice(sub.id);
+
+      const savedInvoice = dataSource.txSavedEntities[0];
+      // 10 - 3 - 4 = 3. (5 no cabe).
+      expect(savedInvoice.subtotal).toBe(3);
+    });
+
+    it('sin credit notes disponibles: factura igual que pre-T2.4', async () => {
+      const sub = buildSubWithPlan();
+      subRepo.findOne.mockResolvedValue(sub);
+      invoiceRepo.findOne
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ id: fakeUuid(700) });
+      invoiceRepo.find.mockResolvedValueOnce([]); // no NCs
+
+      await service.generateInvoice(sub.id);
+
+      const savedInvoice = dataSource.txSavedEntities[0];
+      expect(savedInvoice.subtotal).toBe(10);
+      expect(savedInvoice.total).toBeCloseTo(11.9, 2);
     });
   });
 });

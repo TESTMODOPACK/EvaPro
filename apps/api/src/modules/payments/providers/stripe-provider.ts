@@ -5,6 +5,8 @@ import {
   CreateCheckoutResult,
   PaymentProvider,
   PaymentProviderName,
+  RefundInput,
+  RefundResult,
   WebhookEvent,
 } from './payment-provider.interface';
 
@@ -216,5 +218,87 @@ export class StripeProvider implements PaymentProvider {
       default:
         return { type: 'unknown', externalId: '', isIgnorable: true };
     }
+  }
+
+  /**
+   * Fase 2 / Tarea 2.3.1 — Emite un refund Stripe.
+   *
+   * Stripe acepta refund por `payment_intent` o `charge`. Aqui usamos
+   * `payment_intent` porque nuestro CheckoutSession crea
+   * payment_intent_data con metadata, y el sessionId que persistimos
+   * podemos resolverlo a payment_intent via API.
+   *
+   * Idempotency: Stripe acepta `idempotency_key` como header HTTP
+   * estandar; reintentos del mismo key retornan el mismo refund sin
+   * duplicar el cargo.
+   *
+   * `externalChargeId` aqui es el CheckoutSession id (cs_test_...) o
+   * directamente el PaymentIntent id (pi_...). Auto-detecta por prefijo.
+   */
+  async refundPayment(input: RefundInput): Promise<RefundResult> {
+    if (!this.client) throw new Error('Stripe no está configurado.');
+
+    let paymentIntentId = input.externalChargeId;
+    if (paymentIntentId.startsWith('cs_')) {
+      // Es un CheckoutSession id; resolvemos a payment_intent.
+      const session = await this.client.checkout.sessions.retrieve(paymentIntentId);
+      const piId =
+        typeof session.payment_intent === 'string'
+          ? session.payment_intent
+          : session.payment_intent?.id;
+      if (!piId) {
+        throw new Error(
+          `Stripe session ${paymentIntentId} sin payment_intent — no refundable.`,
+        );
+      }
+      paymentIntentId = piId;
+    }
+
+    try {
+      const refund = await this.client.refunds.create(
+        {
+          payment_intent: paymentIntentId,
+          amount: input.amount !== undefined ? Math.round(input.amount) : undefined,
+          reason: this.mapRefundReason(input.reason),
+          metadata: {
+            internal_reason: (input.reason || '').slice(0, 500),
+          },
+        },
+        { idempotencyKey: input.idempotencyKey },
+      );
+      const status: RefundResult['status'] =
+        refund.status === 'succeeded'
+          ? 'succeeded'
+          : refund.status === 'pending'
+            ? 'pending'
+            : 'failed';
+      return {
+        refundId: refund.id,
+        status,
+        amount: refund.amount ?? 0,
+        currency: (refund.currency || '').toUpperCase(),
+        failureReason: refund.failure_reason ?? undefined,
+      };
+    } catch (err: any) {
+      this.logger.error(
+        `Stripe refund failed for PI=${paymentIntentId}: ${err?.message}`,
+      );
+      throw new Error(`Stripe refund failed: ${err?.message || 'unknown'}`);
+    }
+  }
+
+  /**
+   * Mapea nuestro `reason` libre al enum reducido de Stripe.
+   * Stripe acepta: duplicate | fraudulent | requested_by_customer.
+   * Cualquier otro reason no-mapeable -> requested_by_customer (opcion segura).
+   */
+  private mapRefundReason(
+    reason?: string,
+  ): 'duplicate' | 'fraudulent' | 'requested_by_customer' | undefined {
+    if (!reason) return 'requested_by_customer';
+    const r = reason.toLowerCase();
+    if (r.includes('duplicate') || r.includes('duplicad')) return 'duplicate';
+    if (r.includes('fraud')) return 'fraudulent';
+    return 'requested_by_customer';
   }
 }
