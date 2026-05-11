@@ -728,13 +728,31 @@ export class SubscriptionsService {
     return saved;
   }
 
-  async getPaymentHistory(tenantId: string): Promise<PaymentHistory[]> {
-    return this.paymentRepo.find({
+  /**
+   * Fase 3 / Tarea 3.1 — Paginacion real (vs el `take: 50` hardcoded).
+   *
+   * Reglas:
+   *   - `limit` capped a 100 para evitar payloads gigantes.
+   *   - `offset` >= 0 (clamp).
+   *   - Retorna `{ data, total }` para que el frontend pueda mostrar
+   *     "X de Y pagos" y deshabilitar "Cargar mas" cuando se llego al final.
+   *   - Mantener compat backward: caller sin params recibe los primeros 50
+   *     en `data` con el mismo orden de antes (createdAt DESC).
+   */
+  async getPaymentHistory(
+    tenantId: string,
+    opts: { limit?: number; offset?: number } = {},
+  ): Promise<{ data: PaymentHistory[]; total: number }> {
+    const limit = Math.min(Math.max(1, Number(opts.limit) || 50), 100);
+    const offset = Math.max(0, Number(opts.offset) || 0);
+    const [data, total] = await this.paymentRepo.findAndCount({
       where: { tenantId },
       relations: ['subscription'],
       order: { createdAt: 'DESC' },
-      take: 50,
+      take: limit,
+      skip: offset,
     });
+    return { data, total };
   }
 
   async updatePayment(

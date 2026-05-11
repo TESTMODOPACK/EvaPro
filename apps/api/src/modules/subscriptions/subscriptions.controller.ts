@@ -74,8 +74,18 @@ export class SubscriptionsController {
 
   @Get('my-payments')
   @Roles('tenant_admin')
-  myPayments(@Request() req: any) {
-    return this.subscriptionsService.getPaymentHistory(req.user.tenantId);
+  myPayments(
+    @Request() req: any,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    // Fase 3 / Tarea 3.1 — paginacion. Defaults: 50 / 0 (backward-compat).
+    const limitNum = limit ? parseInt(limit, 10) : undefined;
+    const offsetNum = offset ? parseInt(offset, 10) : undefined;
+    return this.subscriptionsService.getPaymentHistory(req.user.tenantId, {
+      limit: limitNum,
+      offset: offsetNum,
+    });
   }
 
   @Get('my-subscription/proration')

@@ -61,6 +61,11 @@ export default function MiSuscripcionPage() {
   const token = useAuthStore((s) => s.token);
   const [sub, setSub] = useState<any>(null);
   const [payments, setPayments] = useState<any[]>([]);
+  const [paymentsTotal, setPaymentsTotal] = useState(0);
+  // Fase 3 / Tarea 3.1 — Paginacion local con limit creciente. Arranca
+  // mostrando 12 y crece de 12 en 12 con "Cargar mas".
+  const [paymentsVisible, setPaymentsVisible] = useState(12);
+  const [paymentsLoadingMore, setPaymentsLoadingMore] = useState(false);
   const [userCount, setUserCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
@@ -100,13 +105,70 @@ export default function MiSuscripcionPage() {
     setTimeout(() => setAutoRenewToast(''), 3000);
   }
 
+  /**
+   * Fase 3 / Tarea 3.1 — Descarga el PDF de una factura asociada a un
+   * payment_history. Solo aplica cuando p.invoiceId existe (pagos
+   * manuales sin invoice no tienen PDF).
+   *
+   * Regla de negocio: tenant_admin solo descarga PDFs DE SU tenant
+   * (garantizado backend via /invoices/:id/pdf con tenantId scoping
+   * cuando rol != super_admin). UI solo expone el boton si invoiceId
+   * existe en el payment, evitando 404 para pagos huerfanos.
+   */
+  async function downloadInvoicePdf(invoiceId: string, invoiceNumber?: string) {
+    if (!token) return;
+    try {
+      const blob = await api.invoices.downloadPdf(token, invoiceId);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `factura-${invoiceNumber || invoiceId.slice(0, 8)}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      showToast(err?.message || 'Error al descargar el PDF');
+    }
+  }
+
+  /**
+   * Fase 3 / Tarea 3.1 — Carga la siguiente pagina de pagos y la
+   * appendea al array existente. El boton "Cargar mas" lo invoca.
+   *
+   * Reglas:
+   *   - Pide max 50 mas (limite hardcoded server-side).
+   *   - Si total >= cantidad cargada -> hay mas paginas.
+   *   - Si la pagina viene vacia (caso edge: pagos eliminados entre
+   *     paginaciones), no actualizamos para no romper el contador.
+   */
+  async function loadMorePayments() {
+    if (!token || paymentsLoadingMore) return;
+    setPaymentsLoadingMore(true);
+    try {
+      const res = await api.subscriptions.myPayments(token, {
+        limit: 50,
+        offset: payments.length,
+      });
+      if (res.data && res.data.length > 0) {
+        setPayments((prev) => [...prev, ...res.data]);
+      }
+      setPaymentsTotal(res.total);
+    } catch {
+      showToast('Error al cargar mas pagos');
+    } finally {
+      setPaymentsLoadingMore(false);
+    }
+  }
+
   function loadAll() {
     if (!token) return;
     setLoading(true);
     Promise.all([
       api.subscriptions.mySubscription(token).catch(() => null),
       api.users.list(token, 1, 1).then((r) => r.total || 0).catch(() => 0),
-      api.subscriptions.myPayments(token).catch(() => []),
+      // Fase 3 / Tarea 3.1 — shape paginado { data, total }.
+      api.subscriptions.myPayments(token, { limit: 50, offset: 0 }).catch(() => ({ data: [], total: 0 })),
       api.subscriptions.getProration(token).catch(() => null),
       api.subscriptions.plans.list(token).catch(() => []),
       api.subscriptions.myRequests(token).catch(() => []),
@@ -117,7 +179,10 @@ export default function MiSuscripcionPage() {
       .then(([s, count, pays, prot, plns, reqs, aiUse, packs, addon]) => {
         setSub(s);
         setUserCount(count as number);
-        setPayments(pays as any[]);
+        // Fase 3 / Tarea 3.1 — shape paginado.
+        const paysObj = pays as { data: any[]; total: number };
+        setPayments(paysObj.data || []);
+        setPaymentsTotal(paysObj.total || 0);
         setProration(prot as any);
         setPlans((plns as any[]).filter((p: any) => p.isActive));
         setMyRequests(reqs as any[]);
@@ -789,10 +854,15 @@ export default function MiSuscripcionPage() {
             )}
           </div>
 
-          {/* Payment history */}
+          {/* Payment history (Fase 3 / Tarea 3.1) */}
           {payments.length > 0 && (
             <div className="card animate-fade-up-delay-3" style={{ padding: '1.75rem', marginBottom: '1.5rem' }}>
-              <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '1rem' }}>Historial de Pagos</h2>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '1rem' }}>
+                <h2 style={{ fontSize: '1rem', fontWeight: 700 }}>Historial de Pagos</h2>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                  Mostrando {Math.min(payments.length, paymentsVisible)} de {paymentsTotal}
+                </span>
+              </div>
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                   <thead>
@@ -802,10 +872,11 @@ export default function MiSuscripcionPage() {
                       <th style={{ padding: '0.5rem', textAlign: 'right', borderBottom: '2px solid var(--border)' }}>Monto</th>
                       <th style={{ padding: '0.5rem', textAlign: 'center', borderBottom: '2px solid var(--border)' }}>Estado</th>
                       <th style={{ padding: '0.5rem', textAlign: 'left', borderBottom: '2px solid var(--border)' }}>Método</th>
+                      <th style={{ padding: '0.5rem', textAlign: 'center', borderBottom: '2px solid var(--border)' }}>Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {payments.slice(0, 12).map((p: any) => (
+                    {payments.slice(0, paymentsVisible).map((p: any) => (
                       <tr key={p.id}>
                         <td style={{ padding: '0.5rem', borderBottom: '1px solid var(--border)' }}>
                           {p.paidAt ? new Date(p.paidAt).toLocaleDateString('es-CL') : new Date(p.createdAt).toLocaleDateString('es-CL')}
@@ -824,11 +895,50 @@ export default function MiSuscripcionPage() {
                         <td style={{ padding: '0.5rem', borderBottom: '1px solid var(--border)', color: 'var(--text-muted)' }}>
                           {p.paymentMethod || '-'}
                         </td>
+                        <td style={{ padding: '0.5rem', textAlign: 'center', borderBottom: '1px solid var(--border)' }}>
+                          {p.invoiceId ? (
+                            <button
+                              type="button"
+                              className="btn btn-ghost"
+                              style={{ fontSize: '0.75rem', padding: '0.25rem 0.6rem' }}
+                              onClick={() => downloadInvoicePdf(p.invoiceId, p.concept?.replace(/^Factura\s+/, ''))}
+                              aria-label={`Descargar PDF de la factura ${p.concept || p.invoiceId.slice(0, 8)}`}
+                            >
+                              PDF
+                            </button>
+                          ) : (
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>—</span>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
+              {/* Boton "Cargar mas" / "Mostrar menos" segun estado */}
+              {paymentsTotal > paymentsVisible && (
+                <div style={{ marginTop: '1rem', textAlign: 'center' }}>
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    disabled={paymentsLoadingMore}
+                    onClick={() => {
+                      // Si tenemos data en memoria pero esta capeado por
+                      // paymentsVisible, solo expandir. Si nos faltan
+                      // mas en BD, pedir mas.
+                      if (payments.length > paymentsVisible) {
+                        setPaymentsVisible((v) => Math.min(v + 12, payments.length));
+                      } else {
+                        loadMorePayments().then(() =>
+                          setPaymentsVisible((v) => v + 12),
+                        );
+                      }
+                    }}
+                  >
+                    {paymentsLoadingMore ? 'Cargando…' : `Cargar más (${paymentsTotal - paymentsVisible} restantes)`}
+                  </button>
+                </div>
+              )}
             </div>
           )}
 

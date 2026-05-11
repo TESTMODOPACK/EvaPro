@@ -542,7 +542,15 @@ export const api = {
       request<void>(`/subscriptions/${id}`, { method: "DELETE" }, token),
     stats: (token: string) => request<any>("/subscriptions/stats", {}, token),
     mySubscription: (token: string) => request<any>("/subscriptions/my-subscription", {}, token),
-    myPayments: (token: string) => request<any[]>("/subscriptions/my-payments", {}, token),
+    // Fase 3 / Tarea 3.1 — Shape paginado { data, total }. Opcional
+    // limit/offset; defaults backend 50/0.
+    myPayments: (token: string, opts?: { limit?: number; offset?: number }) => {
+      const qs = new URLSearchParams();
+      if (opts?.limit != null) qs.set('limit', String(opts.limit));
+      if (opts?.offset != null) qs.set('offset', String(opts.offset));
+      const suffix = qs.toString() ? `?${qs.toString()}` : '';
+      return request<{ data: any[]; total: number }>(`/subscriptions/my-payments${suffix}`, {}, token);
+    },
     getPayments: (token: string, id: string) => request<any[]>(`/subscriptions/${id}/payments`, {}, token),
     registerPayment: (token: string, id: string, data: any) =>
       request<any>(`/subscriptions/${id}/payments`, { method: "POST", body: JSON.stringify(data) }, token),
@@ -1924,6 +1932,24 @@ export const api = {
     cancel: (token: string, id: string) =>
       request<any>(`/invoices/${id}/cancel`, { method: "PATCH" }, token),
     pdfUrl: (id: string) => `${BASE_URL}/invoices/${id}/pdf`,
+    /**
+     * Fase 3 / Tarea 3.1 — Descarga el PDF de una factura como blob.
+     * El endpoint requiere `Authorization: Bearer <token>` (la URL simple
+     * en `pdfUrl` no lo lleva). Backend ya scopea por tenantId para
+     * tenant_admin, por lo que un cliente no puede descargar PDFs de
+     * otra organizacion.
+     */
+    downloadPdf: (token: string, id: string): Promise<Blob> => {
+      const BASE = process.env.NEXT_PUBLIC_API_URL || 'https://evaluacion-desempeno-api.onrender.com';
+      return fetch(`${BASE}/invoices/${id}/pdf`, {
+        headers: { Authorization: `Bearer ${token}` },
+      }).then((r) => {
+        if (!r.ok) {
+          throw new Error(`Error al descargar PDF (HTTP ${r.status})`);
+        }
+        return r.blob();
+      });
+    },
   },
 
   // ─── Impersonation (super_admin) ───────────────────────────────────────
