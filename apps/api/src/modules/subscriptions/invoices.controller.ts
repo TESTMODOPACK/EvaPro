@@ -5,16 +5,31 @@ import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { InvoicesService } from './invoices.service';
+import { BillingMetricsService } from './billing-metrics.service';
 
 @Controller('invoices')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
 export class InvoicesController {
-  constructor(private readonly invoicesService: InvoicesService) {}
+  constructor(
+    private readonly invoicesService: InvoicesService,
+    // Fase 4 / T4.2 — metricas SaaS para dashboard ejecutivo.
+    private readonly metricsService: BillingMetricsService,
+  ) {}
 
   @Get('stats')
   @Roles('super_admin')
   getStats() {
     return this.invoicesService.getInvoiceStats();
+  }
+
+  /**
+   * Fase 4 / T4.2 — Dashboard de metricas SaaS para super_admin.
+   * Returns MRR, ARR, churn, DSO, collection rate de los ultimos 30d.
+   */
+  @Get('metrics/saas')
+  @Roles('super_admin')
+  getSaasMetrics() {
+    return this.metricsService.getSummary();
   }
 
   @Get('my')
@@ -33,12 +48,31 @@ export class InvoicesController {
   @Roles('super_admin')
   list(
     @Query('status') status?: string,
+    @Query('statuses') statuses?: string,
     @Query('tenantId', new ParseUUIDPipe({ optional: true })) tenantId?: string,
     @Query('period') period?: string,
     @Query('type') type?: 'invoice' | 'credit_note' | 'all',
+    // Fase 4 / T4.1 — Filtros avanzados.
+    @Query('q') q?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
   ) {
-    // Fase 2 / Tarea 2.2.3 — type opcional (default 'invoice').
-    return this.invoicesService.getAllInvoices({ status, tenantId, periodMonth: period, type });
+    // statuses=comma-separated: 'paid,overdue'.
+    const statusesArr = statuses ? statuses.split(',').map((s) => s.trim()).filter(Boolean) : undefined;
+    return this.invoicesService.getAllInvoices({
+      status,
+      statuses: statusesArr,
+      tenantId,
+      periodMonth: period,
+      type,
+      q,
+      dateFrom,
+      dateTo,
+      limit: limit ? parseInt(limit, 10) : undefined,
+      offset: offset ? parseInt(offset, 10) : undefined,
+    });
   }
 
   @Post('generate/:subscriptionId')

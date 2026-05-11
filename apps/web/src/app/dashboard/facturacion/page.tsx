@@ -42,13 +42,18 @@ export default function FacturacionPage() {
   const loadData = async () => {
     if (!token) return;
     try {
-      const [invs, st, ts, ss] = await Promise.all([
-        api.invoices.list(token, { status: filterStatus || undefined, tenantId: filterTenant || undefined, period: filterPeriod || undefined }),
+      const [invsRes, st, ts, ss] = await Promise.all([
+        api.invoices.list(token, {
+          status: filterStatus || undefined,
+          tenantId: filterTenant || undefined,
+          period: filterPeriod || undefined,
+        }),
         api.invoices.stats(token),
         api.tenants.list(token),
         api.subscriptions.list(token),
       ]);
-      setInvoices(invs);
+      // Fase 4 / T4.1: shape { data, total }.
+      setInvoices(invsRes?.data || []);
       setStats(st);
       setTenants(ts);
       setSubs(ss);

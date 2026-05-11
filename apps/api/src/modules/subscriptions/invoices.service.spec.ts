@@ -108,6 +108,18 @@ describe('InvoicesService', () => {
         // DataSource es usado por runWithBlockingAdvisoryLock (numeracion)
         // y por generateInvoice (transaction atomica de invoice + lines).
         { provide: DataSource, useValue: dataSource },
+        // Fase 4 / T4.3 — PriceOverridesService usado por generateInvoice
+        // para resolver descuentos custom por tenant. Mock default:
+        // sin override (retorna null) -> mismo comportamiento pre-T4.3.
+        {
+          provide: require('./price-overrides.service').PriceOverridesService,
+          useValue: {
+            getActiveOverride: jest.fn().mockResolvedValue(null),
+            create: jest.fn(),
+            listForSubscription: jest.fn().mockResolvedValue([]),
+            closeActive: jest.fn(),
+          },
+        },
       ],
     }).compile();
 

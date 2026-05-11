@@ -45,9 +45,11 @@ export default function PendingInvoicesCard() {
   const { data, isLoading } = useQuery({
     queryKey: ['invoices', 'my', 'pending'],
     queryFn: async () => {
-      const all = await api.invoices.my(token!);
+      // Fase 4 / T4.1: shape { data, total }.
+      const res = await api.invoices.my(token!);
+      const all = res?.data || [];
       // Filter to statuses that still accept payment.
-      return (all || []).filter((i: any) =>
+      return all.filter((i: any) =>
         ['sent', 'overdue', 'SENT', 'OVERDUE'].includes(i.status),
       ) as InvoiceRow[];
     },

@@ -1928,18 +1928,60 @@ export const api = {
   },
 
   invoices: {
-    list: (token: string, filters?: { status?: string; tenantId?: string; period?: string }) => {
+    /**
+     * Fase 4 / T4.1 — Filtros avanzados.
+     * Shape de respuesta: { data: Invoice[], total: number }.
+     * `total` permite mostrar "X de Y" en la UI sin sobre-fetch.
+     */
+    list: (token: string, filters?: {
+      status?: string;
+      statuses?: string[];
+      tenantId?: string;
+      period?: string;
+      q?: string;
+      dateFrom?: string;
+      dateTo?: string;
+      type?: 'invoice' | 'credit_note' | 'all';
+      limit?: number;
+      offset?: number;
+    }) => {
       const params = new URLSearchParams();
       if (filters?.status) params.set('status', filters.status);
+      if (filters?.statuses && filters.statuses.length) params.set('statuses', filters.statuses.join(','));
       if (filters?.tenantId) params.set('tenantId', filters.tenantId);
       if (filters?.period) params.set('period', filters.period);
+      if (filters?.q) params.set('q', filters.q);
+      if (filters?.dateFrom) params.set('dateFrom', filters.dateFrom);
+      if (filters?.dateTo) params.set('dateTo', filters.dateTo);
+      if (filters?.type) params.set('type', filters.type);
+      if (filters?.limit != null) params.set('limit', String(filters.limit));
+      if (filters?.offset != null) params.set('offset', String(filters.offset));
       const qs = params.toString();
-      return request<any[]>(`/invoices${qs ? `?${qs}` : ''}`, {}, token);
+      return request<{ data: any[]; total: number }>(`/invoices${qs ? `?${qs}` : ''}`, {}, token);
     },
-    /** Invoices of the current tenant — tenant_admin only. Used by the
-     *  "Pagar facturas pendientes" section on /mi-suscripcion. */
-    my: (token: string) => request<any[]>('/invoices/my', {}, token),
+    /** Invoices of the current tenant — tenant_admin only.
+     *  Fase 4 / T4.1: backend ahora retorna { data, total }. */
+    my: (token: string) => request<{ data: any[]; total: number }>('/invoices/my', {}, token),
     stats: (token: string) => request<any>("/invoices/stats", {}, token),
+    /**
+     * Fase 4 / T4.2 — Metricas SaaS (MRR, ARR, churn, DSO, collection rate).
+     * Solo super_admin. Refresh recomendado: cada 5 min en background.
+     */
+    saasMetrics: (token: string) =>
+      request<{
+        mrr: number;
+        arr: number;
+        activeSubs: number;
+        currency: string;
+        churn30d: number;
+        dso30d: number;
+        collectionRate30d: number;
+        breakdown: {
+          churn: { cancelledInPeriod: number; activeAtStart: number };
+          dso: { accountsReceivable: number; revenuePeriod: number };
+          collection: { paid: number; pending: number; overdue: number };
+        };
+      }>("/invoices/metrics/saas", {}, token),
     generate: (token: string, subscriptionId: string) =>
       request<any>(`/invoices/generate/${subscriptionId}`, { method: "POST" }, token),
     generateBulk: (token: string) =>

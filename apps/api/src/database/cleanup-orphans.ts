@@ -339,6 +339,24 @@ async function main() {
       `CREATE INDEX IF NOT EXISTS idx_spm_tenant ON saved_payment_methods(tenant_id)`,
       `CREATE INDEX IF NOT EXISTS idx_spm_tenant_default ON saved_payment_methods(tenant_id, is_default)`,
       `CREATE INDEX IF NOT EXISTS idx_spm_status ON saved_payment_methods(status)`,
+      // Fase 4 / T4.3 — Override de pricing por subscription.
+      `CREATE TABLE IF NOT EXISTS subscription_price_overrides (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        subscription_id uuid NOT NULL,
+        tenant_id uuid NOT NULL,
+        monthly_price numeric(10,2) NULL,
+        quarterly_price numeric(10,2) NULL,
+        semiannual_price numeric(10,2) NULL,
+        yearly_price numeric(10,2) NULL,
+        valid_from timestamptz NOT NULL,
+        valid_until timestamptz NULL,
+        reason text NOT NULL,
+        approved_by uuid NOT NULL,
+        created_at timestamptz NOT NULL DEFAULT now()
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_spo_sub ON subscription_price_overrides(subscription_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_spo_tenant ON subscription_price_overrides(tenant_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_spo_sub_active ON subscription_price_overrides(subscription_id, valid_until)`,
     ];
     for (const sql of tableFixes) {
       try { await client.query(sql); } catch { /* already exists */ }

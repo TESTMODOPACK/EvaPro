@@ -35,6 +35,7 @@ import { EmailService } from '../notifications/email.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationType } from '../notifications/entities/notification.entity';
 import { runWithBlockingAdvisoryLock } from '../../common/utils/cron-lock';
+import { PriceOverridesService } from './price-overrides.service';
 
 /**
  * Fase 1 / Tarea 1.2 — Claves semanticas de los stages de dunning.
@@ -74,6 +75,8 @@ export class InvoicesService {
     // Requerido por runWithBlockingAdvisoryLock en generateInvoice — evita
     // que 2 requests paralelos asignen el mismo invoice_number.
     private readonly dataSource: DataSource,
+    // Fase 4 / T4.3 — Pricing override por sub (descuentos custom).
+    private readonly priceOverridesService: PriceOverridesService,
   ) {}
 
   // ─── Invoice Number Generation ──────────────────────────────────────
@@ -227,8 +230,10 @@ export class InvoicesService {
           // Build lines
           const lines: Partial<InvoiceLine>[] = [];
 
+          // Fase 4 / T4.3 — Resolver pricing override activo (si existe).
+          const activeOverride = await this.priceOverridesService.getActiveOverride(sub.id, now);
           // Line 1: Plan base
-          const planPrice = this.getPlanPriceForPeriod(sub);
+          const planPrice = this.getPlanPriceForPeriod(sub, activeOverride);
           if (planPrice > 0) {
             const periodLabel =
               {
@@ -470,15 +475,25 @@ export class InvoicesService {
 
   async getAllInvoices(filters?: {
     status?: string;
+    /** Multi-status: ['paid', 'overdue']. Fase 4 / T4.1. */
+    statuses?: string[];
     tenantId?: string;
     periodMonth?: string;
+    /** Fase 4 / T4.1 — Date range filters. Inclusive. ISO YYYY-MM-DD. */
+    dateFrom?: string;
+    dateTo?: string;
     /**
-     * Fase 2 / Tarea 2.2.3 — Filtra por tipo: 'invoice' (default si se
-     * omite y no se piden ambos) o 'credit_note'. Para listar TODO
-     * (invoices + NCs juntas) pasar 'all'.
+     * Fase 4 / T4.1 — Full-text search en invoice_number, tenant.name,
+     * tenant.rut. Case-insensitive (ILIKE). Minimo 2 chars (defensa
+     * vs query gigantes con `%`). Si <2 chars, ignorado.
      */
+    q?: string;
+    /** Fase 2 / Tarea 2.2.3 — Tipo: 'invoice' default | 'credit_note' | 'all'. */
     type?: 'invoice' | 'credit_note' | 'all';
-  }): Promise<Invoice[]> {
+    /** Fase 4 / T4.1 — Paginacion server-side para escalas grandes. */
+    limit?: number;
+    offset?: number;
+  }): Promise<{ data: Invoice[]; total: number }> {
     const qb = this.invoiceRepo
       .createQueryBuilder('i')
       .leftJoinAndSelect('i.tenant', 't')
@@ -487,6 +502,9 @@ export class InvoicesService {
 
     if (filters?.status) {
       qb.andWhere('i.status = :status', { status: filters.status });
+    }
+    if (filters?.statuses && filters.statuses.length > 0) {
+      qb.andWhere('i.status IN (:...statuses)', { statuses: filters.statuses });
     }
     if (filters?.tenantId) {
       qb.andWhere('i.tenant_id = :tid', { tid: filters.tenantId });
@@ -498,11 +516,24 @@ export class InvoicesService {
       const end = new Date(y, m, 0);
       qb.andWhere('i.issue_date BETWEEN :start AND :end', { start, end });
     }
+    // Fase 4 / T4.1 — Date range (mas flexible que periodMonth).
+    if (filters?.dateFrom) {
+      qb.andWhere('i.issue_date >= :df', { df: filters.dateFrom });
+    }
+    if (filters?.dateTo) {
+      // Inclusive: hasta el final del dia.
+      qb.andWhere('i.issue_date <= :dt', { dt: `${filters.dateTo} 23:59:59` });
+    }
+    // Fase 4 / T4.1 — Full-text search defensivo. ILIKE con LIKE-escape
+    // de `%` y `_` para evitar wildcard injection.
+    if (filters?.q && filters.q.trim().length >= 2) {
+      const escaped = filters.q.trim().replace(/[\\%_]/g, '\\$&');
+      qb.andWhere(
+        '(i.invoice_number ILIKE :q OR t.name ILIKE :q OR t.rut ILIKE :q)',
+        { q: `%${escaped}%` },
+      );
+    }
     // Fase 2 / Tarea 2.2.3 — filtro de tipo (invoice/credit_note/all).
-    // Default backward-compatible: si NO se pasa, retornamos solo
-    // invoices regulares (mismo comportamiento que pre-fix). Para incluir
-    // credit notes el caller debe pedir explicitamente 'credit_note' o
-    // 'all'.
     if (filters?.type === 'credit_note') {
       qb.andWhere('i.type = :t', { t: InvoiceType.CREDIT_NOTE });
     } else if (filters?.type === 'all') {
@@ -511,7 +542,22 @@ export class InvoicesService {
       qb.andWhere('i.type = :t', { t: InvoiceType.INVOICE });
     }
 
-    return qb.getMany();
+    // Total count (sin paginacion) para que la UI muestre "X de Y".
+    // Importante: getCount no aplica el take/skip pero si los where.
+    const totalQb = qb.clone();
+
+    if (filters?.limit !== undefined) {
+      qb.take(Math.min(Math.max(1, filters.limit), 200));
+    }
+    if (filters?.offset !== undefined) {
+      qb.skip(Math.max(0, filters.offset));
+    }
+
+    const [data, total] = await Promise.all([
+      qb.getMany(),
+      totalQb.getCount(),
+    ]);
+    return { data, total };
   }
 
   // ─── Stats ──────────────────────────────────────────────────────────
@@ -1219,21 +1265,42 @@ export class InvoicesService {
 
   // ─── Helpers ────────────────────────────────────────────────────────
 
-  private getPlanPriceForPeriod(sub: Subscription): number {
+  /**
+   * Resuelve el precio para el periodo de billing de una sub.
+   *
+   * Fase 4 / T4.3 — Pricing override: si el caller pasa un `override`
+   * con el campo correspondiente al periodo, lo usa. Si no, fallback
+   * al plan base. Esto permite descuentos por tenant sin tocar el plan.
+   */
+  private getPlanPriceForPeriod(
+    sub: Subscription,
+    override?: { monthlyPrice?: number | null; quarterlyPrice?: number | null; semiannualPrice?: number | null; yearlyPrice?: number | null } | null,
+  ): number {
     const plan = sub.plan;
     if (!plan) return 0;
+
+    // Resolver del override primero, luego plan base.
+    const ovMonthly = override?.monthlyPrice;
+    const ovQuarterly = override?.quarterlyPrice;
+    const ovSemi = override?.semiannualPrice;
+    const ovYearly = override?.yearlyPrice;
+
     switch (sub.billingPeriod) {
       case BillingPeriod.QUARTERLY:
+        if (ovQuarterly !== undefined && ovQuarterly !== null) return Number(ovQuarterly);
         return (
           Number(plan.quarterlyPrice) || Number(plan.monthlyPrice) * 3 * 0.9
         );
       case BillingPeriod.SEMIANNUAL:
+        if (ovSemi !== undefined && ovSemi !== null) return Number(ovSemi);
         return (
           Number(plan.semiannualPrice) || Number(plan.monthlyPrice) * 6 * 0.85
         );
       case BillingPeriod.ANNUAL:
+        if (ovYearly !== undefined && ovYearly !== null) return Number(ovYearly);
         return Number(plan.yearlyPrice) || Number(plan.monthlyPrice) * 12 * 0.8;
       default:
+        if (ovMonthly !== undefined && ovMonthly !== null) return Number(ovMonthly);
         return Number(plan.monthlyPrice) || 0;
     }
   }

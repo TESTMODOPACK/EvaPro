@@ -45,8 +45,10 @@ export default function PastDueBanner() {
   const { data: invoices } = useQuery({
     queryKey: ['invoices', 'my', 'overdue'],
     queryFn: async () => {
-      const all = await api.invoices.my(token!);
-      return (all || []).filter((i: any) =>
+      // Fase 4 / T4.1: shape { data, total }.
+      const res = await api.invoices.my(token!);
+      const all = res?.data || [];
+      return all.filter((i: any) =>
         ['overdue', 'OVERDUE'].includes(i.status),
       );
     },

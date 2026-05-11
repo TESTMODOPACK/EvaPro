@@ -18,11 +18,15 @@ import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { SubscriptionsService } from './subscriptions.service';
+import { PriceOverridesService } from './price-overrides.service';
 
 @Controller('subscriptions')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
 export class SubscriptionsController {
-  constructor(private readonly subscriptionsService: SubscriptionsService) {}
+  constructor(
+    private readonly subscriptionsService: SubscriptionsService,
+    private readonly priceOverridesService: PriceOverridesService,
+  ) {}
 
   // ─── Plans ─────────────────────────────────────────────────────────────
 
@@ -125,6 +129,50 @@ export class SubscriptionsController {
     @Body() body: { autoRenew: boolean },
   ) {
     return this.subscriptionsService.toggleAutoRenew(req.user.tenantId, body.autoRenew);
+  }
+
+  // ─── Fase 4 / Tarea 4.3 — Pricing overrides (super_admin) ────────────
+
+  @Post(':id/price-overrides')
+  @Roles('super_admin')
+  createPriceOverride(
+    @Param('id', ParseUUIDPipe) subscriptionId: string,
+    @Body()
+    body: {
+      monthlyPrice?: number | null;
+      quarterlyPrice?: number | null;
+      semiannualPrice?: number | null;
+      yearlyPrice?: number | null;
+      validFrom?: string;
+      validUntil?: string | null;
+      reason: string;
+    },
+    @Request() req: any,
+  ) {
+    return this.priceOverridesService.create(
+      subscriptionId,
+      body,
+      req.user.userId || req.user.id,
+    );
+  }
+
+  @Get(':id/price-overrides')
+  @Roles('super_admin')
+  listPriceOverrides(@Param('id', ParseUUIDPipe) subscriptionId: string) {
+    return this.priceOverridesService.listForSubscription(subscriptionId);
+  }
+
+  @Delete(':id/price-overrides/active')
+  @Roles('super_admin')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async closePriceOverride(
+    @Param('id', ParseUUIDPipe) subscriptionId: string,
+    @Request() req: any,
+  ) {
+    await this.priceOverridesService.closeActive(
+      subscriptionId,
+      req.user.userId || req.user.id,
+    );
   }
 
   /**
