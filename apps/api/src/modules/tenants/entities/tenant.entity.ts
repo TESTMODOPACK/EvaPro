@@ -45,6 +45,16 @@ export class Tenant {
   @Column({ type: 'varchar', length: 12, nullable: true, name: 'legal_rep_rut', comment: 'RUT del representante legal' })
   legalRepRut: string | null;
 
+  /**
+   * Fase 3 / Tarea 3.3 — Email separado al que se envian facturas y
+   * recordatorios de cobranza. Si null, fallback al email del
+   * tenant_admin activo (comportamiento previo). Util cuando el
+   * tenant_admin (que opera el dashboard dia a dia) no es la misma
+   * persona que recibe la facturacion (CFO, contabilidad).
+   */
+  @Column({ type: 'varchar', length: 200, nullable: true, name: 'billing_email' })
+  billingEmail: string | null;
+
   @Column({ type: 'jsonb', default: {} })
   settings: TenantSettings;
 

@@ -349,6 +349,9 @@ async function main() {
       // key, processDunning usa los defaults (3/7/14/30/37). Permite que
       // Enterprise tenga 30d gracia y Starter 7d sin redeploy.
       { table: 'subscription_plans', column: 'dunning_thresholds', sql: `ALTER TABLE "subscription_plans" ADD COLUMN IF NOT EXISTS "dunning_thresholds" jsonb NULL` },
+      // Fase 3 / Tarea 3.3 — Email separado de facturacion para tenants.
+      // Si null, fallback al tenant_admin activo (comportamiento previo).
+      { table: 'tenants', column: 'billing_email', sql: `ALTER TABLE "tenants" ADD COLUMN IF NOT EXISTS "billing_email" varchar(200) NULL` },
       // Fase 2 / Tarea 2.1 — Credit notes:
       //   original_invoice_id: factura origen que la credit note revierte.
       //   applied_to_invoice_id + applied_at: rastreo de credit notes

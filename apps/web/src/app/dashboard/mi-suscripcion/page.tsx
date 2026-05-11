@@ -62,6 +62,19 @@ export default function MiSuscripcionPage() {
   const [sub, setSub] = useState<any>(null);
   const [payments, setPayments] = useState<any[]>([]);
   const [paymentsTotal, setPaymentsTotal] = useState(0);
+  // Fase 3 / Tarea 3.3 — Estado del formulario de datos de facturacion.
+  const [tenant, setTenant] = useState<any>(null);
+  const [billingForm, setBillingForm] = useState({
+    name: '',
+    rut: '',
+    commercialAddress: '',
+    legalRepName: '',
+    legalRepRut: '',
+    billingEmail: '',
+  });
+  const [billingSaving, setBillingSaving] = useState(false);
+  const [billingExpanded, setBillingExpanded] = useState(false);
+  const [billingError, setBillingError] = useState('');
   // Fase 3 / Tarea 3.1 — Paginacion local con limit creciente. Arranca
   // mostrando 12 y crece de 12 en 12 con "Cargar mas".
   const [paymentsVisible, setPaymentsVisible] = useState(12);
@@ -175,8 +188,10 @@ export default function MiSuscripcionPage() {
       api.ai.getTenantUsage(token).catch(() => null),
       api.subscriptions.getAiPacks(token).catch(() => []),
       api.subscriptions.getAiAddon(token).catch(() => ({ calls: 0, price: 0, packId: null })),
+      // Fase 3 / Tarea 3.3 — Tenant data para precargar formulario billing.
+      api.tenants.me(token).catch(() => null),
     ])
-      .then(([s, count, pays, prot, plns, reqs, aiUse, packs, addon]) => {
+      .then(([s, count, pays, prot, plns, reqs, aiUse, packs, addon, ten]) => {
         setSub(s);
         setUserCount(count as number);
         // Fase 3 / Tarea 3.1 — shape paginado.
@@ -189,8 +204,64 @@ export default function MiSuscripcionPage() {
         setAiUsage(aiUse);
         setAiPacks(packs as any[]);
         setAiAddon(addon as any);
+        // Fase 3 / Tarea 3.3 — Precargar form con datos actuales del tenant.
+        if (ten) {
+          setTenant(ten);
+          setBillingForm({
+            name: (ten as any).name || '',
+            rut: (ten as any).rut || '',
+            commercialAddress: (ten as any).commercialAddress || '',
+            legalRepName: (ten as any).legalRepName || '',
+            legalRepRut: (ten as any).legalRepRut || '',
+            billingEmail: (ten as any).billingEmail || '',
+          });
+        }
       })
       .finally(() => setLoading(false));
+  }
+
+  /**
+   * Fase 3 / Tarea 3.3 — Guarda los datos de facturacion. Validacion
+   * client-side basica antes del request (mejor UX que esperar 400).
+   * Backend valida nuevamente (defense-in-depth).
+   *
+   * Reglas de negocio:
+   * - name obligatorio (>=1 char tras trim).
+   * - rut formato XXXXXXXX-V (opcional, puede limpiarse).
+   * - email RFC simplificado (opcional).
+   * - Cambios persisten audit log SII-critico (backend).
+   */
+  async function saveBillingInfo(e: React.FormEvent) {
+    e.preventDefault();
+    if (!token) return;
+    setBillingError('');
+    const trimmedName = billingForm.name.trim();
+    if (trimmedName.length === 0) {
+      setBillingError('La razón social no puede estar vacía.');
+      return;
+    }
+    if (billingForm.billingEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(billingForm.billingEmail.trim())) {
+      setBillingError('El email de facturación no es válido.');
+      return;
+    }
+    setBillingSaving(true);
+    try {
+      const updated = await api.tenants.updateMyBillingInfo(token, {
+        name: trimmedName,
+        rut: billingForm.rut.trim() || null,
+        commercialAddress: billingForm.commercialAddress.trim() || null,
+        legalRepName: billingForm.legalRepName.trim() || null,
+        legalRepRut: billingForm.legalRepRut.trim() || null,
+        billingEmail: billingForm.billingEmail.trim() || null,
+      });
+      setTenant(updated);
+      showToast('Datos de facturación actualizados.');
+    } catch (err: any) {
+      const msg = err?.message || 'Error al guardar.';
+      setBillingError(msg);
+    } finally {
+      setBillingSaving(false);
+    }
   }
 
   useEffect(() => { loadAll(); }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -853,6 +924,119 @@ export default function MiSuscripcionPage() {
               </div>
             )}
           </div>
+
+          {/* Datos de facturación (Fase 3 / Tarea 3.3) */}
+          {tenant && (
+            <div className="card animate-fade-up-delay-3" style={{ padding: '1.75rem', marginBottom: '1.5rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.5rem' }}>
+                <h2 style={{ fontSize: '1rem', fontWeight: 700 }}>Datos de Facturación</h2>
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  style={{ fontSize: '0.8rem', padding: '0.25rem 0.6rem' }}
+                  onClick={() => setBillingExpanded((v) => !v)}
+                  aria-expanded={billingExpanded}
+                  aria-controls="billing-info-form"
+                >
+                  {billingExpanded ? 'Cancelar' : 'Editar'}
+                </button>
+              </div>
+              <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
+                Estos datos aparecerán en tus próximas facturas. Las facturas históricas conservan los datos al momento de su emisión.
+              </p>
+              {!billingExpanded ? (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem', fontSize: '0.85rem' }}>
+                  <div><strong>Razón social:</strong> {tenant.name || '—'}</div>
+                  <div><strong>RUT:</strong> {tenant.rut || '—'}</div>
+                  <div style={{ gridColumn: '1 / -1' }}><strong>Dirección comercial:</strong> {tenant.commercialAddress || '—'}</div>
+                  <div><strong>Representante legal:</strong> {tenant.legalRepName || '—'}</div>
+                  <div><strong>RUT representante:</strong> {tenant.legalRepRut || '—'}</div>
+                  <div style={{ gridColumn: '1 / -1' }}><strong>Email de cobranza:</strong> {tenant.billingEmail || <span style={{ color: 'var(--text-muted)' }}>(usa email del admin)</span>}</div>
+                </div>
+              ) : (
+                <form id="billing-info-form" onSubmit={saveBillingInfo} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, marginBottom: '0.25rem' }}>Razón social *</label>
+                    <input
+                      type="text"
+                      className="input"
+                      required
+                      value={billingForm.name}
+                      onChange={(e) => setBillingForm({ ...billingForm, name: e.target.value })}
+                      maxLength={200}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, marginBottom: '0.25rem' }}>RUT</label>
+                    <input
+                      type="text"
+                      className="input"
+                      placeholder="XX.XXX.XXX-V"
+                      value={billingForm.rut}
+                      onChange={(e) => setBillingForm({ ...billingForm, rut: e.target.value })}
+                      maxLength={12}
+                    />
+                  </div>
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, marginBottom: '0.25rem' }}>Dirección comercial</label>
+                    <input
+                      type="text"
+                      className="input"
+                      value={billingForm.commercialAddress}
+                      onChange={(e) => setBillingForm({ ...billingForm, commercialAddress: e.target.value })}
+                      maxLength={300}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, marginBottom: '0.25rem' }}>Representante legal</label>
+                    <input
+                      type="text"
+                      className="input"
+                      value={billingForm.legalRepName}
+                      onChange={(e) => setBillingForm({ ...billingForm, legalRepName: e.target.value })}
+                      maxLength={200}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, marginBottom: '0.25rem' }}>RUT representante</label>
+                    <input
+                      type="text"
+                      className="input"
+                      placeholder="XX.XXX.XXX-V"
+                      value={billingForm.legalRepRut}
+                      onChange={(e) => setBillingForm({ ...billingForm, legalRepRut: e.target.value })}
+                      maxLength={12}
+                    />
+                  </div>
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, marginBottom: '0.25rem' }}>Email de cobranza (opcional)</label>
+                    <input
+                      type="email"
+                      className="input"
+                      placeholder="contabilidad@empresa.cl"
+                      value={billingForm.billingEmail}
+                      onChange={(e) => setBillingForm({ ...billingForm, billingEmail: e.target.value })}
+                      maxLength={200}
+                    />
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                      Si se deja vacío, las facturas se enviarán al email del administrador del tenant.
+                    </div>
+                  </div>
+                  {billingError && (
+                    <div style={{ gridColumn: '1 / -1', color: 'var(--danger)', fontSize: '0.8rem' }}>{billingError}</div>
+                  )}
+                  <div style={{ gridColumn: '1 / -1', display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+                    <button type="button" className="btn btn-ghost" onClick={() => setBillingExpanded(false)}>
+                      Cancelar
+                    </button>
+                    <button type="submit" className="btn btn-primary" disabled={billingSaving}>
+                      {billingSaving ? 'Guardando…' : 'Guardar cambios'}
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+          )}
 
           {/* Payment history (Fase 3 / Tarea 3.1) */}
           {payments.length > 0 && (

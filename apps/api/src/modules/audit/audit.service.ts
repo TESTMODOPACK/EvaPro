@@ -120,6 +120,10 @@ export class AuditService {
     // Fase 0 / Tarea 0.4 — disputas/chargebacks: SII + evidencia legal
     // (prueba de servicio prestado al banco/cliente que reclama).
     'payment.disputed',
+    // Fase 3 / Tarea 3.3 — cambios en RUT/razon social del tenant
+    // (impacto SII: la factura debe reflejar el RUT al momento de
+    // emision). 6 anos retention.
+    'tenant.billing_info_updated',
     'contract.signed',
     'contract.rejected',
     'contract.terminated',

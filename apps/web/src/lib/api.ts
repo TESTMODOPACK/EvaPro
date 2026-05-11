@@ -413,6 +413,27 @@ export const api = {
       request<any>("/tenants", { method: "POST", body: JSON.stringify(data) }, token),
     update: (token: string, id: string, data: any) =>
       request<Tenant>(`/tenants/${id}`, { method: "PATCH", body: JSON.stringify(data) }, token),
+    /**
+     * Fase 3 / Tarea 3.3 — Edita datos de facturacion del tenant del
+     * usuario. Whitelist estricta de campos en backend; cualquier campo
+     * fuera de la lista (plan, maxEmployees, isActive, ownerType) sera
+     * silenciosamente ignorado.
+     */
+    updateMyBillingInfo: (
+      token: string,
+      data: {
+        name?: string;
+        rut?: string | null;
+        commercialAddress?: string | null;
+        legalRepName?: string | null;
+        legalRepRut?: string | null;
+        billingEmail?: string | null;
+      },
+    ) =>
+      request<Tenant>(`/tenants/me/billing-info`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }, token),
     deactivate: (token: string, id: string) =>
       request<void>(`/tenants/${id}`, { method: "DELETE" }, token),
     bulkOnboard: (token: string, data: any) =>

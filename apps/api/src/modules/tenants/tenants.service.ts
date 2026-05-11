@@ -8,6 +8,7 @@ import { Position } from './entities/position.entity';
 import { User } from '../users/entities/user.entity';
 import { normalizeRut, validateRut } from '../../common/utils/rut-validator';
 import { AuditLog } from '../audit/entities/audit-log.entity';
+import { AuditService } from '../audit/audit.service';
 import { Subscription, SubscriptionStatus } from '../subscriptions/entities/subscription.entity';
 import { SupportTicket } from './entities/support-ticket.entity';
 import { AiInsight } from '../ai-insights/entities/ai-insight.entity';
@@ -123,6 +124,9 @@ export class TenantsService {
     @InjectRepository(Position)
     private readonly positionRepo: Repository<Position>,
     private readonly notificationsService: NotificationsService,
+    // Fase 3 / Tarea 3.3 — AuditService para registrar cambios SII-criticos
+    // en billing info (RUT, razon social) con retention 6 anos.
+    private readonly auditService: AuditService,
   ) {}
 
   async findBySlug(slug: string): Promise<Tenant> {
@@ -272,8 +276,147 @@ export class TenantsService {
     if (dto.legalRepRut !== undefined) {
       tenant.legalRepRut = dto.legalRepRut ? this.validateAndNormalizeRut(dto.legalRepRut, 'representante legal') : null;
     }
+    if (dto.billingEmail !== undefined) {
+      tenant.billingEmail = this.validateBillingEmail(dto.billingEmail);
+    }
     if (dto.settings !== undefined) tenant.settings = dto.settings;
     return this.tenantRepository.save(tenant);
+  }
+
+  /**
+   * Fase 3 / Tarea 3.3 — Valida billing email. Permite null/empty para
+   * limpiar (fallback al tenant_admin email).
+   */
+  private validateBillingEmail(value: unknown): string | null {
+    if (value === null || value === undefined || value === '') return null;
+    if (typeof value !== 'string') {
+      throw new BadRequestException('billingEmail debe ser string o null.');
+    }
+    const trimmed = value.trim();
+    if (trimmed.length === 0) return null;
+    if (trimmed.length > 200) {
+      throw new BadRequestException('billingEmail demasiado largo (max 200).');
+    }
+    // Regex simple — defensa basica; el SES/Resend hara validacion real.
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+      throw new BadRequestException('billingEmail invalido.');
+    }
+    return trimmed.toLowerCase();
+  }
+
+  /**
+   * Fase 3 / Tarea 3.3 — Actualiza SOLO datos de facturacion. Pensado
+   * para tenant_admin; whitelist estricta de campos editables.
+   *
+   * Campos permitidos:
+   *   - name (razon social)
+   *   - rut
+   *   - commercialAddress
+   *   - legalRepName
+   *   - legalRepRut
+   *   - billingEmail
+   *
+   * Campos PROHIBIDOS para tenant_admin (solo super_admin via /update):
+   *   - plan, maxEmployees, isActive, ownerType, slug, settings.
+   *
+   * Reglas de negocio:
+   *   - Cambios en RUT y razon social tienen impacto SII Chile -> audit
+   *     log con retention 6 anos (action en CRITICAL_ACTIONS_FOR_RETENTION).
+   *   - RUT unique constraint: si ya existe en otro tenant -> 409.
+   *   - Facturas historicas hacen lookup live al tenant (BUG conocido,
+   *     defer Fase 5 — snapshot al generar).
+   */
+  async updateBillingInfo(
+    tenantId: string,
+    dto: {
+      name?: string;
+      rut?: string | null;
+      commercialAddress?: string | null;
+      legalRepName?: string | null;
+      legalRepRut?: string | null;
+      billingEmail?: string | null;
+    },
+    userId: string,
+  ): Promise<Tenant> {
+    const tenant = await this.findById(tenantId);
+    if (!tenant) throw new NotFoundException('Tenant no encontrado.');
+
+    // Snapshot pre-cambio para audit log de SII-critical fields.
+    const before = {
+      name: tenant.name,
+      rut: tenant.rut,
+      commercialAddress: tenant.commercialAddress,
+      legalRepName: tenant.legalRepName,
+      legalRepRut: tenant.legalRepRut,
+      billingEmail: tenant.billingEmail,
+    };
+
+    // Whitelist explicito — solo procesa estos campos, ignora cualquier
+    // otro que el caller pueda haber pasado (defense-in-depth contra
+    // mass assignment).
+    if (dto.name !== undefined) {
+      const v = typeof dto.name === 'string' ? dto.name.trim() : '';
+      if (v.length === 0) {
+        throw new BadRequestException('La razón social no puede estar vacía.');
+      }
+      if (v.length > 200) {
+        throw new BadRequestException('La razón social es demasiado larga (max 200).');
+      }
+      tenant.name = v;
+    }
+    if (dto.rut !== undefined) {
+      if (dto.rut) {
+        const normalized = normalizeRut(dto.rut);
+        if (!validateRut(normalized)) {
+          throw new BadRequestException('RUT invalido.');
+        }
+        const existing = await this.tenantRepository.findOne({ where: { rut: normalized } });
+        if (existing && existing.id !== tenantId) {
+          throw new ConflictException('RUT ya registrado en otra organizacion.');
+        }
+        tenant.rut = normalized;
+      } else {
+        tenant.rut = null;
+      }
+    }
+    if (dto.commercialAddress !== undefined) {
+      tenant.commercialAddress =
+        typeof dto.commercialAddress === 'string' ? dto.commercialAddress.trim() || null : null;
+    }
+    if (dto.legalRepName !== undefined) {
+      tenant.legalRepName =
+        typeof dto.legalRepName === 'string' ? dto.legalRepName.trim() || null : null;
+    }
+    if (dto.legalRepRut !== undefined) {
+      tenant.legalRepRut = dto.legalRepRut
+        ? this.validateAndNormalizeRut(dto.legalRepRut, 'representante legal')
+        : null;
+    }
+    if (dto.billingEmail !== undefined) {
+      tenant.billingEmail = this.validateBillingEmail(dto.billingEmail);
+    }
+
+    const saved = await this.tenantRepository.save(tenant);
+
+    // Audit log con diff: clave para reconciliacion SII si SII pregunta
+    // "este tenant tenia RUT X o Y al momento de la factura Z".
+    // tenant.billing_info_updated esta en CRITICAL_ACTIONS_FOR_RETENTION
+    // (6 anos).
+    await this.auditService
+      .log(tenantId, userId, 'tenant.billing_info_updated', 'tenant', tenantId, {
+        before,
+        after: {
+          name: saved.name,
+          rut: saved.rut,
+          commercialAddress: saved.commercialAddress,
+          legalRepName: saved.legalRepName,
+          legalRepRut: saved.legalRepRut,
+          billingEmail: saved.billingEmail,
+        },
+      })
+      .catch(() => undefined);
+
+    return saved;
   }
 
   async deactivate(id: string): Promise<void> {

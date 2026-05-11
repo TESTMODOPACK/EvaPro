@@ -41,6 +41,38 @@ export class TenantsController {
     return this.tenantsService.findById(req.user.tenantId);
   }
 
+  /**
+   * Fase 3 / Tarea 3.3 — Edicion de datos de facturacion por el
+   * tenant_admin. Whitelist estricta de campos (name, rut,
+   * commercialAddress, legalRepName, legalRepRut, billingEmail).
+   *
+   * Campos administrativos (plan, maxEmployees, isActive, ownerType)
+   * NO se exponen aqui — solo via PATCH /tenants/:id (super_admin).
+   *
+   * Cambios en RUT/razon social registran audit log
+   * `tenant.billing_info_updated` con retention 6 anos (SII Chile).
+   */
+  @Patch('me/billing-info')
+  @Roles('tenant_admin')
+  updateMyBillingInfo(
+    @Request() req: any,
+    @Body()
+    dto: {
+      name?: string;
+      rut?: string | null;
+      commercialAddress?: string | null;
+      legalRepName?: string | null;
+      legalRepRut?: string | null;
+      billingEmail?: string | null;
+    },
+  ) {
+    return this.tenantsService.updateBillingInfo(
+      req.user.tenantId,
+      dto,
+      req.user.userId || req.user.id,
+    );
+  }
+
   /** Get all custom settings for the current tenant */
   @Get('me/custom-settings')
   @Roles('super_admin', 'tenant_admin', 'manager', 'employee')

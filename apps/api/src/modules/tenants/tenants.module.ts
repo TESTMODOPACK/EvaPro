@@ -13,11 +13,15 @@ import { AiCallLog } from '../ai-insights/entities/ai-call-log.entity';
 import { TenantsService } from './tenants.service';
 import { TenantsController } from './tenants.controller';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { AuditModule } from '../audit/audit.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Tenant, User, AuditLog, Subscription, SubscriptionPlan, SupportTicket, AiInsight, AiCallLog, Department, Position]),
     NotificationsModule,
+    // Fase 3 / Tarea 3.3 — exporta AuditService para registrar cambios
+    // SII-criticos en billing info via updateBillingInfo.
+    AuditModule,
   ],
   controllers: [TenantsController],
   providers: [TenantsService],
