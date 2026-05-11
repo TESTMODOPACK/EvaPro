@@ -117,6 +117,29 @@ export class Invoice {
   @Column({ type: 'timestamptz', name: 'applied_at', nullable: true })
   appliedAt: Date | null;
 
+  /**
+   * Fase 3 / Tarea 3.3-fix-1 — Snapshot inmutable de los datos del
+   * tenant al momento de emitir la factura. Garantiza INMUTABILIDAD
+   * FISCAL: si el cliente edita su razon social/RUT despues, las
+   * facturas historicas NO cambian (requisito SII Chile).
+   *
+   * Pre-fix: generatePdf hacia JOIN live al tenant -> editar billing
+   * info cambiaba PDFs viejos. Bug serio en compliance.
+   *
+   * Backward-compat: facturas pre-snapshot tienen `null` aqui; el PDF
+   * cae al fallback de tenant.live (acepta el riesgo legacy, las
+   * nuevas quedan blindadas).
+   */
+  @Column({ type: 'jsonb', name: 'billing_snapshot', nullable: true })
+  billingSnapshot: {
+    name: string;
+    rut: string | null;
+    commercialAddress: string | null;
+    legalRepName: string | null;
+    legalRepRut: string | null;
+    billingEmail: string | null;
+  } | null;
+
   @OneToMany(() => InvoiceLine, (line) => line.invoice, { cascade: true, eager: true })
   lines: InvoiceLine[];
 

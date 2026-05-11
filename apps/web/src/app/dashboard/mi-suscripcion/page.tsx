@@ -67,14 +67,12 @@ export default function MiSuscripcionPage() {
   const [addingMethod, setAddingMethod] = useState(false);
   // Fase 3 / Tarea 3.3 — Estado del formulario de datos de facturacion.
   const [tenant, setTenant] = useState<any>(null);
-  const [billingForm, setBillingForm] = useState({
-    name: '',
-    rut: '',
-    commercialAddress: '',
-    legalRepName: '',
-    legalRepRut: '',
-    billingEmail: '',
-  });
+  const initialBilling = { name: '', rut: '', commercialAddress: '', legalRepName: '', legalRepRut: '', billingEmail: '' };
+  const [billingForm, setBillingForm] = useState(initialBilling);
+  // Fase 3 / T3.3-fix-4 — Snapshot del form al abrir el editor. Si
+  // billingForm difiere de este snapshot al cancelar, mostramos confirm
+  // para no perder cambios accidentalmente.
+  const [billingFormSnapshot, setBillingFormSnapshot] = useState(initialBilling);
   const [billingSaving, setBillingSaving] = useState(false);
   const [billingExpanded, setBillingExpanded] = useState(false);
   const [billingError, setBillingError] = useState('');
@@ -268,14 +266,17 @@ export default function MiSuscripcionPage() {
         // Fase 3 / Tarea 3.3 — Precargar form con datos actuales del tenant.
         if (ten) {
           setTenant(ten);
-          setBillingForm({
+          const precargado = {
             name: (ten as any).name || '',
             rut: (ten as any).rut || '',
             commercialAddress: (ten as any).commercialAddress || '',
             legalRepName: (ten as any).legalRepName || '',
             legalRepRut: (ten as any).legalRepRut || '',
             billingEmail: (ten as any).billingEmail || '',
-          });
+          };
+          setBillingForm(precargado);
+          // T3.3-fix-4: snapshot baseline para detectar dirty.
+          setBillingFormSnapshot(precargado);
         }
       })
       .finally(() => setLoading(false));
@@ -316,6 +317,18 @@ export default function MiSuscripcionPage() {
         billingEmail: billingForm.billingEmail.trim() || null,
       });
       setTenant(updated);
+      // T3.3-fix-4: actualizar snapshot post-save para que el form ya
+      // no este "dirty" tras guardar exitoso.
+      const newSnapshot = {
+        name: (updated as any).name || '',
+        rut: (updated as any).rut || '',
+        commercialAddress: (updated as any).commercialAddress || '',
+        legalRepName: (updated as any).legalRepName || '',
+        legalRepRut: (updated as any).legalRepRut || '',
+        billingEmail: (updated as any).billingEmail || '',
+      };
+      setBillingForm(newSnapshot);
+      setBillingFormSnapshot(newSnapshot);
       showToast('Datos de facturación actualizados.');
     } catch (err: any) {
       const msg = err?.message || 'Error al guardar.';
@@ -1178,7 +1191,20 @@ export default function MiSuscripcionPage() {
                   type="button"
                   className="btn btn-ghost"
                   style={{ fontSize: '0.8rem', padding: '0.25rem 0.6rem' }}
-                  onClick={() => setBillingExpanded((v) => !v)}
+                  onClick={() => {
+                    // T3.3-fix-4: si vamos a cerrar y hay dirty, confirm.
+                    if (billingExpanded) {
+                      const isDirty =
+                        JSON.stringify(billingForm) !== JSON.stringify(billingFormSnapshot);
+                      if (isDirty && !confirm('Tienes cambios sin guardar. ¿Descartarlos?')) {
+                        return;
+                      }
+                      // Reset al snapshot.
+                      setBillingForm(billingFormSnapshot);
+                      setBillingError('');
+                    }
+                    setBillingExpanded((v) => !v);
+                  }}
                   aria-expanded={billingExpanded}
                   aria-controls="billing-info-form"
                 >
@@ -1270,7 +1296,20 @@ export default function MiSuscripcionPage() {
                     <div style={{ gridColumn: '1 / -1', color: 'var(--danger)', fontSize: '0.8rem' }}>{billingError}</div>
                   )}
                   <div style={{ gridColumn: '1 / -1', display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
-                    <button type="button" className="btn btn-ghost" onClick={() => setBillingExpanded(false)}>
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      onClick={() => {
+                        const isDirty =
+                          JSON.stringify(billingForm) !== JSON.stringify(billingFormSnapshot);
+                        if (isDirty && !confirm('Tienes cambios sin guardar. ¿Descartarlos?')) {
+                          return;
+                        }
+                        setBillingForm(billingFormSnapshot);
+                        setBillingError('');
+                        setBillingExpanded(false);
+                      }}
+                    >
                       Cancelar
                     </button>
                     <button type="submit" className="btn btn-primary" disabled={billingSaving}>

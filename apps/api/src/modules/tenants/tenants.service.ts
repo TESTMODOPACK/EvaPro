@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, MoreThanOrEqual, Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { Tenant } from './entities/tenant.entity';
 import { Department } from './entities/department.entity';
@@ -127,6 +127,9 @@ export class TenantsService {
     // Fase 3 / Tarea 3.3 — AuditService para registrar cambios SII-criticos
     // en billing info (RUT, razon social) con retention 6 anos.
     private readonly auditService: AuditService,
+    // Fase 3 / T3.3-fix-2 — DataSource para envolver updateBillingInfo
+    // en transaction con lock pesimista (anti race condition).
+    private readonly dataSource: DataSource,
   ) {}
 
   async findBySlug(slug: string): Promise<Tenant> {
@@ -338,8 +341,37 @@ export class TenantsService {
     },
     userId: string,
   ): Promise<Tenant> {
-    const tenant = await this.findById(tenantId);
-    if (!tenant) throw new NotFoundException('Tenant no encontrado.');
+    // Fase 3 / T3.3-fix-3 — Rate-limit: max 10 cambios por hora por
+    // tenant. Defensa anti-abuse (bots cambiando billing como ofuscacion
+    // de fraude) y anti-error (user clickeando Guardar rapidamente).
+    // Threshold conservador: 10/h da margen para correcciones legitimas
+    // pero corta cualquier patron automatizado. La ventana se mide
+    // contra audit_logs (action='tenant.billing_info_updated') porque
+    // ya tenemos retencion 6 anos -> registro confiable.
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    const recentChanges = await this.auditLogRepo.count({
+      where: {
+        tenantId,
+        action: 'tenant.billing_info_updated',
+        createdAt: MoreThanOrEqual(oneHourAgo) as any,
+      },
+    });
+    if (recentChanges >= 10) {
+      throw new BadRequestException(
+        'Demasiados cambios recientes (max 10/hora). Espera un momento antes de volver a editar.',
+      );
+    }
+
+    // Fase 3 / T3.3-fix-2 — Lock pesimista contra race condition: dos
+    // requests concurrentes podrian leer el mismo "before" snapshot y
+    // generar audit logs incoherentes. dataSource.transaction +
+    // findOne con `lock: pessimistic_write` serializa los writes.
+    return this.dataSource.transaction(async (tx) => {
+      const tenant = await tx.findOne(Tenant, {
+        where: { id: tenantId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!tenant) throw new NotFoundException('Tenant no encontrado.');
 
     // Snapshot pre-cambio para audit log de SII-critical fields.
     const before = {
@@ -370,7 +402,8 @@ export class TenantsService {
         if (!validateRut(normalized)) {
           throw new BadRequestException('RUT invalido.');
         }
-        const existing = await this.tenantRepository.findOne({ where: { rut: normalized } });
+        // Dentro del tx para evitar phantom-read durante el lock.
+        const existing = await tx.findOne(Tenant, { where: { rut: normalized } });
         if (existing && existing.id !== tenantId) {
           throw new ConflictException('RUT ya registrado en otra organizacion.');
         }
@@ -396,12 +429,13 @@ export class TenantsService {
       tenant.billingEmail = this.validateBillingEmail(dto.billingEmail);
     }
 
-    const saved = await this.tenantRepository.save(tenant);
+    const saved = await tx.save(tenant);
 
     // Audit log con diff: clave para reconciliacion SII si SII pregunta
     // "este tenant tenia RUT X o Y al momento de la factura Z".
     // tenant.billing_info_updated esta en CRITICAL_ACTIONS_FOR_RETENTION
-    // (6 anos).
+    // (6 anos). Fuera del tx para que falla del logger no rollback
+    // los cambios persistidos.
     await this.auditService
       .log(tenantId, userId, 'tenant.billing_info_updated', 'tenant', tenantId, {
         before,
@@ -416,7 +450,8 @@ export class TenantsService {
       })
       .catch(() => undefined);
 
-    return saved;
+      return saved;
+    }); // cierra dataSource.transaction
   }
 
   async deactivate(id: string): Promise<void> {

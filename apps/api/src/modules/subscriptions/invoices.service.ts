@@ -312,6 +312,18 @@ export class InvoicesService {
           const taxAmount = Math.round(subtotal * (taxRate / 100) * 100) / 100;
           const total = Math.round((subtotal + taxAmount) * 100) / 100;
 
+          // Fase 3 / T3.3-fix-1 — Snapshot inmutable de billing data.
+          // SII: razon social/RUT al momento de emitir NO debe cambiar
+          // si el tenant edita su info despues.
+          const billingSnapshot = {
+            name: sub.tenant?.name || 'Sin nombre',
+            rut: (sub.tenant as any)?.rut ?? null,
+            commercialAddress: (sub.tenant as any)?.commercialAddress ?? null,
+            legalRepName: (sub.tenant as any)?.legalRepName ?? null,
+            legalRepRut: (sub.tenant as any)?.legalRepRut ?? null,
+            billingEmail: (sub.tenant as any)?.billingEmail ?? null,
+          };
+
           const invoiceEntity = this.invoiceRepo.create({
             tenantId: sub.tenantId,
             subscriptionId: sub.id,
@@ -327,6 +339,7 @@ export class InvoicesService {
             taxAmount,
             total,
             currency: sub.plan?.currency || 'UF',
+            billingSnapshot,
           });
 
           // Fase 1 / Tarea 1.3 — ATOMICIDAD: invoice + sus lines deben
@@ -898,6 +911,18 @@ export class InvoicesService {
 
         const lineConcept = `Nota de crédito s/Factura ${original.invoiceNumber} — ${dto.reason.slice(0, 200)}`;
 
+        // Fase 3 / T3.3-fix-1 — Snapshot billing al emitir NC. Si la
+        // factura original tenia snapshot lo heredamos (consistencia
+        // SII: NC sobre F refleja el RUT de F, no del tenant hoy).
+        const billingSnapshotForNc = original.billingSnapshot ?? {
+          name: original.tenant?.name || 'Sin nombre',
+          rut: (original.tenant as any)?.rut ?? null,
+          commercialAddress: (original.tenant as any)?.commercialAddress ?? null,
+          legalRepName: (original.tenant as any)?.legalRepName ?? null,
+          legalRepRut: (original.tenant as any)?.legalRepRut ?? null,
+          billingEmail: (original.tenant as any)?.billingEmail ?? null,
+        };
+
         const ncEntity = this.invoiceRepo.create({
           tenantId: original.tenantId,
           subscriptionId: original.subscriptionId,
@@ -915,6 +940,7 @@ export class InvoicesService {
           currency: original.currency,
           notes: dto.notes ?? null,
           originalInvoiceId: original.id,
+          billingSnapshot: billingSnapshotForNc,
         });
 
         const persisted = await this.dataSource.transaction(async (txManager) => {
@@ -1008,6 +1034,18 @@ export class InvoicesService {
 
     let y = 48;
 
+    // Fase 3 / T3.3-fix-1 — Renderizar desde billingSnapshot inmutable
+    // si existe (compliance SII). Fallback al tenant live para
+    // facturas legacy pre-snapshot.
+    const billingData = invoice.billingSnapshot ?? {
+      name: invoice.tenant?.name || 'Organización',
+      rut: (invoice.tenant as any)?.rut || null,
+      commercialAddress: (invoice.tenant as any)?.commercialAddress || null,
+      legalRepName: null,
+      legalRepRut: null,
+      billingEmail: null,
+    };
+
     // Client info
     doc.setFontSize(9);
     doc.setTextColor(100, 116, 139);
@@ -1015,16 +1053,16 @@ export class InvoicesService {
     y += 5;
     doc.setTextColor(26, 18, 6);
     doc.setFontSize(10);
-    doc.text(invoice.tenant?.name || 'Organización', margin, y);
+    doc.text(billingData.name || 'Organización', margin, y);
     y += 5;
     doc.setFontSize(8);
     doc.setTextColor(100, 116, 139);
-    if (invoice.tenant?.rut) {
-      doc.text(`RUT: ${invoice.tenant.rut}`, margin, y);
+    if (billingData.rut) {
+      doc.text(`RUT: ${billingData.rut}`, margin, y);
       y += 4;
     }
-    if (invoice.tenant?.commercialAddress) {
-      doc.text(invoice.tenant.commercialAddress, margin, y);
+    if (billingData.commercialAddress) {
+      doc.text(billingData.commercialAddress, margin, y);
       y += 4;
     }
 

@@ -382,6 +382,10 @@ async function main() {
       // Fase 3 / Tarea 3.5 — Pausa voluntaria de suscripciones.
       { table: 'subscriptions', column: 'paused_at', sql: `ALTER TABLE "subscriptions" ADD COLUMN IF NOT EXISTS "paused_at" timestamptz NULL` },
       { table: 'subscriptions', column: 'resume_at', sql: `ALTER TABLE "subscriptions" ADD COLUMN IF NOT EXISTS "resume_at" timestamptz NULL` },
+      // Fase 3 / T3.3-fix-1 — snapshot inmutable de billing data en
+      // invoice (compliance SII: razon social/RUT al momento de emitir
+      // no debe cambiar si el tenant edita despues).
+      { table: 'invoices', column: 'billing_snapshot', sql: `ALTER TABLE "invoices" ADD COLUMN IF NOT EXISTS "billing_snapshot" jsonb NULL` },
       // Fase 2 / Tarea 2.1 — Credit notes:
       //   original_invoice_id: factura origen que la credit note revierte.
       //   applied_to_invoice_id + applied_at: rastreo de credit notes
