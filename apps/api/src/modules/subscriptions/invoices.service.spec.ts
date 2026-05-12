@@ -136,6 +136,9 @@ describe('InvoicesService', () => {
               creditNotePrefix: 'EVA-NC',
               taxRate: 19,
               dueDays: 15,
+              // Post-fix EVA-2026-0004 — default 7 dias de anticipacion
+              // permitidos para emitir factura antes del periodStart.
+              invoiceAdvanceDays: 7,
               defaultCurrency: 'UF',
               footerNote: null,
             }),
@@ -480,14 +483,14 @@ describe('InvoicesService', () => {
     });
   });
 
-  // ─── Fase 0 / Tarea 0.1.2 — dueDate ancla en fecha de emision ───────
+  // ─── Fase 0 / T0.1.2 + Post-fix EVA-2026-0004 — dueDate anchored ─────
 
-  describe('generateInvoice — dueDate (Fase 0 / Tarea 0.1.2)', () => {
-    it('dueDate is now + 15 days, NOT periodStart + 15 days', async () => {
-      // Plan anual recien creado: periodStart=2026-05-01, periodEnd=2027-05-01.
-      // dueDate debe ser ~ now + 15d (15 dias desde la emision).
-      // PRE-fix: dueDate era periodStart + 15 = 2026-05-16, que en plan
-      // anual con bug tambien quedaba en 2027-05-16.
+  describe('generateInvoice — dueDate (Fase 0 / Tarea 0.1.2 + EVA-2026-0004)', () => {
+    it('emision dentro del periodo: dueDate = now + dueDays (max(now, periodStart) = now)', async () => {
+      // Plan anual recien creado, emisor factura el mismo dia de inicio:
+      // periodStart=2026-05-01, now=2026-05-01 -> ambos coinciden, dueDate = now + 15d.
+      // PRE-fix Fase 0: dueDate era periodStart + 15 = 2026-05-16 (en plan
+      // anual con bug F0 tambien quedaba en 2027-05-16).
       const fixedNow = new Date('2026-05-01T10:00:00Z');
       jest.useFakeTimers().setSystemTime(fixedNow);
       try {
@@ -514,6 +517,72 @@ describe('InvoicesService', () => {
         expect(diffDays).toBeLessThanOrEqual(15.5);
         // Sanity: dueDate NO esta en 2027.
         expect(due.getUTCFullYear()).toBe(2026);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('emision anticipada (dentro de la ventana): dueDate ancla a periodStart, no a now', async () => {
+      // Post-fix EVA-2026-0004 Bug 2: emision dentro de la ventana de
+      // invoiceAdvanceDays pero ANTES del inicio del periodo. El dueDate
+      // debe medirse desde periodStart (cuando empieza el servicio), NO
+      // desde now (cuando se emite). Asi el cliente tiene los 15 dias
+      // completos a contar desde que recibe el servicio.
+      //
+      // Setup: emito hoy (2026-05-01) factura para periodo que arranca
+      // 2026-05-06 (5 dias adelantado, dentro de la ventana default=7).
+      const fixedNow = new Date('2026-05-01T10:00:00Z');
+      jest.useFakeTimers().setSystemTime(fixedNow);
+      try {
+        const sub = buildMockSub({
+          // startDate = +5d para que sin lastInvoice, periodStart=startDate
+          // quede 5 dias en el futuro (dentro de invoiceAdvanceDays=7).
+          startDate: new Date('2026-05-06'),
+          billingPeriod: BillingPeriod.MONTHLY,
+          plan: createMockPlan({ monthlyPrice: 10 }),
+        });
+        subRepo.findOne.mockResolvedValue(sub);
+        invoiceRepo.findOne
+          .mockResolvedValueOnce(null) // continuidad: primera factura
+          .mockResolvedValueOnce(null) // duplicate: ninguna
+          .mockResolvedValueOnce({ id: fakeUuid(700) });
+
+        await service.generateInvoice(sub.id);
+
+        const saved = dataSource.txSavedEntities[0];
+        const due = new Date(saved.dueDate);
+        // dueDate debe ser periodStart (2026-05-06) + 15d = 2026-05-21.
+        // NO 2026-05-16 (= now + 15d, comportamiento pre-fix).
+        expect(due.toISOString().slice(0, 10)).toBe('2026-05-21');
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('emision anticipada excesiva (fuera de ventana): rechaza con 400', async () => {
+      // Post-fix EVA-2026-0004 Bug 1: si periodStart > now + invoiceAdvanceDays
+      // (default 7), generateInvoice debe rechazar con BadRequestException.
+      // Caso real reproducido: invoice EVA-2026-0004 emitida 12-05-2026
+      // con periodo 30-06 a 30-07 (50 dias adelantado). Cliente pagaba
+      // 34 dias ANTES de empezar a recibir servicio.
+      const fixedNow = new Date('2026-05-12T10:00:00Z');
+      jest.useFakeTimers().setSystemTime(fixedNow);
+      try {
+        const sub = buildMockSub({
+          // startDate 50d adelantado simulando el caso real.
+          startDate: new Date('2026-06-30'),
+          billingPeriod: BillingPeriod.MONTHLY,
+          plan: createMockPlan({ monthlyPrice: 10 }),
+        });
+        subRepo.findOne.mockResolvedValue(sub);
+        invoiceRepo.findOne.mockResolvedValueOnce(null); // continuidad
+
+        await expect(service.generateInvoice(sub.id)).rejects.toThrow(
+          /No se puede emitir factura/,
+        );
+        // Verifica que NO se persistio nada en la transaction (guard
+        // ejecuta antes del runWithBlockingAdvisoryLock).
+        expect(dataSource.txSavedEntities.length).toBe(0);
       } finally {
         jest.useRealTimers();
       }

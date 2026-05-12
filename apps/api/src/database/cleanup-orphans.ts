@@ -439,6 +439,11 @@ async function main() {
       // invoice (compliance SII: razon social/RUT al momento de emitir
       // no debe cambiar si el tenant edita despues).
       { table: 'invoices', column: 'billing_snapshot', sql: `ALTER TABLE "invoices" ADD COLUMN IF NOT EXISTS "billing_snapshot" jsonb NULL` },
+      // Post-fix EVA-2026-0004 — Bloquea emision anticipada excesiva
+      // de facturas (default 7 dias). Si periodStart > now + N,
+      // generateInvoice rechaza. Configurable por super_admin via PATCH
+      // /invoices/billing-settings.
+      { table: 'billing_settings', column: 'invoice_advance_days', sql: `ALTER TABLE "billing_settings" ADD COLUMN IF NOT EXISTS "invoice_advance_days" int NOT NULL DEFAULT 7` },
       // Fase 2 / Tarea 2.1 — Credit notes:
       //   original_invoice_id: factura origen que la credit note revierte.
       //   applied_to_invoice_id + applied_at: rastreo de credit notes

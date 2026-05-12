@@ -76,6 +76,7 @@ export class BillingSettingsService {
       creditNotePrefix: string;
       taxRate: number;
       dueDays: number;
+      invoiceAdvanceDays: number;
       defaultCurrency: string;
       footerNote: string | null;
     }>,
@@ -188,6 +189,18 @@ export class BillingSettingsService {
         throw new BadRequestException('dueDays debe ser entero en [0, 90].');
       }
       current.dueDays = n;
+    }
+    if (dto.invoiceAdvanceDays !== undefined) {
+      const n = Number(dto.invoiceAdvanceDays);
+      // Range [0, 31]: 0 = solo emitir dentro del periodo (post-pago
+      // estricto). 31 = max 1 mes adelantado (limita facturar el
+      // periodo proximo cuando aun estas en el actual).
+      if (!Number.isInteger(n) || n < 0 || n > 31) {
+        throw new BadRequestException(
+          'invoiceAdvanceDays debe ser entero en [0, 31].',
+        );
+      }
+      current.invoiceAdvanceDays = n;
     }
     if (dto.defaultCurrency !== undefined) {
       const v = String(dto.defaultCurrency).trim().toUpperCase();

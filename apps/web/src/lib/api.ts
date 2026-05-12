@@ -2282,6 +2282,13 @@ export const api = {
           creditNotePrefix: string;
           taxRate: number;
           dueDays: number;
+          /**
+           * Post-fix EVA-2026-0004 — Max dias permitidos para emitir
+           * factura antes del inicio del periodo cubierto. Default 7.
+           * Range [0, 31]. Si periodStart > now + N, generateInvoice
+           * rechaza con 400.
+           */
+          invoiceAdvanceDays: number;
           defaultCurrency: string;
           footerNote: string | null;
         }>('/invoices/billing-settings', {}, token),

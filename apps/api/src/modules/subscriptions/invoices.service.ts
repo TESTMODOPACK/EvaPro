@@ -197,6 +197,30 @@ export class InvoicesService {
       const billingPeriod = sub.billingPeriod || BillingPeriod.MONTHLY;
       const periodEnd = this.addBillingPeriod(periodStart, billingPeriod);
 
+      // Post-fix EVA-2026-0004 — Bloquea emision anticipada excesiva.
+      // Caso real: usuario clickeo "Generar factura" en /facturacion
+      // cuando ya habia 3 facturas pagadas; la 4ta cubria un periodo 50
+      // dias en el futuro. La regla T0.1 (continuidad historica) es
+      // correcta, pero faltaba un guard para impedir generar facturas
+      // de periodos muy adelantados.
+      //
+      // Comportamiento: si periodStart > now + invoiceAdvanceDays
+      // (configurable, default 7), rechaza con 400 explicito.
+      // Aplica a TODOS los callers (generateInvoice manual, bulk,
+      // cron auto-renewal).
+      const settingsForGuard = await this.billingSettingsService.get();
+      const advanceDays = Number(settingsForGuard.invoiceAdvanceDays) || 7;
+      const maxAdvanceMs = advanceDays * 24 * 60 * 60 * 1000;
+      const advanceMs = periodStart.getTime() - now.getTime();
+      if (advanceMs > maxAdvanceMs) {
+        const daysAdvance = Math.ceil(advanceMs / (24 * 60 * 60 * 1000));
+        throw new BadRequestException(
+          `No se puede emitir factura ${daysAdvance} dias antes del inicio del periodo (${periodStart.toISOString().slice(0, 10)}). ` +
+            `El maximo permitido es ${advanceDays} dias de anticipacion. ` +
+            `Espera a estar dentro de la ventana de facturacion o ajusta billing_settings.invoiceAdvanceDays.`,
+        );
+      }
+
       // Check for duplicate invoice in same period
       const existing = await this.invoiceRepo.findOne({
         where: {
@@ -227,17 +251,32 @@ export class InvoicesService {
         this.dataSource,
         async () => {
           const invoiceNumber = await this.getNextInvoiceNumber();
-          // Fase 0 / Tarea 0.1.2: dueDate ancla en fecha de EMISION (now),
-          // no en periodStart. Pre-fix: con plan anual creado hoy y bug de
-          // periodStart=2027, dueDate quedaba en 2027-05 (~1 ano fuera).
-          // Post-fix: la factura siempre vence 15 dias despues de emitirla,
-          // independiente del periodo cubierto. Esto coincide con la
-          // expectativa de pago del cliente (cobrar al inicio del periodo,
-          // pagar dentro de 15 dias) y con plazos comerciales chilenos.
-          // Fase 4 / T4.5 — dueDays viene de billing_settings (default 15).
+          // Fase 0 / T0.1.2 + Post-fix EVA-2026-0004 — Anclado del dueDate.
+          //
+          // Historia de la regla:
+          //   - Pre-Fase 0: dueDate = periodStart + 15d. Bug: con
+          //     periodStart=2027 (bug F0), dueDate quedaba en 2027.
+          //   - Fase 0 T0.1.2: dueDate = now + 15d. Resolvio el caso
+          //     anual buggy pero creo el NUEVO bug que detectamos:
+          //     si la factura se emite anticipadamente (e.g. 12-05 con
+          //     periodo 30-06 a 30-07), el cliente paga 34 dias ANTES
+          //     de empezar a recibir el servicio. Comercialmente injusto.
+          //   - Post-fix actual: dueDate = max(now, periodStart) + dueDays.
+          //     Si la factura se emite DENTRO del periodo cubierto (caso
+          //     normal post-pago o emision tardia), dueDate = now + dueDays.
+          //     Si se emite ANTES del periodo (pre-pago anticipado dentro
+          //     de la ventana de invoiceAdvanceDays), dueDate =
+          //     periodStart + dueDays — el cliente tiene los dueDays
+          //     completos DESDE que empieza a recibir el servicio.
+          //
+          // Fase 4 / T4.5 — dueDays + invoiceAdvanceDays vienen de
+          // billing_settings (configurables por super_admin).
           const settings = await this.billingSettingsService.get();
-          const dueDate = new Date(now);
-          dueDate.setUTCDate(dueDate.getUTCDate() + (settings.dueDays || 15));
+          const dueDays = settings.dueDays || 15;
+          const dueAnchor =
+            periodStart.getTime() > now.getTime() ? periodStart : now;
+          const dueDate = new Date(dueAnchor);
+          dueDate.setUTCDate(dueDate.getUTCDate() + dueDays);
 
           // Build lines
           const lines: Partial<InvoiceLine>[] = [];

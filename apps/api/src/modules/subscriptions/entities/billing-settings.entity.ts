@@ -68,9 +68,34 @@ export class BillingSettings {
   @Column({ type: 'decimal', precision: 5, scale: 2, name: 'tax_rate', default: 19 })
   taxRate: number;
 
-  /** Dias de plazo para pago (dueDate = issueDate + N dias). */
+  /**
+   * Dias de plazo para pago. Post-fix: ahora el dueDate se ancla a
+   * `max(emisionDate, periodStart) + dueDays`. Si la factura se emite
+   * antes del inicio del periodo cubierto (caso pre-pago anticipado),
+   * el vencimiento se mide desde el inicio del servicio, NO desde la
+   * emision. Esto garantiza que el cliente nunca paga ANTES de empezar
+   * a recibir el servicio facturado.
+   *
+   * Default 15 dias (plazo comercial chileno estandar).
+   */
   @Column({ type: 'int', name: 'due_days', default: 15 })
   dueDays: number;
+
+  /**
+   * Maximo de dias que se permite emitir una factura ANTES del inicio
+   * del periodo que cobra. Sirve para impedir cobros muy anticipados
+   * que generan caja sin contrapartida de servicio prestado.
+   *
+   * Caso real reportado: invoice EVA-2026-0004 emitida 12-05-2026 con
+   * periodo 30-06 a 30-07-2026 (50 dias adelantado) y vencimiento 27-05
+   * (cliente pagaba 34 dias antes de empezar a recibir el servicio).
+   *
+   * Default 7 dias: practica SaaS estandar (notificar al cliente la
+   * proxima renovacion con una semana de anticipacion). Configurable
+   * por el super_admin segun politica comercial.
+   */
+  @Column({ type: 'int', name: 'invoice_advance_days', default: 7 })
+  invoiceAdvanceDays: number;
 
   /** Moneda default para invoices. Hoy: UF. */
   @Column({ type: 'varchar', length: 10, name: 'default_currency', default: 'UF' })
