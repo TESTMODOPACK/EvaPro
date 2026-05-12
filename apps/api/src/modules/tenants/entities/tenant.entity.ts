@@ -63,6 +63,32 @@ export class Tenant {
   @Column({ type: 'varchar', length: 100, nullable: true, name: 'stripe_customer_id' })
   stripeCustomerId: string | null;
 
+  /**
+   * Post-fix EVA-2026-0004 (Opcion B) — Plazo de pago NEGOCIADO con este
+   * tenant en particular (override del default global
+   * billing_settings.dueDays).
+   *
+   * Casos de uso:
+   *   - Empresa pequena: contado (0 dias).
+   *   - SMB normal: 15 dias (default global).
+   *   - Enterprise/corporativo: 30, 60 o 90 dias (terminos comerciales
+   *     negociados al cierre del contrato).
+   *
+   * Semantica:
+   *   - NULL = usar el dueDays global de billing_settings (default 15).
+   *   - 0..90 = sobreescribir el global para este tenant.
+   *
+   * Solo super_admin puede editar (es un termino comercial del contrato,
+   * no algo que la empresa cliente decide por si sola). tenant_admin
+   * puede leer.
+   *
+   * Aplica SOLO a facturas NUEVAS — facturas ya emitidas conservan su
+   * dueDate persistido en `invoices.due_date`. Cambiar este valor no
+   * reescribe historico.
+   */
+  @Column({ type: 'int', nullable: true, name: 'due_days_override' })
+  dueDaysOverride: number | null;
+
   @Column({ type: 'jsonb', default: {} })
   settings: TenantSettings;
 

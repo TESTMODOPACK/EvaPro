@@ -43,6 +43,10 @@ const emptyForm = {
   legalRepRut: '',
   planId: '',
   billingPeriod: 'monthly',
+  // Post-fix EVA-2026-0004 Opcion B — Plazo de pago override.
+  // '' = usar el default global. '0'=contado, '15', '30', '60', '90'.
+  // Input controlado como string para permitir '' = NULL.
+  dueDaysOverride: '',
 };
 
 // Auto-generate slug from org name
@@ -191,6 +195,9 @@ export default function TenantsPage() {
         commercialAddress: form.commercialAddress || null,
         legalRepName: form.legalRepName || null,
         legalRepRut: form.legalRepRut || null,
+        // Post-fix EVA-2026-0004 Opcion B — '' significa "limpiar
+        // override, usar global". El backend acepta null|''.
+        dueDaysOverride: form.dueDaysOverride === '' ? null : Number(form.dueDaysOverride),
       });
 
       // Update or create subscription if plan changed
@@ -254,6 +261,9 @@ export default function TenantsPage() {
       legalRepRut: t.legalRepRut ? formatRut(t.legalRepRut) : '',
       planId: sub?.planId || '',
       billingPeriod: sub?.billingPeriod?.toLowerCase() || 'monthly',
+      // Post-fix EVA-2026-0004 Opcion B — Override de plazo de pago.
+      // null/undefined = string vacio (placeholder muestra el global).
+      dueDaysOverride: t.dueDaysOverride != null ? String(t.dueDaysOverride) : '',
     });
     setEditingId(t.id);
     setShowForm(true);
@@ -766,6 +776,29 @@ export default function TenantsPage() {
                 <label style={labelStyle}>RUT representante legal</label>
                 <input style={inputStyle} placeholder="Ej: 12.345.678-9" value={form.legalRepRut} onChange={(e) => setForm({ ...form, legalRepRut: formatRutInput(e.target.value) })} maxLength={12} />
               </div>
+            </div>
+            {/* Post-fix EVA-2026-0004 Opcion B — Plazo de pago negociado.
+                Solo visible para super_admin (esta pagina ya esta scoped
+                a super_admin via roles en backend). */}
+            <div>
+              <label style={labelStyle}>Plazo de pago (condiciones de crédito)</label>
+              <select
+                style={inputStyle}
+                value={form.dueDaysOverride}
+                onChange={(e) => setForm({ ...form, dueDaysOverride: e.target.value })}
+              >
+                <option value="">Usar default global (billing settings)</option>
+                <option value="0">Contado (mismo día)</option>
+                <option value="7">7 días</option>
+                <option value="15">15 días</option>
+                <option value="30">30 días</option>
+                <option value="45">45 días</option>
+                <option value="60">60 días</option>
+                <option value="90">90 días</option>
+              </select>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                Sobrescribe el plazo global. Aplica solo a facturas NUEVAS — las ya emitidas conservan su vencimiento.
+              </p>
             </div>
             <div>
               <label style={labelStyle}>Plan y período {!editingId && '*'}</label>

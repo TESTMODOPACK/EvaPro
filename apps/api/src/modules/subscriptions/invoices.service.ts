@@ -271,8 +271,24 @@ export class InvoicesService {
           //
           // Fase 4 / T4.5 — dueDays + invoiceAdvanceDays vienen de
           // billing_settings (configurables por super_admin).
+          //
+          // Post-fix EVA-2026-0004 Opcion B — Override per-tenant.
+          // Si el contrato del tenant negocio terminos distintos al
+          // default (contado, 30, 60, 90 dias), `tenants.dueDaysOverride`
+          // toma precedencia. NULL = usar el global.
+          //
+          // Uso `!= null` (no `??`) para tolerar valores 0 ("contado"):
+          // `0 ?? global` daria global, pero 0 es un override valido.
+          // Igualmente verifico Number.isFinite para defenderme de
+          // strings raros que llegan desde JSON/Postgres.
           const settings = await this.billingSettingsService.get();
-          const dueDays = settings.dueDays || 15;
+          const globalDueDays = Number(settings.dueDays) || 15;
+          const overrideRaw = sub.tenant?.dueDaysOverride;
+          const overrideNum =
+            overrideRaw != null && Number.isFinite(Number(overrideRaw))
+              ? Number(overrideRaw)
+              : null;
+          const dueDays = overrideNum != null ? overrideNum : globalDueDays;
           const dueAnchor =
             periodStart.getTime() > now.getTime() ? periodStart : now;
           const dueDate = new Date(dueAnchor);

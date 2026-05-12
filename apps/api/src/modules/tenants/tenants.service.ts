@@ -252,8 +252,12 @@ export class TenantsService {
     return { tenant: saved, adminUser: adminUser ? { id: adminUser.id, email: adminUser.email } : null };
   }
 
-  async update(id: string, dto: any): Promise<Tenant> {
+  async update(id: string, dto: any, userId?: string): Promise<Tenant> {
     const tenant = await this.findById(id);
+    // Post-fix EVA-2026-0004 Opcion B — capturar valor previo de
+    // dueDaysOverride ANTES de mutarlo, para emitir audit log con diff
+    // si cambia (action critica con retention 6 anos).
+    const dueDaysOverrideBefore = tenant.dueDaysOverride;
     if (dto.name !== undefined) tenant.name = dto.name;
     if (dto.rut !== undefined) {
       if (dto.rut) {
@@ -282,8 +286,49 @@ export class TenantsService {
     if (dto.billingEmail !== undefined) {
       tenant.billingEmail = this.validateBillingEmail(dto.billingEmail);
     }
+    // Post-fix EVA-2026-0004 Opcion B — Override per-tenant del plazo
+    // de pago. Solo super_admin (este endpoint ya es @Roles('super_admin')).
+    // null|'' explicito limpia el override (vuelve al default global).
+    if (dto.dueDaysOverride !== undefined) {
+      if (dto.dueDaysOverride === null || dto.dueDaysOverride === '') {
+        tenant.dueDaysOverride = null;
+      } else {
+        const n = Number(dto.dueDaysOverride);
+        if (!Number.isInteger(n) || n < 0 || n > 90) {
+          throw new BadRequestException(
+            'dueDaysOverride debe ser entero en [0, 90] o null para usar el default global.',
+          );
+        }
+        tenant.dueDaysOverride = n;
+      }
+    }
     if (dto.settings !== undefined) tenant.settings = dto.settings;
-    return this.tenantRepository.save(tenant);
+    const saved = await this.tenantRepository.save(tenant);
+
+    // Post-fix EVA-2026-0004 Opcion B — Si dueDaysOverride cambio,
+    // emite audit log critical-retention (6 anos) con diff. Cuando un
+    // cliente reclama "tenia 30 dias", podemos probar exactamente
+    // cuando se cambio y a que valor.
+    if (
+      dto.dueDaysOverride !== undefined &&
+      saved.dueDaysOverride !== dueDaysOverrideBefore
+    ) {
+      await this.auditService
+        .log(
+          saved.id,
+          userId || 'system',
+          'tenant.due_days_override_updated',
+          'tenant',
+          saved.id,
+          {
+            before: dueDaysOverrideBefore,
+            after: saved.dueDaysOverride,
+          },
+        )
+        .catch(() => undefined);
+    }
+
+    return saved;
   }
 
   /**

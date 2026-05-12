@@ -444,6 +444,10 @@ async function main() {
       // generateInvoice rechaza. Configurable por super_admin via PATCH
       // /invoices/billing-settings.
       { table: 'billing_settings', column: 'invoice_advance_days', sql: `ALTER TABLE "billing_settings" ADD COLUMN IF NOT EXISTS "invoice_advance_days" int NOT NULL DEFAULT 7` },
+      // Post-fix EVA-2026-0004 Opcion B — Plazo de pago override por
+      // tenant (contado/15/30/60/90 dias). NULL = usar el global
+      // billing_settings.dueDays. Solo super_admin puede editar.
+      { table: 'tenants', column: 'due_days_override', sql: `ALTER TABLE "tenants" ADD COLUMN IF NOT EXISTS "due_days_override" int NULL` },
       // Fase 2 / Tarea 2.1 — Credit notes:
       //   original_invoice_id: factura origen que la credit note revierte.
       //   applied_to_invoice_id + applied_at: rastreo de credit notes

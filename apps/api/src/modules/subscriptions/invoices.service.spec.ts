@@ -587,6 +587,118 @@ describe('InvoicesService', () => {
         jest.useRealTimers();
       }
     });
+
+    // ─── Opcion B — Override per-tenant del plazo de pago ────────────
+
+    it('tenant con dueDaysOverride=30: dueDate = max(now, periodStart) + 30, ignora global de 15', async () => {
+      // Caso real: empresa con contrato negociado a 30 dias plazo.
+      // tenant.dueDaysOverride=30 debe ganarle al global=15.
+      const fixedNow = new Date('2026-05-15T10:00:00Z');
+      jest.useFakeTimers().setSystemTime(fixedNow);
+      try {
+        const sub = buildMockSub({
+          startDate: new Date('2026-05-01'),
+          billingPeriod: BillingPeriod.MONTHLY,
+          plan: createMockPlan({ monthlyPrice: 10 }),
+          tenant: {
+            id: fakeUuid(100),
+            name: 'Enterprise Corp',
+            dueDaysOverride: 30,
+          },
+        });
+        subRepo.findOne.mockResolvedValue(sub);
+        invoiceRepo.findOne
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce({ id: fakeUuid(700) });
+
+        await service.generateInvoice(sub.id);
+
+        const saved = dataSource.txSavedEntities[0];
+        const due = new Date(saved.dueDate);
+        // periodStart=2026-05-01 < now=2026-05-15 -> dueAnchor=now.
+        // dueDate = now + 30 = 2026-06-14.
+        const diffDays =
+          (due.getTime() - fixedNow.getTime()) / (1000 * 60 * 60 * 24);
+        expect(diffDays).toBeGreaterThanOrEqual(29.5);
+        expect(diffDays).toBeLessThanOrEqual(30.5);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('tenant con dueDaysOverride=0 (contado): dueDate = dueAnchor (mismo dia)', async () => {
+      // Caso: cliente con plan "pago contado" — la factura vence el
+      // mismo dia de emision (o el dia que arranca el servicio si es
+      // emision anticipada). Edge case importante: el operador `??`
+      // trataria 0 como falsy y caeria al global=15. Usamos `!= null`
+      // para preservar el 0.
+      const fixedNow = new Date('2026-05-15T10:00:00Z');
+      jest.useFakeTimers().setSystemTime(fixedNow);
+      try {
+        const sub = buildMockSub({
+          startDate: new Date('2026-05-01'),
+          billingPeriod: BillingPeriod.MONTHLY,
+          plan: createMockPlan({ monthlyPrice: 10 }),
+          tenant: {
+            id: fakeUuid(100),
+            name: 'Cash Customer',
+            dueDaysOverride: 0,
+          },
+        });
+        subRepo.findOne.mockResolvedValue(sub);
+        invoiceRepo.findOne
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce({ id: fakeUuid(700) });
+
+        await service.generateInvoice(sub.id);
+
+        const saved = dataSource.txSavedEntities[0];
+        const due = new Date(saved.dueDate);
+        // periodStart < now -> dueAnchor=now. dueDate = now + 0 = now.
+        const diffMs = due.getTime() - fixedNow.getTime();
+        expect(Math.abs(diffMs)).toBeLessThan(1000); // <1s diff
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('tenant con dueDaysOverride=null: fallback al global dueDays=15', async () => {
+      // Caso default: tenant sin override (NULL). Usa el global de
+      // billing_settings (mock=15). Comportamiento identico al pre-Opcion-B.
+      const fixedNow = new Date('2026-05-15T10:00:00Z');
+      jest.useFakeTimers().setSystemTime(fixedNow);
+      try {
+        const sub = buildMockSub({
+          startDate: new Date('2026-05-01'),
+          billingPeriod: BillingPeriod.MONTHLY,
+          plan: createMockPlan({ monthlyPrice: 10 }),
+          tenant: {
+            id: fakeUuid(100),
+            name: 'Standard Customer',
+            dueDaysOverride: null,
+          },
+        });
+        subRepo.findOne.mockResolvedValue(sub);
+        invoiceRepo.findOne
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce({ id: fakeUuid(700) });
+
+        await service.generateInvoice(sub.id);
+
+        const saved = dataSource.txSavedEntities[0];
+        const due = new Date(saved.dueDate);
+        // dueDate = now + 15 (global).
+        const diffDays =
+          (due.getTime() - fixedNow.getTime()) / (1000 * 60 * 60 * 24);
+        expect(diffDays).toBeGreaterThanOrEqual(14.5);
+        expect(diffDays).toBeLessThanOrEqual(15.5);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
   });
 
   // ─── processDunning (Fase 1 / Tarea 1.1) ───────────────────────────

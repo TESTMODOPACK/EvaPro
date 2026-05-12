@@ -132,6 +132,11 @@ export class AuditService {
     // Critico SII: el ente facturador debe poder probar que el IVA
     // aplicado fue el vigente al momento de emision.
     'billing_settings.updated',
+    // Post-fix EVA-2026-0004 Opcion B — cambios en plazo de pago
+    // (dueDaysOverride) por tenant. Termino contractual con impacto
+    // directo en facturacion: si un cliente reclama "tenia 30 dias y
+    // me cobraron a 15", debe haber registro de cuando se cambio.
+    'tenant.due_days_override_updated',
     'contract.signed',
     'contract.rejected',
     'contract.terminated',

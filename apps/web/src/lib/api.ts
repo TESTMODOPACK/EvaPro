@@ -19,6 +19,13 @@ export interface Tenant {
   ownerType: string; maxEmployees: number; isActive: boolean; createdAt: string;
   industry?: string | null; employeeRange?: string | null; commercialAddress?: string | null;
   legalRepName?: string | null; legalRepRut?: string | null;
+  /**
+   * Post-fix EVA-2026-0004 Opcion B — Override per-tenant del plazo de
+   * pago. NULL = usar el default global billing_settings.dueDays.
+   * Range [0, 90]: 0=contado, 15/30/60/90=plazos comerciales tipicos.
+   * Solo super_admin puede editar.
+   */
+  dueDaysOverride?: number | null;
   settings?: Record<string, any>;
 }
 

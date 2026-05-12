@@ -257,8 +257,11 @@ export class TenantsController {
 
   @Patch(':id')
   @Audited('tenant.updated', 'tenant')
-  update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: any) {
-    return this.tenantsService.update(id, dto);
+  update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: any, @Request() req: any) {
+    // Post-fix EVA-2026-0004 Opcion B — userId pasado al service para
+    // que pueda emitir audit log con diff cuando dueDaysOverride cambia
+    // (CRITICAL_ACTIONS_FOR_RETENTION, 6 anos).
+    return this.tenantsService.update(id, dto, req.user.userId || req.user.id);
   }
 
   @Delete(':id')
