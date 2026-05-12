@@ -73,6 +73,12 @@ export default function MiSuscripcionPage() {
   const [addingMethod, setAddingMethod] = useState(false);
   // Fase 3 / Tarea 3.3 — Estado del formulario de datos de facturacion.
   const [tenant, setTenant] = useState<any>(null);
+  // Post-fix EVA-2026-0004 Opcion B — Plazo de pago efectivo del tenant.
+  // Si tenant.dueDaysOverride != null, usa ese valor; sino, fallback al
+  // global de billing_settings. Read-only: el tenant_admin solo ve los
+  // terminos, no los edita (solo super_admin via /dashboard/tenants).
+  const [effectiveDueDays, setEffectiveDueDays] = useState<number | null>(null);
+  const [dueDaysIsOverride, setDueDaysIsOverride] = useState<boolean>(false);
   const initialBilling = { name: '', rut: '', commercialAddress: '', legalRepName: '', legalRepRut: '', billingEmail: '' };
   const [billingForm, setBillingForm] = useState(initialBilling);
   // Fase 3 / T3.3-fix-4 — Snapshot del form al abrir el editor. Si
@@ -253,8 +259,12 @@ export default function MiSuscripcionPage() {
       api.tenants.me(token).catch(() => null),
       // Fase 3 / Tarea 3.4 — Metodos de pago guardados.
       api.paymentMethods.list(token).catch(() => []),
+      // Post-fix EVA-2026-0004 Opcion B — Global billing settings para
+      // resolver el plazo de pago efectivo cuando el tenant no tiene
+      // override propio. tenant_admin puede leer este endpoint.
+      api.invoices.billingSettings.get(token).catch(() => null),
     ])
-      .then(([s, count, pays, prot, plns, reqs, aiUse, packs, addon, ten, methods]) => {
+      .then(([s, count, pays, prot, plns, reqs, aiUse, packs, addon, ten, methods, billingSettings]) => {
         setSub(s);
         setUserCount(count as number);
         // Fase 3 / Tarea 3.1 — shape paginado.
@@ -283,6 +293,23 @@ export default function MiSuscripcionPage() {
           setBillingForm(precargado);
           // T3.3-fix-4: snapshot baseline para detectar dirty.
           setBillingFormSnapshot(precargado);
+        }
+        // Post-fix EVA-2026-0004 Opcion B — Resolver plazo de pago
+        // efectivo. Logica espejo a invoices.service.ts: si tenant
+        // tiene override (incluyendo 0=contado) lo usa; sino, fallback
+        // al global. Usamos `!= null` para preservar 0.
+        const override = (ten as any)?.dueDaysOverride;
+        const globalDueDays = (billingSettings as any)?.dueDays;
+        if (override != null && Number.isFinite(Number(override))) {
+          setEffectiveDueDays(Number(override));
+          setDueDaysIsOverride(true);
+        } else if (globalDueDays != null && Number.isFinite(Number(globalDueDays))) {
+          setEffectiveDueDays(Number(globalDueDays));
+          setDueDaysIsOverride(false);
+        } else {
+          // Backend no respondio — no mostramos el card.
+          setEffectiveDueDays(null);
+          setDueDaysIsOverride(false);
         }
       })
       .finally(() => setLoading(false));
@@ -1231,6 +1258,30 @@ export default function MiSuscripcionPage() {
                   <div><strong>Representante legal:</strong> {tenant.legalRepName || '—'}</div>
                   <div><strong>RUT representante:</strong> {tenant.legalRepRut || '—'}</div>
                   <div style={{ gridColumn: '1 / -1' }}><strong>Email de cobranza:</strong> {tenant.billingEmail || <span style={{ color: 'var(--text-muted)' }}>(usa email del admin)</span>}</div>
+                  {/* Post-fix EVA-2026-0004 Opcion B — Plazo de pago
+                      efectivo (read-only para tenant_admin). Solo
+                      super_admin puede modificarlo desde
+                      /dashboard/tenants. */}
+                  {effectiveDueDays != null && (
+                    <div style={{ gridColumn: '1 / -1' }}>
+                      <strong>Plazo de pago:</strong>{' '}
+                      {effectiveDueDays === 0
+                        ? 'Contado (pago al emitir la factura)'
+                        : `${effectiveDueDays} días desde la emisión`}
+                      {dueDaysIsOverride && (
+                        <span
+                          style={{
+                            marginLeft: '0.5rem',
+                            fontSize: '0.7rem',
+                            color: 'var(--text-muted)',
+                            fontStyle: 'italic',
+                          }}
+                        >
+                          (plazo negociado para tu empresa)
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
               ) : (
                 <form id="billing-info-form" onSubmit={saveBillingInfo} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
