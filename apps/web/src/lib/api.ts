@@ -1967,6 +1967,35 @@ export const api = {
      * Fase 4 / T4.2 — Metricas SaaS (MRR, ARR, churn, DSO, collection rate).
      * Solo super_admin. Refresh recomendado: cada 5 min en background.
      */
+    /**
+     * Fase 4 / T4.5 — Configuracion fiscal (RUT emisor, IVA, prefijos,
+     * vencimiento). GET es read-only para tenant_admin (la ven en
+     * sus PDFs); PATCH solo super_admin.
+     */
+    billingSettings: {
+      get: (token: string) =>
+        request<{
+          issuerName: string;
+          issuerRut: string;
+          issuerAddress: string;
+          issuerCity: string;
+          issuerCountry: string;
+          issuerEmail: string | null;
+          issuerPhone: string | null;
+          invoicePrefix: string;
+          creditNotePrefix: string;
+          taxRate: number;
+          dueDays: number;
+          defaultCurrency: string;
+          footerNote: string | null;
+        }>('/invoices/billing-settings', {}, token),
+      update: (token: string, dto: any) =>
+        request<any>(
+          '/invoices/billing-settings',
+          { method: 'PATCH', body: JSON.stringify(dto) },
+          token,
+        ),
+    },
     saasMetrics: (token: string) =>
       request<{
         mrr: number;
@@ -1984,12 +2013,63 @@ export const api = {
       }>("/invoices/metrics/saas", {}, token),
     generate: (token: string, subscriptionId: string) =>
       request<any>(`/invoices/generate/${subscriptionId}`, { method: "POST" }, token),
-    generateBulk: (token: string) =>
-      request<any>("/invoices/generate-bulk", { method: "POST" }, token),
+    /**
+     * Fase 4 / T4.7 — Bulk con dry-run opcional.
+     * `dryRun=true` retorna preview sin generar. Default: ejecuta real.
+     */
+    generateBulk: (token: string, options?: { dryRun?: boolean }) => {
+      const qs = options?.dryRun ? '?dryRun=true' : '';
+      return request<any>(`/invoices/generate-bulk${qs}`, { method: 'POST' }, token);
+    },
+    /**
+     * Fase 4 / T4.6 — Logs de webhooks recibidos + replay (super_admin).
+     */
+    webhookLogs: {
+      list: (
+        token: string,
+        opts?: {
+          provider?: 'stripe' | 'mercadopago';
+          status?: string;
+          limit?: number;
+          offset?: number;
+        },
+      ) => {
+        const qs = new URLSearchParams();
+        if (opts?.provider) qs.set('provider', opts.provider);
+        if (opts?.status) qs.set('status', opts.status);
+        if (opts?.limit != null) qs.set('limit', String(opts.limit));
+        if (opts?.offset != null) qs.set('offset', String(opts.offset));
+        const suffix = qs.toString() ? `?${qs.toString()}` : '';
+        return request<{ data: any[]; total: number }>(`/webhook-logs${suffix}`, {}, token);
+      },
+      findOne: (token: string, id: string) =>
+        request<any>(`/webhook-logs/${id}`, {}, token),
+      replay: (token: string, id: string) =>
+        request<any>(`/webhook-logs/${id}/replay`, { method: 'POST' }, token),
+    },
     markAsPaid: (token: string, id: string, data: { paymentMethod?: string; transactionRef?: string; notes?: string }) =>
       request<any>(`/invoices/${id}/pay`, { method: "PATCH", body: JSON.stringify(data) }, token),
-    send: (token: string, id: string) =>
-      request<any>(`/invoices/${id}/send`, { method: "POST" }, token),
+    /**
+     * Fase 4 / T4.4 — Preview del email ANTES de enviar. Read-only.
+     * Backend retorna subject + body HTML renderizado tal cual el
+     * cliente lo recibira + lista de destinatarios resueltos.
+     */
+    previewSend: (token: string, id: string) =>
+      request<{
+        subject: string;
+        html: string;
+        recipients: Array<{ email: string; firstName: string }>;
+        fallbackBillingEmail: string | null;
+      }>(`/invoices/${id}/send/preview`, {}, token),
+    send: (token: string, id: string, options?: { cc?: string[]; bcc?: string[] }) =>
+      request<any>(
+        `/invoices/${id}/send`,
+        {
+          method: 'POST',
+          body: options ? JSON.stringify(options) : undefined,
+        },
+        token,
+      ),
     sendReminders: (token: string) =>
       request<any>("/invoices/send-reminders", { method: "POST" }, token),
     cancel: (token: string, id: string) =>

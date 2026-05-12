@@ -120,6 +120,29 @@ describe('InvoicesService', () => {
             closeActive: jest.fn(),
           },
         },
+        // Fase 4 / T4.5 — BillingSettingsService para configuracion
+        // fiscal (RUT emisor, IVA, prefijo, dueDays). Mock retorna
+        // defaults Chile que mantienen el comportamiento pre-T4.5.
+        {
+          provide: require('./billing-settings.service').BillingSettingsService,
+          useValue: {
+            get: jest.fn().mockResolvedValue({
+              id: 'singleton',
+              issuerName: 'Ascenda Performance SpA',
+              issuerRut: '77.000.000-0',
+              issuerCity: 'Santiago',
+              issuerCountry: 'Chile',
+              invoicePrefix: 'EVA',
+              creditNotePrefix: 'EVA-NC',
+              taxRate: 19,
+              dueDays: 15,
+              defaultCurrency: 'UF',
+              footerNote: null,
+            }),
+            update: jest.fn(),
+            invalidateCache: jest.fn(),
+          },
+        },
       ],
     }).compile();
 

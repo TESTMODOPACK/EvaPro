@@ -124,6 +124,14 @@ export class AuditService {
     // (impacto SII: la factura debe reflejar el RUT al momento de
     // emision). 6 anos retention.
     'tenant.billing_info_updated',
+    // Fase 4 / T4.3 — overrides de pricing por subscription (descuentos
+    // comerciales). SII puede pedir justificacion contable.
+    'subscription_price.override_created',
+    'subscription_price.override_closed',
+    // Fase 4 / T4.5 — cambios en configuracion fiscal (RUT emisor, IVA).
+    // Critico SII: el ente facturador debe poder probar que el IVA
+    // aplicado fue el vigente al momento de emision.
+    'billing_settings.updated',
     'contract.signed',
     'contract.rejected',
     'contract.terminated',

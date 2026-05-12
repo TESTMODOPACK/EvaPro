@@ -36,6 +36,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationType } from '../notifications/entities/notification.entity';
 import { runWithBlockingAdvisoryLock } from '../../common/utils/cron-lock';
 import { PriceOverridesService } from './price-overrides.service';
+import { BillingSettingsService } from './billing-settings.service';
 
 /**
  * Fase 1 / Tarea 1.2 — Claves semanticas de los stages de dunning.
@@ -77,6 +78,9 @@ export class InvoicesService {
     private readonly dataSource: DataSource,
     // Fase 4 / T4.3 — Pricing override por sub (descuentos custom).
     private readonly priceOverridesService: PriceOverridesService,
+    // Fase 4 / T4.5 — Configuracion fiscal dinamica (RUT emisor, IVA,
+    // prefijo, dias vencimiento). Reemplaza valores hardcoded.
+    private readonly billingSettingsService: BillingSettingsService,
   ) {}
 
   // ─── Invoice Number Generation ──────────────────────────────────────
@@ -97,8 +101,13 @@ export class InvoicesService {
     type: InvoiceType = InvoiceType.INVOICE,
   ): Promise<string> {
     const year = new Date().getFullYear();
-    const prefix =
-      type === InvoiceType.CREDIT_NOTE ? `EVA-NC-${year}-` : `EVA-${year}-`;
+    // Fase 4 / T4.5 — Prefijo configurable.
+    const settings = await this.billingSettingsService.get();
+    const basePrefix =
+      type === InvoiceType.CREDIT_NOTE
+        ? settings.creditNotePrefix
+        : settings.invoicePrefix;
+    const prefix = `${basePrefix}-${year}-`;
     const row = await this.invoiceRepo
       .createQueryBuilder('i')
       .select('i.invoice_number', 'invoiceNumber')
@@ -224,8 +233,10 @@ export class InvoicesService {
           // independiente del periodo cubierto. Esto coincide con la
           // expectativa de pago del cliente (cobrar al inicio del periodo,
           // pagar dentro de 15 dias) y con plazos comerciales chilenos.
+          // Fase 4 / T4.5 — dueDays viene de billing_settings (default 15).
+          const settings = await this.billingSettingsService.get();
           const dueDate = new Date(now);
-          dueDate.setUTCDate(dueDate.getUTCDate() + 15); // 15 days from issuance (UTC-safe, ver Tarea 0.1.6)
+          dueDate.setUTCDate(dueDate.getUTCDate() + (settings.dueDays || 15));
 
           // Build lines
           const lines: Partial<InvoiceLine>[] = [];
@@ -313,7 +324,8 @@ export class InvoicesService {
             0,
             Math.round(lines.reduce((s, l) => s + (l.total || 0), 0) * 100) / 100,
           );
-          const taxRate = 19; // IVA Chile
+          // Fase 4 / T4.5 — taxRate desde billing_settings (default 19 Chile).
+          const taxRate = Number(settings.taxRate) || 19;
           const taxAmount = Math.round(subtotal * (taxRate / 100) * 100) / 100;
           const total = Math.round((subtotal + taxAmount) * 100) / 100;
 
@@ -441,9 +453,37 @@ export class InvoicesService {
 
   // ─── Bulk Generate ──────────────────────────────────────────────────
 
+  /**
+   * Bulk generation con opcional dry-run.
+   *
+   * Fase 4 / T4.7 — dryRun preview:
+   *   - Cuando dryRun=true, NO genera invoices. Solo retorna la lista
+   *     de subs candidatas con estimado de monto, para que el
+   *     super_admin valide antes de gatillar el batch real.
+   *   - Estimacion usa getPlanPriceForPeriod + override + IVA. Es
+   *     aproximado: invoice real podria diferir si hay AI add-on o
+   *     credit notes aplicables.
+   */
   async generateBulkInvoices(
     userId: string,
-  ): Promise<{ generated: number; skipped: number; errors: string[] }> {
+    options: { dryRun?: boolean } = {},
+  ): Promise<{
+    generated: number;
+    skipped: number;
+    errors: string[];
+    // Solo presente en dry-run:
+    preview?: Array<{
+      subscriptionId: string;
+      tenantName: string;
+      tenantId: string;
+      planName: string;
+      billingPeriod: string;
+      estimatedSubtotal: number;
+      estimatedTotal: number;
+      currency: string;
+      reason?: string; // si va a fallar/skipear
+    }>;
+  }> {
     const subs = await this.subRepo.find({
       where: {
         status: In([SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIAL]),
@@ -451,6 +491,43 @@ export class InvoicesService {
       relations: ['plan', 'tenant'],
     });
 
+    if (options.dryRun) {
+      // Fase 4 / T4.7 — solo preview, no commit.
+      const settings = await this.billingSettingsService.get();
+      const taxRate = Number(settings.taxRate) || 19;
+      const now = new Date();
+      const preview = await Promise.all(
+        subs.map(async (sub) => {
+          const override = await this.priceOverridesService.getActiveOverride(sub.id, now);
+          let estimatedSubtotal = 0;
+          let reason: string | undefined;
+          try {
+            estimatedSubtotal = this.getPlanPriceForPeriod(sub, override);
+            if (estimatedSubtotal <= 0) {
+              reason = 'Plan sin precio configurado — fallara al generar.';
+            }
+          } catch (err: any) {
+            reason = err.message;
+          }
+          const estimatedTax = Math.round(estimatedSubtotal * (taxRate / 100) * 100) / 100;
+          const estimatedTotal = Math.round((estimatedSubtotal + estimatedTax) * 100) / 100;
+          return {
+            subscriptionId: sub.id,
+            tenantName: sub.tenant?.name || '(sin nombre)',
+            tenantId: sub.tenantId,
+            planName: sub.plan?.name || '(sin plan)',
+            billingPeriod: sub.billingPeriod,
+            estimatedSubtotal: Math.round(estimatedSubtotal * 100) / 100,
+            estimatedTotal,
+            currency: sub.plan?.currency || settings.defaultCurrency,
+            reason,
+          };
+        }),
+      );
+      return { generated: 0, skipped: 0, errors: [], preview };
+    }
+
+    // Modo real (apply).
     let generated = 0;
     let skipped = 0;
     const errors: string[] = [];
@@ -722,31 +799,109 @@ export class InvoicesService {
 
   // ─── Send Invoice Email ─────────────────────────────────────────────
 
-  async sendInvoice(invoiceId: string, userId: string): Promise<Invoice> {
+  /**
+   * Fase 4 / T4.4 — Construye el HTML del email de envio de factura.
+   * Helper compartido entre `previewEmail` y `sendInvoice` para que la
+   * UI muestre EXACTAMENTE lo que el cliente recibira.
+   *
+   * Acepta `firstName` opcional ('cliente' por default si la preview
+   * se renderiza sin destinatario aun).
+   */
+  private buildInvoiceEmailHtml(invoice: Invoice, firstName: string): string {
+    return (
+      `<p>Hola ${firstName},</p>` +
+      `<p>Se ha generado la factura <strong>${invoice.invoiceNumber}</strong> por un total de ` +
+      `<strong>${invoice.total} ${invoice.currency}</strong>.</p>` +
+      `<p>Período: ${new Date(invoice.periodStart).toLocaleDateString('es-CL')} al ` +
+      `${new Date(invoice.periodEnd).toLocaleDateString('es-CL')}<br>` +
+      `Vencimiento: ${new Date(invoice.dueDate).toLocaleDateString('es-CL')}</p>` +
+      `<p>Puede ver el detalle y descargar el PDF desde su panel de suscripción en Eva360.</p>` +
+      `<p>Saludos,<br>Equipo Eva360</p>`
+    );
+  }
+
+  /**
+   * Fase 4 / T4.4 — Preview del email sin enviarlo. Permite que el
+   * super_admin valide subject + body + destinatarios ANTES de hacer
+   * un envio masivo. Read-only: no muta nada en DB ni en provider.
+   */
+  async previewInvoiceEmail(
+    invoiceId: string,
+  ): Promise<{
+    subject: string;
+    html: string;
+    recipients: Array<{ email: string; firstName: string }>;
+    fallbackBillingEmail: string | null;
+  }> {
     const invoice = await this.invoiceRepo.findOne({
       where: { id: invoiceId },
       relations: ['tenant', 'lines'],
     });
     if (!invoice) throw new NotFoundException('Factura no encontrada');
 
-    // Find tenant admins
     const admins = await this.userRepo.find({
       where: {
         tenantId: invoice.tenantId,
         role: 'tenant_admin',
         isActive: true,
       },
-      select: ['id', 'email', 'firstName'],
+      select: ['email', 'firstName'],
     });
+    return {
+      subject: `Factura ${invoice.invoiceNumber} — Eva360`,
+      html: this.buildInvoiceEmailHtml(invoice, admins[0]?.firstName || 'cliente'),
+      recipients: admins.map((a) => ({ email: a.email, firstName: a.firstName })),
+      fallbackBillingEmail: (invoice.tenant as any)?.billingEmail ?? null,
+    };
+  }
 
-    for (const admin of admins) {
+  /**
+   * Fase 4 / T4.4 — Envia la factura por email.
+   * Soporta CC/BCC opcionales (super_admin puede CCar a contabilidad
+   * o BCCarse a si mismo para audit fisico). Si el tenant tiene
+   * billingEmail configurado (T3.3), va a ese; sino, a tenant_admins.
+   */
+  async sendInvoice(
+    invoiceId: string,
+    userId: string,
+    options: { cc?: string[]; bcc?: string[] } = {},
+  ): Promise<Invoice> {
+    const invoice = await this.invoiceRepo.findOne({
+      where: { id: invoiceId },
+      relations: ['tenant', 'lines'],
+    });
+    if (!invoice) throw new NotFoundException('Factura no encontrada');
+
+    // Validar CC/BCC: sanitizar y limitar (anti-spam vector).
+    const cc = (options.cc || []).slice(0, 5).filter(this.isValidEmail);
+    const bcc = (options.bcc || []).slice(0, 5).filter(this.isValidEmail);
+
+    // Destinatarios principales: billingEmail si esta, sino tenant_admins.
+    const billingEmail = (invoice.tenant as any)?.billingEmail ?? null;
+    let recipients: Array<{ email: string; firstName: string }>;
+    if (billingEmail) {
+      // T3.3 — usar email de cobranza dedicado.
+      recipients = [{ email: billingEmail, firstName: invoice.tenant?.name || 'cliente' }];
+    } else {
+      const admins = await this.userRepo.find({
+        where: {
+          tenantId: invoice.tenantId,
+          role: 'tenant_admin',
+          isActive: true,
+        },
+        select: ['id', 'email', 'firstName'],
+      });
+      recipients = admins.map((a) => ({ email: a.email, firstName: a.firstName }));
+    }
+
+    const subject = `Factura ${invoice.invoiceNumber} — Eva360`;
+    for (const r of recipients) {
+      const html = this.buildInvoiceEmailHtml(invoice, r.firstName);
+      // EmailService.send firma: (to, subject, html, options?). Si no
+      // soporta CC/BCC, pasamos null/[] (degradacion graceful).
       await this.emailService
-        .send(
-          admin.email,
-          `Factura ${invoice.invoiceNumber} — Eva360`,
-          `<p>Hola ${admin.firstName},</p><p>Se ha generado la factura <strong>${invoice.invoiceNumber}</strong> por un total de <strong>${invoice.total} ${invoice.currency}</strong>.</p><p>Período: ${new Date(invoice.periodStart).toLocaleDateString('es-CL')} al ${new Date(invoice.periodEnd).toLocaleDateString('es-CL')}<br>Vencimiento: ${new Date(invoice.dueDate).toLocaleDateString('es-CL')}</p><p>Puede ver el detalle y descargar el PDF desde su panel de suscripción en Eva360.</p><p>Saludos,<br>Equipo Eva360</p>`,
-        )
-        .catch(() => {});
+        .send(r.email, subject, html, { cc, bcc } as any)
+        .catch(() => undefined);
     }
 
     invoice.status =
@@ -759,10 +914,19 @@ export class InvoicesService {
     await this.auditService
       .log(invoice.tenantId, userId, 'invoice.sent', 'invoice', invoiceId, {
         invoiceNumber: invoice.invoiceNumber,
+        recipientCount: recipients.length,
+        cc: cc.length,
+        bcc: bcc.length,
+        usedBillingEmail: !!billingEmail,
       })
       .catch(() => {});
 
     return invoice;
+  }
+
+  /** Fase 4 / T4.4 — Validador email defensivo (mismo regex que T3.3). */
+  private isValidEmail(value: string): boolean {
+    return typeof value === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
   }
 
   // ─── Send Reminders ─────────────────────────────────────────────────
@@ -1072,11 +1236,16 @@ export class InvoicesService {
     doc.text(invoice.invoiceNumber, margin, 28);
     doc.setFontSize(9);
     doc.setTextColor(201, 147, 58);
-    doc.text('Eva360 — Evaluación de Desempeño 360°', pageW - margin, 14, {
-      align: 'right',
-    });
-    doc.text('RUT: 77.XXX.XXX-X', pageW - margin, 22, { align: 'right' });
-    doc.text('Santiago, Chile', pageW - margin, 30, { align: 'right' });
+    // Fase 4 / T4.5 — Datos del emisor desde billing_settings (no hardcoded).
+    const settings = await this.billingSettingsService.get();
+    doc.text(settings.issuerName, pageW - margin, 14, { align: 'right' });
+    doc.text(`RUT: ${settings.issuerRut}`, pageW - margin, 22, { align: 'right' });
+    doc.text(
+      `${settings.issuerCity}, ${settings.issuerCountry}`,
+      pageW - margin,
+      30,
+      { align: 'right' },
+    );
 
     let y = 48;
 

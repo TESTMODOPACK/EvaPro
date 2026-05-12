@@ -6,6 +6,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { InvoicesService } from './invoices.service';
 import { BillingMetricsService } from './billing-metrics.service';
+import { BillingSettingsService } from './billing-settings.service';
 
 @Controller('invoices')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
@@ -14,7 +15,29 @@ export class InvoicesController {
     private readonly invoicesService: InvoicesService,
     // Fase 4 / T4.2 — metricas SaaS para dashboard ejecutivo.
     private readonly metricsService: BillingMetricsService,
+    // Fase 4 / T4.5 — Configuracion fiscal singleton.
+    private readonly billingSettingsService: BillingSettingsService,
   ) {}
+
+  // ─── Fase 4 / Tarea 4.5 — Configuracion fiscal editable ─────────────
+
+  /**
+   * Devuelve la configuracion fiscal (RUT emisor, IVA, prefijos,
+   * vencimiento). Super_admin y tenant_admin pueden leer (los
+   * tenant_admin la ven en sus PDFs anyway).
+   */
+  @Get('billing-settings')
+  @Roles('super_admin', 'tenant_admin')
+  getBillingSettings() {
+    return this.billingSettingsService.get();
+  }
+
+  /** Solo super_admin puede editar la configuracion fiscal. */
+  @Patch('billing-settings')
+  @Roles('super_admin')
+  updateBillingSettings(@Body() dto: any, @Request() req: any) {
+    return this.billingSettingsService.update(dto, req.user.userId || req.user.id);
+  }
 
   @Get('stats')
   @Roles('super_admin')
@@ -84,10 +107,16 @@ export class InvoicesController {
     return this.invoicesService.generateInvoice(subscriptionId, req.user.userId);
   }
 
+  /**
+   * Fase 4 / T4.7 — Bulk generation con opcional dry-run.
+   * Query param `?dryRun=true` retorna preview sin commit.
+   */
   @Post('generate-bulk')
   @Roles('super_admin')
-  generateBulk(@Request() req: any) {
-    return this.invoicesService.generateBulkInvoices(req.user.userId);
+  generateBulk(@Request() req: any, @Query('dryRun') dryRun?: string) {
+    return this.invoicesService.generateBulkInvoices(req.user.userId, {
+      dryRun: dryRun === 'true' || dryRun === '1',
+    });
   }
 
   @Patch(':id/pay')
@@ -100,13 +129,28 @@ export class InvoicesController {
     return this.invoicesService.markAsPaid(id, dto, req.user.userId);
   }
 
+  /**
+   * Fase 4 / T4.4 — Preview del email ANTES de enviar. Read-only.
+   * Permite validar subject + body + destinatarios. Body se renderiza
+   * tal como el cliente lo recibira.
+   */
+  @Get(':id/send/preview')
+  @Roles('super_admin')
+  previewSendInvoice(@Param('id', ParseUUIDPipe) id: string) {
+    return this.invoicesService.previewInvoiceEmail(id);
+  }
+
   @Post(':id/send')
   @Roles('super_admin')
   sendInvoice(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
+    @Body() body?: { cc?: string[]; bcc?: string[] },
   ) {
-    return this.invoicesService.sendInvoice(id, req.user.userId);
+    return this.invoicesService.sendInvoice(id, req.user.userId, {
+      cc: body?.cc,
+      bcc: body?.bcc,
+    });
   }
 
   @Post('send-reminders')

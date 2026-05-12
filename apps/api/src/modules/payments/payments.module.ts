@@ -2,6 +2,7 @@ import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { PaymentSession } from './entities/payment-session.entity';
 import { SavedPaymentMethod } from './entities/saved-payment-method.entity';
+import { WebhookEventLog } from './entities/webhook-event-log.entity';
 import { Invoice } from '../subscriptions/entities/invoice.entity';
 import { User } from '../users/entities/user.entity';
 import { Tenant } from '../tenants/entities/tenant.entity';
@@ -9,6 +10,8 @@ import { PaymentsService } from './payments.service';
 import { PaymentsController } from './payments.controller';
 import { PaymentMethodsService } from './payment-methods.service';
 import { PaymentMethodsController } from './payment-methods.controller';
+import { WebhookLogsService } from './webhook-logs.service';
+import { WebhookLogsController } from './webhook-logs.controller';
 import { WebhooksController } from './webhooks.controller';
 import { StripeProvider } from './providers/stripe-provider';
 import { MercadoPagoProvider } from './providers/mercadopago-provider';
@@ -30,12 +33,12 @@ import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
  */
 @Module({
   imports: [
-    TypeOrmModule.forFeature([PaymentSession, SavedPaymentMethod, Invoice, User, Tenant]),
+    TypeOrmModule.forFeature([PaymentSession, SavedPaymentMethod, WebhookEventLog, Invoice, User, Tenant]),
     NotificationsModule,
     forwardRef(() => SubscriptionsModule),
   ],
-  controllers: [PaymentsController, PaymentMethodsController, WebhooksController],
-  providers: [PaymentsService, PaymentMethodsService, StripeProvider, MercadoPagoProvider],
+  controllers: [PaymentsController, PaymentMethodsController, WebhooksController, WebhookLogsController],
+  providers: [PaymentsService, PaymentMethodsService, StripeProvider, MercadoPagoProvider, WebhookLogsService],
   exports: [PaymentMethodsService],
 })
 export class PaymentsModule {}

@@ -357,6 +357,41 @@ async function main() {
       `CREATE INDEX IF NOT EXISTS idx_spo_sub ON subscription_price_overrides(subscription_id)`,
       `CREATE INDEX IF NOT EXISTS idx_spo_tenant ON subscription_price_overrides(tenant_id)`,
       `CREATE INDEX IF NOT EXISTS idx_spo_sub_active ON subscription_price_overrides(subscription_id, valid_until)`,
+      // Fase 4 / T4.6 — Log de webhooks recibidos para forensia.
+      `CREATE TABLE IF NOT EXISTS webhook_event_log (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        provider varchar(20) NOT NULL,
+        external_event_id varchar(200) NULL,
+        event_type varchar(100) NULL,
+        status varchar(30) NOT NULL,
+        reason varchar(500) NULL,
+        payload jsonb NULL,
+        payment_session_id uuid NULL,
+        processing_ms int NULL,
+        received_at timestamptz NOT NULL DEFAULT now()
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_wel_received ON webhook_event_log(received_at DESC)`,
+      `CREATE INDEX IF NOT EXISTS idx_wel_provider_external ON webhook_event_log(provider, external_event_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_wel_status ON webhook_event_log(status)`,
+      // Fase 4 / T4.5 — Configuracion fiscal singleton (1 sola fila).
+      `CREATE TABLE IF NOT EXISTS billing_settings (
+        id varchar(20) PRIMARY KEY DEFAULT 'singleton',
+        issuer_name varchar(200) NOT NULL DEFAULT 'Ascenda Performance SpA',
+        issuer_rut varchar(12) NOT NULL DEFAULT '77.000.000-0',
+        issuer_address varchar(300) NOT NULL DEFAULT 'Santiago, Chile',
+        issuer_city varchar(100) NOT NULL DEFAULT 'Santiago',
+        issuer_country varchar(100) NOT NULL DEFAULT 'Chile',
+        issuer_email varchar(200) NULL,
+        issuer_phone varchar(50) NULL,
+        invoice_prefix varchar(20) NOT NULL DEFAULT 'EVA',
+        credit_note_prefix varchar(20) NOT NULL DEFAULT 'EVA-NC',
+        tax_rate numeric(5,2) NOT NULL DEFAULT 19,
+        due_days int NOT NULL DEFAULT 15,
+        default_currency varchar(10) NOT NULL DEFAULT 'UF',
+        footer_note text NULL,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now()
+      )`,
     ];
     for (const sql of tableFixes) {
       try { await client.query(sql); } catch { /* already exists */ }

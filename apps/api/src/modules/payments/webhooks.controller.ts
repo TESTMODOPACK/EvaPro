@@ -13,6 +13,7 @@ import { PaymentsService } from './payments.service';
 import { StripeProvider } from './providers/stripe-provider';
 import { MercadoPagoProvider } from './providers/mercadopago-provider';
 import { Public } from '../../common/decorators/public.decorator';
+import { WebhookLogsService } from './webhook-logs.service';
 
 /**
  * Public, unauthenticated endpoints that receive webhook callbacks from
@@ -40,6 +41,8 @@ export class WebhooksController {
     private readonly svc: PaymentsService,
     private readonly stripeProvider: StripeProvider,
     private readonly mpProvider: MercadoPagoProvider,
+    // Fase 4 / T4.6 — Log de eventos para forensia + replay.
+    private readonly logsSvc: WebhookLogsService,
   ) {}
 
   @Post('stripe')
@@ -50,13 +53,50 @@ export class WebhooksController {
   ) {
     const rawBody: Buffer = req.body;
     if (!Buffer.isBuffer(rawBody)) {
-      // Safety: if global body parser stole the body, we can't validate.
       this.logger.error('Stripe webhook body is not a Buffer — express.raw() missing?');
       throw new BadRequestException('raw body required');
     }
+
+    // Fase 4 / T4.6 — Persistir el evento ANTES de procesar.
+    let parsedPayload: any = null;
+    try {
+      parsedPayload = JSON.parse(rawBody.toString('utf8'));
+    } catch {
+      // Body malformado; lo registramos igual con payload null.
+    }
+    const logId = await this.logsSvc.record({
+      provider: 'stripe',
+      externalEventId: parsedPayload?.id ?? null,
+      eventType: parsedPayload?.type ?? null,
+      payload: parsedPayload,
+    });
+
+    const startedAt = Date.now();
     const event = await this.stripeProvider.verifyWebhook(rawBody, signature || '');
-    if (!event) throw new BadRequestException('invalid signature');
-    await this.svc.applyWebhookEvent('stripe', event);
+    if (!event) {
+      await this.logsSvc.updateStatus(logId, 'invalid_signature', {
+        reason: 'HMAC failed',
+        processingMs: Date.now() - startedAt,
+      });
+      throw new BadRequestException('invalid signature');
+    }
+    try {
+      const result = await this.svc.applyWebhookEvent('stripe', event);
+      await this.logsSvc.updateStatus(
+        logId,
+        result.handled ? 'processed' : 'ignored',
+        {
+          reason: result.reason,
+          processingMs: Date.now() - startedAt,
+        },
+      );
+    } catch (err: any) {
+      await this.logsSvc.updateStatus(logId, 'failed', {
+        reason: String(err?.message || err).slice(0, 500),
+        processingMs: Date.now() - startedAt,
+      });
+      throw err;
+    }
     return { received: true };
   }
 
@@ -84,18 +124,30 @@ export class WebhooksController {
       this.logger.error('MP webhook body is not a Buffer — express.raw() missing?');
       throw new BadRequestException('raw body required');
     }
+    // Fase 4 / T4.6 — Loguear ANTES de cualquier procesamiento.
+    let parsedPayload: any = null;
+    try {
+      parsedPayload = JSON.parse(rawBody.toString('utf8'));
+    } catch {}
+    const logId = await this.logsSvc.record({
+      provider: 'mercadopago',
+      externalEventId: dataId ?? null,
+      eventType: type ?? null,
+      payload: parsedPayload,
+    });
+
     if (type !== 'payment') {
-      // MP sends many event categories (chargebacks, merchant orders, etc.);
-      // we only care about `payment` today. Ack with 200 so MP stops retrying.
+      await this.logsSvc.updateStatus(logId, 'ignored', {
+        reason: `tipo ${type} no relevante`,
+      });
       return { received: true, ignored: true };
     }
-    // Reject empty strings too — a missing x-request-id (stripped by a WAF
-    // or proxy) would otherwise produce a valid-but-incomplete signature.
     if (!xSignature || !xRequestId || xRequestId.trim() === '' || !dataId) {
+      await this.logsSvc.updateStatus(logId, 'invalid_signature', {
+        reason: 'missing signature headers',
+      });
       throw new BadRequestException('missing signature headers');
     }
-    // Parse "ts=...,v1=..." into a composite "ts|requestId|dataId|v1" that
-    // the provider adapter knows how to validate.
     const map: Record<string, string> = {};
     xSignature.split(',').forEach((part) => {
       const [k, v] = part.split('=').map((s) => s.trim());
@@ -103,11 +155,39 @@ export class WebhooksController {
     });
     const ts = map.ts;
     const v1 = map.v1;
-    if (!ts || !v1) throw new BadRequestException('bad x-signature format');
+    if (!ts || !v1) {
+      await this.logsSvc.updateStatus(logId, 'invalid_signature', {
+        reason: 'bad x-signature format',
+      });
+      throw new BadRequestException('bad x-signature format');
+    }
     const composite = `${ts}|${xRequestId}|${dataId}|${v1}`;
+    const startedAt = Date.now();
     const event = await this.mpProvider.verifyWebhook(rawBody, composite);
-    if (!event) throw new BadRequestException('invalid signature');
-    await this.svc.applyWebhookEvent('mercadopago', event);
+    if (!event) {
+      await this.logsSvc.updateStatus(logId, 'invalid_signature', {
+        reason: 'HMAC failed',
+        processingMs: Date.now() - startedAt,
+      });
+      throw new BadRequestException('invalid signature');
+    }
+    try {
+      const result = await this.svc.applyWebhookEvent('mercadopago', event);
+      await this.logsSvc.updateStatus(
+        logId,
+        result.handled ? 'processed' : 'ignored',
+        {
+          reason: result.reason,
+          processingMs: Date.now() - startedAt,
+        },
+      );
+    } catch (err: any) {
+      await this.logsSvc.updateStatus(logId, 'failed', {
+        reason: String(err?.message || err).slice(0, 500),
+        processingMs: Date.now() - startedAt,
+      });
+      throw err;
+    }
     return { received: true };
   }
 }
