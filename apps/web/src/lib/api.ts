@@ -2284,7 +2284,11 @@ export const api = {
       request<{
         id: string;
         provider: 'stripe' | 'mercadopago';
-        status: 'pending' | 'paid' | 'failed' | 'cancelled' | 'expired';
+        // Fase 5 fix — incluye estados post-pago (T0.4 + T2.3): refunded
+        // y disputed pueden aparecer si el usuario revisita la URL del
+        // checkout viejo despues que el provider envio el webhook
+        // correspondiente.
+        status: 'pending' | 'paid' | 'failed' | 'cancelled' | 'expired' | 'refunded' | 'disputed';
         failureReason: string | null;
         amount: string;
         currency: string;

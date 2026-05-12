@@ -106,6 +106,32 @@ function PagoExitosoInner() {
                 {data.failureReason || 'El proveedor rechazó la operación. Puedes reintentar con otro método.'}
               </p>
             </>
+          ) : data?.status === 'refunded' ? (
+            // Fase 5 fix defer — Usuario revisita URL despues de un refund.
+            <>
+              <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>↩️</div>
+              <h1 style={{ fontSize: '1.3rem', fontWeight: 700, marginBottom: '0.5rem' }}>
+                Pago reembolsado
+              </h1>
+              <p style={{ color: '#64748b', fontSize: '0.9rem', margin: '0 0 1.5rem' }}>
+                Este pago fue reembolsado. Recibirás (o ya recibiste) una nota de crédito.
+                Cualquier consulta, contacta a soporte.
+              </p>
+            </>
+          ) : data?.status === 'disputed' ? (
+            // Fase 5 fix defer — Disputa en curso (chargeback). Caso raro
+            // pero posible si el cliente revisita la URL del checkout
+            // viejo despues de iniciar una disputa con su banco.
+            <>
+              <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>⚖️</div>
+              <h1 style={{ fontSize: '1.3rem', fontWeight: 700, marginBottom: '0.5rem' }}>
+                Disputa en proceso
+              </h1>
+              <p style={{ color: '#64748b', fontSize: '0.9rem', margin: '0 0 1.5rem' }}>
+                Este pago tiene una disputa abierta con tu banco. Nuestro equipo
+                está revisándolo. Para más información, contacta a soporte.
+              </p>
+            </>
           ) : giveUp || isError ? (
             <>
               <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>⏱</div>
@@ -122,6 +148,8 @@ function PagoExitosoInner() {
           {(data?.status === 'paid' ||
             data?.status === 'failed' ||
             data?.status === 'cancelled' ||
+            data?.status === 'refunded' ||
+            data?.status === 'disputed' ||
             giveUp) && (
             <a
               href={isAuth ? '/dashboard/mi-suscripcion' : '/login'}

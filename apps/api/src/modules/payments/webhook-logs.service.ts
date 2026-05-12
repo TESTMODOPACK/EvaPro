@@ -1,6 +1,7 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { LessThan, Repository } from 'typeorm';
+import { Cron } from '@nestjs/schedule';
 import {
   WebhookEventLog,
   WebhookEventLogStatus,
@@ -148,9 +149,9 @@ export class WebhookLogsService {
   }
 
   /**
-   * Defer Fase 5: purga > 90 dias.
-   * Esquema esbozado aqui para que el cron lo implemente cuando se
-   * agregue.
+   * Fase 5 / Tarea 5.1 — Purga webhooks > N dias. Default 90.
+   * Retention 90d es suficiente para forensia + SII (que ya tiene
+   * audit_logs separado con 6 anos). Configurable via env.
    */
   async purgeOlderThan(daysBack: number): Promise<{ purged: number }> {
     const cutoff = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000);
@@ -160,5 +161,38 @@ export class WebhookLogsService {
       .where('received_at < :cutoff', { cutoff })
       .execute();
     return { purged: result.affected ?? 0 };
+  }
+
+  /**
+   * Fase 5 / Tarea 5.1 — Cron diario 5am UTC. Purga webhook_event_log
+   * mas viejos que WEBHOOK_LOG_RETENTION_DAYS (default 90). Bajo
+   * volumen esperado (~1k/dia), el delete es economico.
+   *
+   * Multi-replica: NestJS @Cron sin lock distribuido podria correr en
+   * ambas. Pero DELETE es idempotente y el lock pesado seria
+   * over-engineering para esta tarea. La 2da corrida no encuentra
+   * rows que purgar y termina rapido.
+   */
+  @Cron('0 5 * * *')
+  async purgeOldWebhookLogsCron(): Promise<void> {
+    try {
+      const days = parseInt(process.env.WEBHOOK_LOG_RETENTION_DAYS || '90', 10);
+      if (!Number.isInteger(days) || days < 7 || days > 365) {
+        this.logger.warn(
+          `[Cron] WEBHOOK_LOG_RETENTION_DAYS=${days} fuera de rango [7, 365]; skipping purge.`,
+        );
+        return;
+      }
+      const result = await this.purgeOlderThan(days);
+      if (result.purged > 0) {
+        this.logger.log(
+          `[Cron] webhook_event_log purged ${result.purged} rows > ${days}d`,
+        );
+      }
+    } catch (err: any) {
+      this.logger.error(
+        `[Cron] Error en purgeOldWebhookLogsCron: ${err?.message || err}`,
+      );
+    }
   }
 }

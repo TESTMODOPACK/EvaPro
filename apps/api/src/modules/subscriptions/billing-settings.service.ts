@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { BillingSettings } from './entities/billing-settings.entity';
 import { AuditService } from '../audit/audit.service';
 import { validateRut, normalizeRut } from '../../common/utils/rut-validator';
@@ -31,6 +31,8 @@ export class BillingSettingsService {
     @InjectRepository(BillingSettings)
     private readonly repo: Repository<BillingSettings>,
     private readonly auditService: AuditService,
+    // Fase 5 fix defer — DataSource para lock pesimista en update.
+    private readonly dataSource: DataSource,
   ) {}
 
   /**
@@ -79,7 +81,35 @@ export class BillingSettingsService {
     }>,
     userId: string,
   ): Promise<BillingSettings> {
-    const current = await this.get();
+    // Fase 5 fix defer — Lock pesimista para serializar dos super_admins
+    // editando simultaneamente. Sin esto el "ultimo gana" silenciosamente
+    // descarta los cambios del otro. Con lock, el 2do espera y aplica
+    // sus cambios sobre el resultado del 1ro (audit log refleja ambos).
+    return this.dataSource.transaction(async (tx) => {
+      const current = await tx.findOne(BillingSettings, {
+        where: { id: BillingSettingsService.SINGLETON_ID },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!current) {
+        // Edge case raro: alguien borro el singleton entre get() y aqui.
+        // El servicio normal lo lazy-create, pero en update preferimos
+        // fallar explicito.
+        throw new BadRequestException('billing_settings singleton no encontrado.');
+      }
+      return this.applyUpdate(tx, current, dto, userId);
+    });
+  }
+
+  /**
+   * Logica de update extraida para que se ejecute DENTRO del transaction.
+   * tx.save garantiza que el commit unico respete el lock.
+   */
+  private async applyUpdate(
+    tx: any,
+    current: BillingSettings,
+    dto: any,
+    userId: string,
+  ): Promise<BillingSettings> {
     const before = {
       issuerName: current.issuerName,
       issuerRut: current.issuerRut,
@@ -170,7 +200,8 @@ export class BillingSettingsService {
       current.footerNote = dto.footerNote ? String(dto.footerNote).slice(0, 1000) : null;
     }
 
-    const saved = await this.repo.save(current);
+    // Fase 5 fix — `tx.save` para que el lock pesimista lo cubra.
+    const saved = await tx.save(current);
     // Invalidar cache.
     this.cache = null;
 

@@ -7,6 +7,7 @@ import { useAuthStore } from '@/store/auth.store';
 import { subscriptionStatusLabel as statusLabel, subscriptionStatusBadge as statusBadge } from '@/lib/statusMaps';
 import { FEATURE_LABELS } from '@/lib/feature-routes';
 import PendingInvoicesCard from '@/components/PendingInvoicesCard';
+import { useRequireRole } from '@/hooks/useRequireRole';
 
 const featureLabels = FEATURE_LABELS;
 
@@ -57,6 +58,11 @@ const requestStatusBadge: Record<string, string> = {
 };
 
 export default function MiSuscripcionPage() {
+  // Fase 5 / T5.2 — Defense-in-depth: solo tenant_admin accede aqui.
+  // Otros roles (super_admin gestiona desde /facturacion, manager/employee
+  // no tienen vista de billing) son redirigidos a /dashboard.
+  // super_admin tambien autorizado porque puede impersonar para soporte.
+  const { isReady, isAllowed } = useRequireRole(['tenant_admin', 'super_admin']);
   const { t } = useTranslation();
   const token = useAuthStore((s) => s.token);
   const [sub, setSub] = useState<any>(null);
@@ -424,6 +430,9 @@ export default function MiSuscripcionPage() {
     }
   }
 
+  // Fase 5 / T5.2 — Bloquear render si el rol no esta permitido (defensa
+  // en profundidad mientras el effect del hook redirige).
+  if (isReady && !isAllowed) return null;
   if (loading) return <Spinner />;
 
   const plan = sub?.plan;

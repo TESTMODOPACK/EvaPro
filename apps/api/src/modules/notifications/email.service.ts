@@ -197,32 +197,59 @@ export class EmailService {
     to: string | string[],
     subject: string,
     html: string,
-    tenantId?: string,
-    opts?: { userIdForUnsubscribe?: string },
+    tenantIdOrOpts?:
+      | string
+      | { tenantId?: string; userIdForUnsubscribe?: string; cc?: string[]; bcc?: string[] },
+    legacyOpts?: { userIdForUnsubscribe?: string },
   ): Promise<void> {
+    // Fase 5 / Fix defer — Soporta dos firmas:
+    //   send(to, subject, html, tenantId?, { userIdForUnsubscribe })
+    //   send(to, subject, html, { tenantId?, userIdForUnsubscribe?, cc?, bcc? })
+    // El callsite de T4.4 (sendInvoice) usa la nueva forma con cc/bcc.
+    // Resto del codigo usa la forma legacy y sigue funcionando.
+    let tenantId: string | undefined;
+    let userIdForUnsubscribe: string | undefined;
+    let cc: string[] | undefined;
+    let bcc: string[] | undefined;
+    if (typeof tenantIdOrOpts === 'string') {
+      tenantId = tenantIdOrOpts;
+      userIdForUnsubscribe = legacyOpts?.userIdForUnsubscribe;
+    } else if (tenantIdOrOpts) {
+      tenantId = tenantIdOrOpts.tenantId;
+      userIdForUnsubscribe = tenantIdOrOpts.userIdForUnsubscribe;
+      cc = tenantIdOrOpts.cc;
+      bcc = tenantIdOrOpts.bcc;
+    }
+
     const recipients = Array.isArray(to) ? to : [to];
     const from = await this.getFromAddress(tenantId);
-    const headers = opts?.userIdForUnsubscribe
-      ? this.buildUnsubscribeHeaders(this.mintUnsubscribeToken(opts.userIdForUnsubscribe, tenantId ?? null))
+    const headers = userIdForUnsubscribe
+      ? this.buildUnsubscribeHeaders(this.mintUnsubscribeToken(userIdForUnsubscribe, tenantId ?? null))
       : undefined;
 
     if (!this.resend) {
-      this.logger.log(`[EMAIL PREVIEW]\nFrom: ${from}\nTo: ${recipients.join(', ')}\nSubject: ${subject}${headers ? `\nList-Unsubscribe: ${headers['List-Unsubscribe']}` : ''}\n---`);
+      this.logger.log(
+        `[EMAIL PREVIEW]\nFrom: ${from}\nTo: ${recipients.join(', ')}${cc?.length ? `\nCC: ${cc.join(', ')}` : ''}${bcc?.length ? `\nBCC: ${bcc.join(', ')}` : ''}\nSubject: ${subject}${headers ? `\nList-Unsubscribe: ${headers['List-Unsubscribe']}` : ''}\n---`,
+      );
       return;
     }
 
     try {
       const payload: any = { from, to: recipients, subject, html };
       if (headers) payload.headers = headers;
+      if (cc && cc.length > 0) payload.cc = cc;
+      if (bcc && bcc.length > 0) payload.bcc = bcc;
       const result = await this.resend.emails.send(payload);
-      this.logger.log(`✉️  Email sent: to=${recipients.join(', ')}, from=${from}, id=${result?.data?.id || 'ok'}`);
+      this.logger.log(
+        `✉️  Email sent: to=${recipients.join(', ')}${cc?.length ? `, cc=${cc.length}` : ''}${bcc?.length ? `, bcc=${bcc.length}` : ''}, from=${from}, id=${result?.data?.id || 'ok'}`,
+      );
     } catch (err: any) {
       this.logger.error(`❌ Email FAILED: to=${recipients.join(', ')}, from=${from}, error=${err?.message}`);
       await this.auditService?.logFailure('notification.failed', {
         tenantId: tenantId ?? null,
         entityType: 'Email',
         error: err,
-        metadata: { to: recipients, subject, channel: 'resend' },
+        metadata: { to: recipients, subject, channel: 'resend', cc: cc?.length || 0, bcc: bcc?.length || 0 },
       });
     }
   }

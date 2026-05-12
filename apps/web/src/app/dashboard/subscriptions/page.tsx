@@ -6,6 +6,7 @@ import { useAuthStore } from '@/store/auth.store';
 import { formatCLP } from '@/lib/format';
 import { subscriptionStatusLabel as statusLabel, subscriptionStatusBadge as statusBadge } from '@/lib/statusMaps';
 import { FEATURE_LABELS } from '@/lib/feature-routes';
+import { useRequireRole } from '@/hooks/useRequireRole';
 
 function Spinner() {
   return (
@@ -83,6 +84,9 @@ const labelStyle: React.CSSProperties = {
 // ─── Component ──────────────────────────────────────────────────────────────
 
 export default function SubscriptionsPage() {
+  // Fase 5 / T5.2 — Defense-in-depth: solo super_admin (CRUD de planes
+  // y aprobacion de requests).
+  const { isReady, isAllowed } = useRequireRole('super_admin');
   const token = useAuthStore((s) => s.token);
 
   const [activeTab, setActiveTab] = useState<'plans' | 'subscriptions' | 'requests'>('plans');
@@ -472,6 +476,8 @@ export default function SubscriptionsPage() {
     transition: 'var(--transition)',
   });
 
+  // Fase 5 / T5.2 — Bloquear render si rol no autorizado.
+  if (isReady && !isAllowed) return null;
   if (loading) return <Spinner />;
 
   return (

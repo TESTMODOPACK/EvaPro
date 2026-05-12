@@ -5,6 +5,7 @@ import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
 import { useToastStore } from '@/store/toast.store';
 import { PageSkeleton } from '@/components/LoadingSkeleton';
+import { useRequireRole } from '@/hooks/useRequireRole';
 // P8-C: import dinámico de Recharts.
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from '@/components/DynamicCharts';
 
@@ -18,6 +19,9 @@ const STATUS_LABELS: Record<string, string> = {
 type Tab = 'invoices' | 'stats' | 'config';
 
 export default function FacturacionPage() {
+  // Fase 5 / T5.2 — Defense-in-depth: solo super_admin accede al console
+  // de facturacion (manejo cross-tenant).
+  const { isReady, isAllowed } = useRequireRole('super_admin');
   const token = useAuthStore((s) => s.token);
   const toast = useToastStore((s) => s.toast);
   const [tab, setTab] = useState<Tab>('invoices');
@@ -63,6 +67,8 @@ export default function FacturacionPage() {
 
   useEffect(() => { loadData(); }, [token, filterStatus, filterTenant, filterPeriod]);
 
+  // Fase 5 / T5.2 — Bloquear render si rol no autorizado.
+  if (isReady && !isAllowed) return null;
   if (loading) return <PageSkeleton cards={4} tableRows={6} />;
 
   const activeSubs = (subs || []).filter((s: any) => s.status === 'active' || s.status === 'trial');

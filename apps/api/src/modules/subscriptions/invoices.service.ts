@@ -37,6 +37,7 @@ import { NotificationType } from '../notifications/entities/notification.entity'
 import { runWithBlockingAdvisoryLock } from '../../common/utils/cron-lock';
 import { PriceOverridesService } from './price-overrides.service';
 import { BillingSettingsService } from './billing-settings.service';
+import { captureBillingError } from '../../common/utils/billing-sentry-context';
 
 /**
  * Fase 1 / Tarea 1.2 — Claves semanticas de los stages de dunning.
@@ -445,6 +446,11 @@ export class InvoicesService {
         `generateInvoice failed for subscription=${subscriptionId}: ${err?.message || err}`,
         err?.stack,
       );
+      // Fase 5 / T5.4 — Sentry tag con contexto billing.
+      captureBillingError(err, {
+        subscriptionId,
+        subAction: 'generate_invoice',
+      });
       throw new InternalServerErrorException(
         `Fallo al generar factura: ${err?.message || 'Error desconocido'}${err?.detail ? ` (${err.detail})` : ''}`,
       );
@@ -897,10 +903,14 @@ export class InvoicesService {
     const subject = `Factura ${invoice.invoiceNumber} — Eva360`;
     for (const r of recipients) {
       const html = this.buildInvoiceEmailHtml(invoice, r.firstName);
-      // EmailService.send firma: (to, subject, html, options?). Si no
-      // soporta CC/BCC, pasamos null/[] (degradacion graceful).
+      // Fase 5 fix — emailService.send acepta { tenantId, cc, bcc }
+      // ahora como objeto. CC/BCC propagados al payload de Resend.
       await this.emailService
-        .send(r.email, subject, html, { cc, bcc } as any)
+        .send(r.email, subject, html, {
+          tenantId: invoice.tenantId,
+          cc,
+          bcc,
+        })
         .catch(() => undefined);
     }
 

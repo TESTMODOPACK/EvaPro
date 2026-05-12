@@ -506,4 +506,80 @@ describe('PaymentsService — applyWebhookEvent (Fase 0 / Tarea 0.4)', () => {
       ).rejects.toThrow(/no pertenece al tenant/);
     });
   });
+
+  // ─── Fase 5 / Tarea 5.3 — Tests de concurrencia ─────────────────────
+
+  describe('concurrencia (T5.3)', () => {
+    it('50 webhooks paralelos del mismo externalId: solo 1 gana el lock y emite credit note una vez', async () => {
+      sessionRepo.findOne.mockResolvedValue(buildSession({ status: 'paid' }));
+
+      // Mock: solo el PRIMER UPDATE devuelve affected=1; el resto
+      // affected=0 simulando que perdieron el atomic acquire.
+      let firstWinner = true;
+      const updateQb: any = {
+        update: jest.fn().mockReturnThis(),
+        set: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        execute: jest.fn().mockImplementation(() => {
+          if (firstWinner) {
+            firstWinner = false;
+            return Promise.resolve({ affected: 1 });
+          }
+          return Promise.resolve({ affected: 0 });
+        }),
+      };
+      sessionRepo.createQueryBuilder = jest.fn().mockReturnValue(updateQb);
+
+      // Disparar 50 webhooks paralelos.
+      const results = await Promise.all(
+        Array.from({ length: 50 }, () =>
+          service.applyWebhookEvent('stripe', {
+            type: 'payment.refunded',
+            externalId: 'ext_abc',
+            amount: 11.9,
+          }),
+        ),
+      );
+
+      // Todos handled=true (idempotente).
+      expect(results.every((r) => r.handled)).toBe(true);
+      // CREDIT NOTE: emitida UNA SOLA VEZ (solo el ganador del lock).
+      expect(invoicesService.issueCreditNote).toHaveBeenCalledTimes(1);
+      // 49 noop por concurrencia.
+      const noopReasons = results.filter((r) => r.reason?.includes('already processed manually'));
+      expect(noopReasons.length).toBe(49);
+    });
+
+    it('webhook concurrente con success: 100 calls -> markAsPaid una sola vez', async () => {
+      sessionRepo.findOne.mockResolvedValue(buildSession({ status: 'pending' }));
+      let firstWinner = true;
+      const updateQb: any = {
+        update: jest.fn().mockReturnThis(),
+        set: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        execute: jest.fn().mockImplementation(() => {
+          if (firstWinner) {
+            firstWinner = false;
+            return Promise.resolve({ affected: 1 });
+          }
+          return Promise.resolve({ affected: 0 });
+        }),
+      };
+      sessionRepo.createQueryBuilder = jest.fn().mockReturnValue(updateQb);
+
+      const results = await Promise.all(
+        Array.from({ length: 100 }, () =>
+          service.applyWebhookEvent('stripe', {
+            type: 'payment.succeeded',
+            externalId: 'ext_abc',
+            amount: 11.9,
+          }),
+        ),
+      );
+
+      expect(results.every((r) => r.handled)).toBe(true);
+      // markAsPaid solo invocado UNA vez.
+      expect(invoicesService.markAsPaid).toHaveBeenCalledTimes(1);
+    });
+  });
 });
