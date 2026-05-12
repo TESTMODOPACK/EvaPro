@@ -14,34 +14,53 @@ export class SignaturesController {
 
   /** Request OTP to sign a document */
   @Post('request')
-  @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
+  @Roles('super_admin', 'tenant_admin', 'manager', 'employee', 'external')
   requestSignature(
     @Request() req: any,
-    @Body() dto: { documentType: string; documentId: string },
+    @Body() dto: {
+      documentType: string;
+      documentId: string;
+      // G2 (TAREA 5): rol de firma. Default = 'recipient'. 'author' para
+      // manager/external que firma su feedback emitido. 'employer_witness'
+      // solo tenant_admin (TAREA 6).
+      signatureRole?: 'recipient' | 'author' | 'employer_witness';
+    },
   ) {
     return this.signaturesService.requestSignature(
-      req.user.tenantId, req.user.userId, dto.documentType, dto.documentId,
+      req.user.tenantId, req.user.userId, req.user.role,
+      dto.documentType, dto.documentId,
+      dto.signatureRole ? { signatureRole: dto.signatureRole as any } : undefined,
     );
   }
 
   /** Verify OTP and sign the document */
   @Post('verify')
-  @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
+  @Roles('super_admin', 'tenant_admin', 'manager', 'employee', 'external')
   verifyAndSign(
     @Request() req: any,
-    @Body() dto: { documentType: string; documentId: string; code: string },
+    @Body() dto: {
+      documentType: string;
+      documentId: string;
+      code: string;
+      acknowledgmentType?: 'agree' | 'agree_with_comments' | 'decline';
+      acknowledgmentComment?: string;
+      signatureRole?: 'recipient' | 'author' | 'employer_witness';
+    },
   ) {
-    // P2.6 (bonus cleanup): usar getClientIp central (trust proxy-safe) en
-    // vez de leer el header directo (spoofable sin trust proxy).
     return this.signaturesService.verifyAndSign(
-      req.user.tenantId, req.user.userId, dto.documentType, dto.documentId, dto.code,
+      req.user.tenantId, req.user.userId, req.user.role,
+      dto.documentType, dto.documentId, dto.code,
       getClientIp(req),
+      dto.acknowledgmentType
+        ? { type: dto.acknowledgmentType as any, comment: dto.acknowledgmentComment }
+        : undefined,
+      dto.signatureRole ? { signatureRole: dto.signatureRole as any } : undefined,
     );
   }
 
-  /** List my own signatures (all roles) */
+  /** List my own signatures (all roles, including external) */
   @Get('mine')
-  @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
+  @Roles('super_admin', 'tenant_admin', 'manager', 'employee', 'external')
   listMine(@Request() req: any) {
     return this.signaturesService.getSignaturesByUser(req.user.tenantId, req.user.userId);
   }
@@ -64,6 +83,17 @@ export class SignaturesController {
     return this.signaturesService.verifyIntegrity(req.user.tenantId, id);
   }
 
+  /**
+   * G3 / Mejora #3 — Lista evaluation_responses pendientes de firma de
+   * testigo del empleador. Solo tenant_admin / super_admin.
+   * Devuelve documentos cuyo evaluatee ya firmó pero falta el testigo.
+   */
+  @Get('pending-employer-witness')
+  @Roles('super_admin', 'tenant_admin')
+  getPendingEmployerWitness(@Request() req: any) {
+    return this.signaturesService.getPendingEmployerWitness(req.user.tenantId);
+  }
+
   /** List signatures for a document */
   @Get('document/:documentType/:documentId')
   @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
@@ -80,5 +110,24 @@ export class SignaturesController {
   @Roles('super_admin', 'tenant_admin')
   listAll(@Request() req: any) {
     return this.signaturesService.getSignaturesByTenant(req.user.tenantId);
+  }
+
+  /**
+   * G8 (TAREA 9) — Revocación de firma. Solo super_admin.
+   * Body: { reason: string } con min 20 chars.
+   * La firma queda preservada en DB con status='revoked' + metadata
+   * (revokedAt, revokedBy, revocationReason) para auditoría legal.
+   */
+  @Post(':id/revoke')
+  @Roles('super_admin')
+  revokeSignature(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: { reason: string },
+    @Request() req: any,
+  ) {
+    return this.signaturesService.revokeSignature(
+      req.user.tenantId, req.user.userId, req.user.role,
+      id, dto?.reason, getClientIp(req),
+    );
   }
 }

@@ -1091,7 +1091,7 @@ export default function SubscriptionsPage() {
                               {paymentHistory.length === 0 ? (
                                 <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>Sin pagos registrados</p>
                               ) : (
-                                <table style={{ width: '100%', fontSize: '0.8rem' }}>
+                                <div className="table-wrapper"><table style={{ width: '100%', fontSize: '0.8rem' }}>
                                   <thead>
                                     <tr>
                                       <th style={{ padding: '0.35rem 0.5rem', textAlign: 'left' }}>Fecha</th>
@@ -1201,7 +1201,7 @@ export default function SubscriptionsPage() {
                                       </tr>
                                     ))}
                                   </tbody>
-                                </table>
+                                </table></div>
                               )}
                             </td>
                           </tr>

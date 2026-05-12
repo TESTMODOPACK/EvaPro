@@ -147,6 +147,51 @@ export interface TenantSettings {
   aiEnabled?: boolean;
   enpsEnabled?: boolean;
 
+  /**
+   * G3 (TAREA 6) — Si está activo, requiere co-firma del tenant_admin
+   * (signatureRole=employer_witness) además de la firma del empleado
+   * para considerar una evaluación cerrada. Cumplimiento legal en
+   * jurisdicciones que exigen firma del empleador (Chile, etc).
+   * Default: false (compat con tenants existentes).
+   */
+  requireEmployerWitness?: boolean;
+
+  /**
+   * ADR 0002 — Configuración del módulo de Recomendación de Promociones.
+   * Si `enabled=false` o ausente, el módulo no calcula scores ni emite
+   * recomendaciones. Pesos y filtros configurables por tenant; mínimos
+   * mandatorios (3 años empresa, 3 ciclos no-90°) NO son overridables
+   * a la baja (validación en backend).
+   */
+  promotionPolicy?: {
+    enabled?: boolean;
+    weights?: {
+      performance?: number;     // default 0.40
+      potential?: number;       // default 0.25
+      behavioral?: number;      // default 0.15
+      growth?: number;          // default 0.10
+      recognition?: number;     // default 0.05
+      engagement?: number;      // default 0.05
+    };
+    filters?: {
+      /** ≥ 36 mandatorio. Backend rechaza valores menores. */
+      minTenureMonthsCompany?: number;     // default 36
+      minTenureMonthsCurrentRole?: number; // default 12
+      /** ≥ 3 mandatorio. Backend rechaza valores menores. */
+      minNon90Cycles?: number;             // default 3
+      minEngagement?: number;              // default 3.0
+      requirePositionAbove?: boolean;      // default true
+      requirePotentialFromCalibration?: boolean; // default true
+    };
+    thresholds?: {
+      readyNow?: number;        // default 1.5 sigma
+      ready12m?: number;        // default 0.8
+      developFirst?: number;    // default 0.5
+    };
+    cohortStrategy?: 'level_and_department' | 'level_only' | 'tenant_wide';
+    performanceCycleCount?: number;  // default 3
+  };
+
   // Feedback module config
   feedbackConfig?: {
     scope?: 'all' | 'department' | 'team';

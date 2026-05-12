@@ -25,6 +25,10 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { ObjectivesService } from './objectives.service';
 import { CreateObjectiveDto } from './dto/create-objective.dto';
 import { UpdateObjectiveDto, CreateObjectiveUpdateDto } from './dto/update-objective.dto';
+import { BulkApproveDto } from './dto/bulk-approve.dto';
+import { CancelObjectiveDto } from './dto/cancel-objective.dto';
+import { ListObjectivesQueryDto } from './dto/list-objectives-query.dto';
+import { CarryOverObjectivesDto } from './dto/carry-over-objectives.dto';
 import { FeatureGuard } from '../../common/guards/feature.guard';
 import { Feature } from '../../common/decorators/feature.decorator';
 import { PlanFeature } from '../../common/constants/plan-features';
@@ -88,6 +92,37 @@ export class ObjectivesController {
 
     // employee, external: only own
     return this.objectivesService.findByUser(tenantId, req.user.userId);
+  }
+
+  /**
+   * T12 — Audit P2: listado paginado con filtros server-side.
+   * Reemplaza el patrón legacy `GET /objectives` (capado a 200).
+   *
+   * Query: ?page=1&pageSize=50&userId=&status=&type=&cycleId=&search=&department=
+   *
+   * Response: { data, total, page, pageSize, totalPages }
+   *
+   * Nota: el endpoint legacy `GET /objectives` se mantiene por
+   * compatibilidad con consumidores que aún esperan un array directo
+   * (export internals, otros). Migrar progresivamente a este endpoint.
+   */
+  @Get('list')
+  listPaginated(@Request() req: any, @Query() query: ListObjectivesQueryDto) {
+    return this.objectivesService.listObjectives(
+      req.user.tenantId,
+      req.user.role,
+      req.user.userId,
+      {
+        page: query.page,
+        pageSize: query.pageSize,
+        userId: query.userId,
+        status: query.status,
+        type: query.type,
+        cycleId: query.cycleId,
+        search: query.search,
+        department: query.department,
+      },
+    );
   }
 
   // B2.11: Objectives at risk (<40% progress)
@@ -154,13 +189,26 @@ export class ObjectivesController {
     @Request() req: any,
     @Query('userId') userId?: string,
     @Query('cycleId') cycleId?: string,
+    /**
+     * T9 — Audit P1 (Issue B): si `includeActive=true`, el reporte
+     * incluye también ACTIVE/OVERDUE. Para esos, usa el cycle-wide
+     * snapshot del cierre si existe (ciclos cerrados); sino marca
+     * inProgress para que la UI muestre etiqueta "aún en curso".
+     */
+    @Query('includeActive') includeActive?: string,
   ) {
     const role = req.user.role;
     // Employees can only see their own history
     const effectiveUserId = (role === 'employee' || role === 'external')
       ? req.user.userId
       : userId;
-    return this.objectivesService.getObjectiveHistory(req.user.tenantId, effectiveUserId, cycleId);
+    const includeActiveFlag = includeActive === 'true' || includeActive === '1';
+    return this.objectivesService.getObjectiveHistory(
+      req.user.tenantId,
+      effectiveUserId,
+      cycleId,
+      includeActiveFlag,
+    );
   }
 
   @Get(':id')
@@ -249,6 +297,48 @@ export class ObjectivesController {
     return this.objectivesService.approve(tenantId, id, req.user.userId);
   }
 
+  /**
+   * T4.1 — BUG-10: bulk approval transaccional. Reemplaza el loop
+   * client-side que no reportaba fallidos. Cada item se procesa de
+   * manera independiente; un fallo no aborta el resto.
+   */
+  /**
+   * T11 — Audit P2: carry-over de objetivos no terminados al ciclo
+   * siguiente. Body: { objectiveIds, targetCycleId, cancelSource?,
+   * sourceCancelReason? }. Devuelve { created, cancelled, failed[] }.
+   *
+   * Permisos: super_admin / tenant_admin / manager. El service valida
+   * cada item; manager solo puede llevar objetivos de su scope (similar
+   * a bulk-approve en T4).
+   */
+  @Post('carry-over')
+  @Roles('super_admin', 'tenant_admin', 'manager')
+  carryOver(@Request() req: any, @Body() dto: CarryOverObjectivesDto) {
+    return this.objectivesService.carryOverObjectives(
+      req.user.tenantId,
+      req.user.userId,
+      {
+        objectiveIds: dto.objectiveIds,
+        targetCycleId: dto.targetCycleId,
+        cancelSource: dto.cancelSource,
+        sourceCancelReason: dto.sourceCancelReason,
+      },
+    );
+  }
+
+  @Post('bulk-approve')
+  @Roles('super_admin', 'tenant_admin', 'manager')
+  bulkApprove(@Request() req: any, @Body() dto: BulkApproveDto) {
+    const tenantId =
+      req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.objectivesService.bulkApprove(
+      tenantId,
+      dto.ids,
+      req.user.userId,
+      req.user.role,
+    );
+  }
+
   @Post(':id/reject')
   @Roles('super_admin', 'tenant_admin', 'manager')
   async reject(
@@ -282,6 +372,59 @@ export class ObjectivesController {
   ) {
     const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
     return this.objectivesService.remove(tenantId, id);
+  }
+
+  /**
+   * T7.2 — Audit P1: cancela un objetivo por decisión de negocio.
+   * Reemplaza el delete-style flow para casos en que el objetivo deja
+   * de ser relevante (cambio de estrategia, scope-change). Razón
+   * obligatoria — queda registrada en cancellation_reason.
+   *
+   * Permisos:
+   *   - tenant_admin / super_admin: cualquier objetivo
+   *   - manager: propios o de reportes directos (P10 audit manager scope)
+   *   - employee: solo propios
+   *   - external: bloqueado
+   */
+  @Post(':id/cancel')
+  @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
+  async cancel(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+    @Body() dto: CancelObjectiveDto,
+  ) {
+    const { role, userId, tenantId } = req.user;
+    if (role === 'external') {
+      throw new ForbiddenException(
+        'Los asesores externos no pueden cancelar objetivos',
+      );
+    }
+
+    // Owner/scope check
+    if (role === 'employee' || role === 'manager') {
+      const objective = await this.objectivesService.findById(tenantId, id);
+      if (role === 'employee' && objective.userId !== userId) {
+        throw new ForbiddenException('Solo puedes cancelar tus propios objetivos');
+      }
+      if (role === 'manager' && objective.userId !== userId) {
+        await assertManagerCanAccessUser(
+          this.userRepo,
+          userId,
+          role,
+          objective.userId,
+          tenantId,
+        );
+      }
+    }
+
+    const effectiveTenantId =
+      role === 'super_admin' ? undefined : tenantId;
+    return this.objectivesService.cancel(
+      effectiveTenantId,
+      id,
+      dto.reason,
+      userId,
+    );
   }
 
   @Post(':id/progress')
@@ -326,6 +469,19 @@ export class ObjectivesController {
     @Request() req: any,
   ) {
     return this.objectivesService.getProgressHistory(req.user.tenantId, id);
+  }
+
+  /**
+   * T8.2 — Audit P1: historial completo de rechazos del objetivo. Útil
+   * para que el owner vea cuántas veces fue rechazado y qué corregir
+   * (la columna rejection_reason solo guarda el último).
+   */
+  @Get(':id/rejection-history')
+  getRejectionHistory(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+  ) {
+    return this.objectivesService.listRejectionHistory(req.user.tenantId, id);
   }
 
   // ─── Comments ────────────────────────────────────────────────────────────
@@ -386,7 +542,12 @@ export class ObjectivesController {
     @Request() req: any,
     @Body() data: { currentValue?: number; description?: string; targetValue?: number; status?: string },
   ) {
-    return this.objectivesService.updateKeyResult(req.user.tenantId, krId, data as any);
+    return this.objectivesService.updateKeyResult(
+      req.user.tenantId,
+      krId,
+      data as any,
+      req.user.userId,
+    );
   }
 
   @Delete('key-results/:krId')
@@ -395,6 +556,10 @@ export class ObjectivesController {
     @Param('krId', ParseUUIDPipe) krId: string,
     @Request() req: any,
   ) {
-    return this.objectivesService.deleteKeyResult(req.user.tenantId, krId);
+    return this.objectivesService.deleteKeyResult(
+      req.user.tenantId,
+      krId,
+      req.user.userId,
+    );
   }
 }

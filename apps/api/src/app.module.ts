@@ -22,6 +22,7 @@ import { ReportsModule } from './modules/reports/reports.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { FeedbackModule } from './modules/feedback/feedback.module';
 import { ObjectivesModule } from './modules/objectives/objectives.module';
+import { RecurringMetricsModule } from './modules/recurring-metrics/recurring-metrics.module';
 import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
 import { TalentModule } from './modules/talent/talent.module';
 import { DevelopmentModule } from './modules/development/development.module';
@@ -36,6 +37,7 @@ import { TeamMeetingsModule } from './modules/team-meetings/team-meetings.module
 import { MoodCheckinsModule } from './modules/mood-checkins/mood-checkins.module';
 import { LeaderStreaksModule } from './modules/leader-streaks/leader-streaks.module';
 import { SignaturesModule } from './modules/signatures/signatures.module';
+import { PromotionsModule } from './modules/promotions/promotions.module';
 import { SurveysModule } from './modules/surveys/surveys.module';
 import { ContractsModule } from './modules/contracts/contracts.module';
 import { HealthModule } from './modules/health/health.module';
@@ -108,6 +110,7 @@ import { CsrfGuard } from './common/guards/csrf.guard';
     NotificationsModule,
     FeedbackModule,
     ObjectivesModule,
+    RecurringMetricsModule,
     SubscriptionsModule,
     TalentModule,
     DevelopmentModule,
@@ -122,6 +125,7 @@ import { CsrfGuard } from './common/guards/csrf.guard';
     MoodCheckinsModule,
     LeaderStreaksModule,
     SignaturesModule,
+    PromotionsModule,
     SurveysModule,
     ContractsModule,
     HealthModule,

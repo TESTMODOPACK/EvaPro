@@ -25,6 +25,15 @@
  */
 
 import dynamic from 'next/dynamic';
+// Re-export directo de los "props-carriers" — components de Recharts que
+// NO se renderizan por si mismos sino que son leidos por su padre via
+// `Children.map` para extraer props (fill, stroke, etc). Si los envolvemos
+// en `dynamic()` el wrapper de Next rompe la introspeccion del padre y los
+// colores/etiquetas se ignoran (e.g., todos los slices de un PieChart
+// salen grises pese a tener Cell con fill explicito). Importarlos
+// directo no agrega bundle real porque el chunk de recharts ya se carga
+// via los containers dinamicos del primer chart de la pagina.
+export { Cell } from 'recharts';
 
 // Loading placeholder — alto consistente para evitar layout shift (CLS).
 function ChartFallback() {
@@ -70,7 +79,8 @@ export const PolarAngleAxis = dynamic(() => import('recharts').then((m) => m.Pol
 export const PolarRadiusAxis = dynamic(() => import('recharts').then((m) => m.PolarRadiusAxis), { ssr: false });
 export const Tooltip = dynamic(() => import('recharts').then((m) => m.Tooltip), { ssr: false });
 export const Legend = dynamic(() => import('recharts').then((m) => m.Legend), { ssr: false });
-export const Cell = dynamic(() => import('recharts').then((m) => m.Cell), { ssr: false });
+// `Cell` se exporta arriba directamente desde 'recharts' (ver comentario
+// al top). NO envolver en `dynamic()` — rompe la lectura de fill por Pie.
 export const ReferenceLine = dynamic(() => import('recharts').then((m) => m.ReferenceLine), { ssr: false });
 export const LabelList = dynamic(() => import('recharts').then((m) => m.LabelList), { ssr: false });
 export const Label = dynamic(() => import('recharts').then((m) => m.Label), { ssr: false });

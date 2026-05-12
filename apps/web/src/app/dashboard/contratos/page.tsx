@@ -433,12 +433,14 @@ export default function ContratosPage() {
         </div>
       )}
 
-      {/* Signature Modal */}
+      {/* Signature Modal — para contratos no aplica decline (el rechazo de
+          contrato es flujo separado vía contracts/:id/reject). */}
       {signModal && (
         <SignatureModal
           documentType={signModal.documentType}
           documentId={signModal.documentId}
           documentName={signModal.documentName}
+          allowAcknowledgmentChoice={false}
           onCancel={() => setSignModal(null)}
           onSigned={() => {
             setSignModal(null);

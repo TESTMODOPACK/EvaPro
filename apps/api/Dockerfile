@@ -24,6 +24,12 @@ COPY --from=builder /app/package.json ./
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 
+# Mejora #6 — capturar SHA + fecha de build en /app/.git-sha para exponer
+# via GET /health/version. Si GIT_SHA no se pasa como build-arg (dev local
+# sin docker compose, builds ad-hoc), queda 'unknown' sin romper el build.
+ARG GIT_SHA=unknown
+RUN echo "${GIT_SHA}|$(date -u +%Y-%m-%dT%H:%M:%SZ)" > /app/.git-sha
+
 EXPOSE 3000
 
 # Start the app. Los seeds (seed.js y seed-demo-full.js) YA NO corren en

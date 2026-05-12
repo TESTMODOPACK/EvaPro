@@ -13,6 +13,7 @@ import { EvaluationResponse } from './entities/evaluation-response.entity';
 import { CycleStage, StageType, StageStatus } from './entities/cycle-stage.entity';
 import { CycleOrgSnapshot } from './entities/cycle-org-snapshot.entity';
 import { CycleEvaluateeWeight } from './entities/cycle-evaluatee-weight.entity';
+import { EvaluationObjectiveSnapshot } from './entities/evaluation-objective-snapshot.entity';
 import { FormTemplate } from '../templates/entities/form-template.entity';
 import { FormSubTemplate } from '../templates/entities/form-sub-template.entity';
 import { User } from '../users/entities/user.entity';
@@ -92,6 +93,8 @@ export class EvaluationsService {
     private readonly orgSnapshotRepo: Repository<CycleOrgSnapshot>,
     @InjectRepository(CycleEvaluateeWeight)
     private readonly cewRepo: Repository<CycleEvaluateeWeight>,
+    @InjectRepository(EvaluationObjectiveSnapshot)
+    private readonly objSnapshotRepo: Repository<EvaluationObjectiveSnapshot>,
     @InjectRepository(Objective)
     private readonly objectiveRepo: Repository<Objective>,
     @InjectRepository(KeyResult)
@@ -1672,6 +1675,189 @@ export class EvaluationsService {
     }
   }
 
+  /**
+   * T5.2 — Audit P0 (Issue A): captura un snapshot inmutable de los
+   * objetivos vinculados a un ciclo, en el momento del cierre. Se llama
+   * desde `closeCycle` para freezar la "foto" que verán las evaluaciones
+   * cerradas — protege la integridad documental cuando los objetivos
+   * siguen progresando después del cierre del ciclo.
+   *
+   * Modo cycle-wide: assignmentId=null. Un snapshot por (cycleId,
+   * objectiveId). La función es best-effort: si falla, loguea warning
+   * pero no aborta el cierre del ciclo.
+   *
+   * Idempotencia: el método no chequea pre-existencia. Llamarlo dos veces
+   * inserta dos snapshots — closeCycle es la única vía y solo corre una
+   * vez por ciclo (status=ACTIVE/PAUSED → CLOSED es one-way).
+   */
+  private async captureCycleObjectiveSnapshot(
+    cycleId: string,
+    tenantId: string,
+    capturedBy: string,
+  ): Promise<number> {
+    try {
+      const objectives = await this.objectiveRepo.find({
+        where: { tenantId, cycleId },
+      });
+      if (objectives.length === 0) return 0;
+
+      const objectiveIds = objectives.map((o) => o.id);
+      const krs = await this.keyResultRepo
+        .createQueryBuilder('kr')
+        .where('kr.tenantId = :tenantId', { tenantId })
+        .andWhere('kr.objectiveId IN (:...ids)', { ids: objectiveIds })
+        .getMany();
+
+      const krsByObjective = new Map<string, KeyResult[]>();
+      for (const kr of krs) {
+        const list = krsByObjective.get(kr.objectiveId) ?? [];
+        list.push(kr);
+        krsByObjective.set(kr.objectiveId, list);
+      }
+
+      const snapshots = objectives.map((obj) => {
+        const objKrs = krsByObjective.get(obj.id) ?? [];
+        return this.objSnapshotRepo.create({
+          tenantId,
+          cycleId,
+          assignmentId: null,
+          objectiveId: obj.id,
+          ownerUserId: obj.userId,
+          objectiveTitle: obj.title,
+          objectiveType: obj.type,
+          objectiveStatus: obj.status,
+          progress: obj.progress,
+          weight: Number(obj.weight ?? 0),
+          targetDate: obj.targetDate ?? null,
+          keyResultsJson: objKrs.map((kr) => ({
+            id: kr.id,
+            description: kr.description,
+            unit: kr.unit ?? null,
+            baseValue: Number(kr.baseValue),
+            targetValue: Number(kr.targetValue),
+            currentValue: Number(kr.currentValue),
+            status: kr.status,
+          })),
+          capturedBy,
+          captureSource: 'cycle_close' as const,
+        });
+      });
+
+      await this.objSnapshotRepo.save(snapshots);
+      return snapshots.length;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(
+        `Snapshot capture (cycle_close) falló para cycle=${cycleId}: ${msg}`,
+      );
+      return 0;
+    }
+  }
+
+  /**
+   * T5.3 — Audit P0 (Issue A): captura un snapshot de los objetivos del
+   * evaluado al momento de firmar la evaluación. Modo per-signature:
+   * `assignmentId` se setea para que la lectura preferencial use este
+   * snapshot sobre el cycle-wide.
+   *
+   * Replica la lógica de carga de objetivos del flujo evaluation pre-load
+   * (cycle-linked primero, fallback por rango de fechas si no hay vínculo
+   * explícito al ciclo) — así el snapshot refleja exactamente lo que
+   * vio el firmante en el formulario.
+   *
+   * Best-effort: si falla, loguea warning sin abortar el flujo de firma.
+   */
+  async captureAssignmentObjectiveSnapshot(
+    assignmentId: string,
+    capturedBy: string,
+  ): Promise<number> {
+    try {
+      const assignment = await this.assignmentRepo.findOne({
+        where: { id: assignmentId },
+        relations: ['cycle'],
+      });
+      if (!assignment) return 0;
+      const tenantId = assignment.tenantId;
+      const cycleId = assignment.cycleId;
+      if (!tenantId || !cycleId) return 0;
+
+      // Misma lógica de carga que getEvaluationByAssignmentId pre-load:
+      // 1) objetivos vinculados al ciclo, 2) fallback por rango de fechas.
+      let objectives: Objective[] = await this.objectiveRepo.find({
+        where: { userId: assignment.evaluateeId, tenantId, cycleId },
+        take: 50,
+      });
+
+      if (objectives.length === 0 && assignment.cycle) {
+        objectives = await this.objectiveRepo
+          .createQueryBuilder('o')
+          .where('o.userId = :userId', { userId: assignment.evaluateeId })
+          .andWhere('o.tenantId = :tenantId', { tenantId })
+          .andWhere('o.created_at >= :start', {
+            start: assignment.cycle.startDate,
+          })
+          .andWhere('o.created_at <= :end', {
+            end: assignment.cycle.endDate,
+          })
+          .limit(50)
+          .getMany();
+      }
+
+      if (objectives.length === 0) return 0;
+
+      const objectiveIds = objectives.map((o) => o.id);
+      const krs = await this.keyResultRepo
+        .createQueryBuilder('kr')
+        .where('kr.tenantId = :tenantId', { tenantId })
+        .andWhere('kr.objectiveId IN (:...ids)', { ids: objectiveIds })
+        .getMany();
+
+      const krsByObjective = new Map<string, KeyResult[]>();
+      for (const kr of krs) {
+        const list = krsByObjective.get(kr.objectiveId) ?? [];
+        list.push(kr);
+        krsByObjective.set(kr.objectiveId, list);
+      }
+
+      const snapshots = objectives.map((obj) => {
+        const objKrs = krsByObjective.get(obj.id) ?? [];
+        return this.objSnapshotRepo.create({
+          tenantId,
+          cycleId,
+          assignmentId,
+          objectiveId: obj.id,
+          ownerUserId: obj.userId,
+          objectiveTitle: obj.title,
+          objectiveType: obj.type,
+          objectiveStatus: obj.status,
+          progress: obj.progress,
+          weight: Number(obj.weight ?? 0),
+          targetDate: obj.targetDate ?? null,
+          keyResultsJson: objKrs.map((kr) => ({
+            id: kr.id,
+            description: kr.description,
+            unit: kr.unit ?? null,
+            baseValue: Number(kr.baseValue),
+            targetValue: Number(kr.targetValue),
+            currentValue: Number(kr.currentValue),
+            status: kr.status,
+          })),
+          capturedBy,
+          captureSource: 'signature' as const,
+        });
+      });
+
+      await this.objSnapshotRepo.save(snapshots);
+      return snapshots.length;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(
+        `Snapshot capture (signature) falló para assignment=${assignmentId}: ${msg}`,
+      );
+      return 0;
+    }
+  }
+
   async closeCycle(id: string, tenantId: string | null, userId: string): Promise<EvaluationCycle> {
     const cycle = await this.findCycleById(id, tenantId);
     // Authoritative tenantId desde la entidad (soporta super_admin cross-tenant).
@@ -1691,6 +1877,20 @@ export class EvaluationsService {
       .andWhere('tenantId = :tenantId', { tenantId: effectiveTenantId })
       .andWhere('status != :completed', { completed: StageStatus.COMPLETED })
       .execute();
+
+    // T5.2 — capturar snapshot de objetivos vinculados al ciclo. Best-effort:
+    // si falla, el cierre del ciclo igual se completa (no es crítico para
+    // la consistencia transaccional del cycle.status).
+    const snapshotCount = await this.captureCycleObjectiveSnapshot(
+      id,
+      effectiveTenantId,
+      userId,
+    );
+    if (snapshotCount > 0) {
+      this.logger.log(
+        `[cycle.close] captured ${snapshotCount} objective snapshots for cycle ${id}`,
+      );
+    }
 
     await this.auditService.log(effectiveTenantId, userId, 'cycle.closed', 'cycle', id);
 
@@ -2245,60 +2445,128 @@ export class EvaluationsService {
     });
 
     // Pre-load evaluatee's objectives for the cycle period (OKR context)
-    let evaluateeObjectives: Objective[] = [];
+    // T5.4 — Audit P0 (Issue A): preferir snapshots inmutables si existen.
+    // Orden de preferencia:
+    //   1. snapshot per-signature (assignmentId match) — más preciso
+    //   2. snapshot cycle-wide (assignmentId IS NULL) — fallback al cierre
+    //   3. live load — comportamiento legacy / ciclo abierto sin firma
+    // Esto evita que evaluaciones firmadas muten retroactivamente cuando
+    // los objetivos siguen progresando.
+    let evaluateeObjectives: any[] = [];
     let evaluateeObjectivesSummary: any = null;
+    let objectivesSource: 'snapshot_signature' | 'snapshot_cycle' | 'live' = 'live';
     try {
-      // First try objectives linked to this specific cycle
-      evaluateeObjectives = await this.objectiveRepo.find({
-        where: { userId: assignment.evaluateeId, tenantId, cycleId: assignment.cycleId },
-        order: { createdAt: 'DESC' },
-        take: 20,
+      // ─── T5.4 paso 1+2: lookup snapshot (per-sig → cycle-wide) ─────────
+      let snapshotRows = await this.objSnapshotRepo.find({
+        where: { tenantId, assignmentId },
+        order: { capturedAt: 'DESC' },
       });
-
-      // If none linked to cycle, fallback to objectives created during the cycle period
-      if (evaluateeObjectives.length === 0 && assignment.cycle) {
-        const qb = this.objectiveRepo.createQueryBuilder('o')
-          .where('o.userId = :userId', { userId: assignment.evaluateeId })
-          .andWhere('o.tenantId = :tenantId', { tenantId })
-          .andWhere('o.created_at >= :start', { start: assignment.cycle.startDate })
-          .andWhere('o.created_at <= :end', { end: assignment.cycle.endDate })
-          .orderBy('o.created_at', 'DESC')
-          .limit(20);
-        evaluateeObjectives = await qb.getMany();
+      if (snapshotRows.length > 0) {
+        objectivesSource = 'snapshot_signature';
+      } else if (assignment.cycleId) {
+        snapshotRows = await this.objSnapshotRepo
+          .createQueryBuilder('s')
+          .where('s.tenantId = :tenantId', { tenantId })
+          .andWhere('s.cycleId = :cycleId', { cycleId: assignment.cycleId })
+          .andWhere('s.assignmentId IS NULL')
+          .orderBy('s.capturedAt', 'DESC')
+          .getMany();
+        if (snapshotRows.length > 0) {
+          objectivesSource = 'snapshot_cycle';
+        }
       }
 
-      // B3.1: For self-evaluations, enrich objectives with Key Results and summary
+      if (snapshotRows.length > 0) {
+        // Dedup por objectiveId — quedarse con el snapshot más reciente
+        // (orden DESC ya pone el más reciente primero)
+        const seenObjective = new Set<string>();
+        const dedupedSnapshots = [] as typeof snapshotRows;
+        for (const snap of snapshotRows) {
+          if (!seenObjective.has(snap.objectiveId)) {
+            seenObjective.add(snap.objectiveId);
+            dedupedSnapshots.push(snap);
+          }
+        }
+
+        evaluateeObjectives = dedupedSnapshots.map((s) => ({
+          id: s.objectiveId,
+          tenantId: s.tenantId,
+          userId: s.ownerUserId,
+          title: s.objectiveTitle,
+          type: s.objectiveType,
+          progress: s.progress,
+          weight: Number(s.weight),
+          status: s.objectiveStatus,
+          targetDate: s.targetDate,
+          cycleId: s.cycleId,
+          keyResults: s.keyResultsJson || [],
+        }));
+      } else {
+        // ─── T5.4 paso 3: fallback live load (lógica legacy) ─────────────
+        objectivesSource = 'live';
+        const liveObjectives: Objective[] = await this.objectiveRepo.find({
+          where: { userId: assignment.evaluateeId, tenantId, cycleId: assignment.cycleId },
+          order: { createdAt: 'DESC' },
+          take: 20,
+        });
+
+        // Si no hay vinculados al ciclo, fallback a creados durante el período
+        let resolved: Objective[] = liveObjectives;
+        if (resolved.length === 0 && assignment.cycle) {
+          const qb = this.objectiveRepo.createQueryBuilder('o')
+            .where('o.userId = :userId', { userId: assignment.evaluateeId })
+            .andWhere('o.tenantId = :tenantId', { tenantId })
+            .andWhere('o.created_at >= :start', { start: assignment.cycle.startDate })
+            .andWhere('o.created_at <= :end', { end: assignment.cycle.endDate })
+            .orderBy('o.created_at', 'DESC')
+            .limit(20);
+          resolved = await qb.getMany();
+        }
+
+        if (resolved.length > 0) {
+          const objectiveIds = resolved.map((o) => o.id);
+          const keyResults = await this.keyResultRepo
+            .createQueryBuilder('kr')
+            .where('kr.objectiveId IN (:...ids)', { ids: objectiveIds })
+            .andWhere('kr.tenantId = :tenantId', { tenantId })
+            .getMany();
+
+          const krByObjective = new Map<string, KeyResult[]>();
+          for (const kr of keyResults) {
+            const list = krByObjective.get(kr.objectiveId) || [];
+            list.push(kr);
+            krByObjective.set(kr.objectiveId, list);
+          }
+
+          for (const obj of resolved) {
+            (obj as any).keyResults = krByObjective.get(obj.id) || [];
+          }
+        }
+        evaluateeObjectives = resolved as any[];
+      }
+
+      // ─── Summary compartido entre snapshot y live ────────────────────
       if (evaluateeObjectives.length > 0) {
-        const objectiveIds = evaluateeObjectives.map((o) => o.id);
-        const keyResults = await this.keyResultRepo
-          .createQueryBuilder('kr')
-          .where('kr.objectiveId IN (:...ids)', { ids: objectiveIds })
-          .andWhere('kr.tenantId = :tenantId', { tenantId })
-          .getMany();
-
-        // Group KRs by objective
-        const krByObjective = new Map<string, KeyResult[]>();
-        for (const kr of keyResults) {
-          const list = krByObjective.get(kr.objectiveId) || [];
-          list.push(kr);
-          krByObjective.set(kr.objectiveId, list);
-        }
-
-        // Attach KRs to each objective as a virtual property
-        for (const obj of evaluateeObjectives) {
-          (obj as any).keyResults = krByObjective.get(obj.id) || [];
-        }
-
-        // Calculate summary for the self-evaluation form context
         const activeOrCompleted = evaluateeObjectives.filter(
           (o) => o.status === ObjectiveStatus.ACTIVE || o.status === ObjectiveStatus.COMPLETED,
         );
-        const totalProgress = activeOrCompleted.reduce((sum, o) => sum + (o.progress || 0), 0);
+        const totalProgress = activeOrCompleted.reduce(
+          (sum: number, o: any) => sum + (o.progress || 0),
+          0,
+        );
         const avgProgress = activeOrCompleted.length > 0
           ? Math.round(totalProgress / activeOrCompleted.length)
           : 0;
-        const completedCount = evaluateeObjectives.filter((o) => o.status === ObjectiveStatus.COMPLETED).length;
-        const atRiskCount = activeOrCompleted.filter((o) => (o.progress || 0) < 40).length;
+        const completedCount = evaluateeObjectives.filter(
+          (o: any) => o.status === ObjectiveStatus.COMPLETED,
+        ).length;
+        const atRiskCount = activeOrCompleted.filter(
+          (o: any) => (o.progress || 0) < 40,
+        ).length;
+        const totalKeyResults = evaluateeObjectives.reduce(
+          (sum: number, o: any) => sum + (o.keyResults?.length || 0),
+          0,
+        );
 
         evaluateeObjectivesSummary = {
           totalObjectives: evaluateeObjectives.length,
@@ -2306,7 +2574,7 @@ export class EvaluationsService {
           completedCount,
           atRiskCount,
           avgProgress,
-          totalKeyResults: keyResults.length,
+          totalKeyResults,
         };
       }
     } catch {
@@ -2403,7 +2671,16 @@ export class EvaluationsService {
       }
     }
 
-    return { assignment, template, response, evaluateeObjectives, evaluateeObjectivesSummary };
+    return {
+      assignment,
+      template,
+      response,
+      evaluateeObjectives,
+      evaluateeObjectivesSummary,
+      // T5.4: indica al frontend si los objetivos vienen de snapshot o live,
+      // para mostrar el badge "datos congelados al cierre/firma" cuando aplica.
+      objectivesSource,
+    };
   }
 
   // ─── Responses ────────────────────────────────────────────────────────────

@@ -416,6 +416,8 @@ a:focus-visible {
 .table-wrapper {
   width: 100%;
   overflow-x: auto;
+  /* Mobile audit fix: scroll suave + sin scrollbar feo en touch */
+  -webkit-overflow-scrolling: touch;
 }
 table { width: 100%; border-collapse: collapse; }
 thead th {
@@ -427,13 +429,24 @@ thead th {
   letter-spacing: 0.06em;
   color: var(--text-muted);
   border-bottom: 1px solid var(--border);
+  /* Mobile audit fix: headers nunca deben quebrar palabras letra-por-letra.
+     Si la tabla no cabe, el wrapper hace scroll horizontal. */
+  white-space: nowrap;
 }
 tbody tr {
   border-bottom: 1px solid var(--border);
   transition: var(--transition);
 }
 tbody tr:hover { background: var(--bg-hover); }
-tbody td { padding: 0.9rem 1rem; font-size: 0.875rem; color: var(--text-secondary); }
+tbody td {
+  padding: 0.9rem 1rem;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  /* Mobile audit fix: las celdas SÍ pueden envolver en saltos de palabra,
+     pero NO romper letra-por-letra (que era el bug visual). */
+  word-break: normal;
+  overflow-wrap: break-word;
+}
 tbody td:first-child { color: var(--text-primary); font-weight: 500; }
 
 /* ── Loading Spinner ─────────────────────────────────────── */
@@ -587,16 +600,27 @@ tbody td:first-child { color: var(--text-primary); font-weight: 500; }
     box-sizing: border-box;
   }
 
-  /* P13: Tables — horizontal scroll. min-width bajado de 600 → 360 para
-     que no genere scroll forzoso en iPhones pequeños (375px) cuando la
-     tabla tiene pocas columnas. Si el contenido requiere más ancho el
-     scroll horizontal sigue disponible. */
+  /* Mobile audit fix (post-P13): el min-width=360 hacía que tablas
+     de 5+ columnas comprimieran el texto hasta romper letra-por-letra
+     porque cabían en el viewport sin necesidad de scroll. Subir a 640
+     fuerza scroll horizontal en cualquier tabla con varias columnas y
+     deja a las celdas su ancho natural. Las pocas tablas de 2-3 columnas
+     pueden agregar style override `min-width: auto` si quieren aprovechar
+     el viewport completo sin scroll. */
   .table-wrapper {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
   }
   .table-wrapper table {
-    min-width: 360px;
+    min-width: 640px;
+  }
+  /* Mobile audit fix: padding más compacto en mobile (sin esto, 1rem +
+     1rem deja muy poco espacio para el contenido en scroll horizontal). */
+  .table-wrapper thead th {
+    padding: 0.55rem 0.75rem;
+  }
+  .table-wrapper tbody td {
+    padding: 0.7rem 0.75rem;
   }
 
   /* P14: Department/label text with fixed min-width in bar charts — shrink */

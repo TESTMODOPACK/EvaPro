@@ -13,6 +13,45 @@ export function useObjectives(userId?: string) {
   });
 }
 
+/**
+ * T12 — Audit P2: hook paginado con filtros server-side. Reemplaza
+ * `useObjectives()` cuando se necesita el total real (sin cap silente)
+ * y filtros aplicados por el backend.
+ *
+ * Ejemplo:
+ *   const { data, isLoading } = useObjectivesPaginated({ page: 1, pageSize: 50 });
+ *   const items = data?.data ?? [];
+ *   const total = data?.total ?? 0;
+ */
+export function useObjectivesPaginated(opts?: {
+  page?: number;
+  pageSize?: number;
+  userId?: string;
+  status?: string;
+  type?: string;
+  cycleId?: string;
+  search?: string;
+  department?: string;
+}) {
+  const token = useAuthStore((s) => s.token);
+  return useQuery({
+    queryKey: [
+      'objectives',
+      'paginated',
+      opts?.page ?? 1,
+      opts?.pageSize ?? 50,
+      opts?.userId ?? null,
+      opts?.status ?? null,
+      opts?.type ?? null,
+      opts?.cycleId ?? null,
+      opts?.search ?? null,
+      opts?.department ?? null,
+    ],
+    queryFn: () => api.objectives.listPaginated(token!, opts),
+    enabled: !!token,
+  });
+}
+
 export function useObjectiveById(id: string) {
   const token = useAuthStore((s) => s.token);
   return useQuery({
@@ -82,6 +121,51 @@ export function useRejectObjective() {
   return useMutation({
     mutationFn: ({ id, reason }: { id: string; reason?: string }) => api.objectives.reject(token!, id, reason),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['objectives'] }),
+  });
+}
+
+/** T7.5 — Audit P1: cancela un objetivo por decisión de negocio. Razón obligatoria. */
+export function useCancelObjective() {
+  const token = useAuthStore((s) => s.token);
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+      api.objectives.cancel(token!, id, reason),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['objectives'] }),
+  });
+}
+
+/** T8.2 — Audit P1: historial de rechazos del objetivo. Habilitado solo cuando hay objectiveId. */
+export function useObjectiveRejectionHistory(objectiveId: string | null) {
+  const token = useAuthStore((s) => s.token);
+  return useQuery({
+    queryKey: ['objectives', objectiveId, 'rejection-history'],
+    queryFn: () => api.objectives.rejectionHistory(token!, objectiveId!),
+    enabled: !!token && !!objectiveId,
+  });
+}
+
+/**
+ * T9 — Audit P1 (Issue B): histórico de objetivos por período. Si
+ * includeActive=true, incluye también ACTIVE/OVERDUE con snapshot
+ * fallback. Útil para reportes de cierre / vista por ciclo.
+ */
+export function useObjectivesHistoryByPeriod(opts?: {
+  userId?: string;
+  cycleId?: string;
+  includeActive?: boolean;
+}) {
+  const token = useAuthStore((s) => s.token);
+  return useQuery({
+    queryKey: [
+      'objectives',
+      'history-by-period',
+      opts?.userId ?? null,
+      opts?.cycleId ?? null,
+      opts?.includeActive ?? false,
+    ],
+    queryFn: () => api.objectives.historyByPeriod(token!, opts),
+    enabled: !!token,
   });
 }
 

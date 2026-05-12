@@ -1,8 +1,10 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ConflictException, HttpException, HttpStatus } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, LessThan, MoreThan, Repository } from 'typeorm';
 import * as crypto from 'crypto';
-import { DocumentSignature } from './entities/document-signature.entity';
+import * as bcrypt from 'bcrypt';
+import { AcknowledgmentType, DocumentSignature, SignatureRole } from './entities/document-signature.entity';
+import { SignatureOtpToken } from './entities/signature-otp-token.entity';
 import { User } from '../users/entities/user.entity';
 import { EvaluationCycle } from '../evaluations/entities/evaluation-cycle.entity';
 import { EvaluationResponse } from '../evaluations/entities/evaluation-response.entity';
@@ -10,16 +12,42 @@ import { EvaluationAssignment } from '../evaluations/entities/evaluation-assignm
 import { DevelopmentPlan } from '../development/entities/development-plan.entity';
 import { DevelopmentAction } from '../development/entities/development-action.entity';
 import { Contract } from '../contracts/entities/contract.entity';
+import { CalibrationSession } from '../talent/entities/calibration-session.entity';
+import { CalibrationEntry } from '../talent/entities/calibration-entry.entity';
 import { EmailService } from '../notifications/email.service';
 import { AuditService } from '../audit/audit.service';
+import { EvaluationsService } from '../evaluations/evaluations.service';
+import { SignatureAuthorizationService } from './services/signature-authorization.service';
 
 const OTP_EXPIRY_MINUTES = 10;
+// G9: rate limiting
+const MAX_ACTIVE_TOKENS_PER_USER_PER_HOUR = 3;
+const MAX_ATTEMPTS_PER_TOKEN = 5;
+// Bcrypt rounds: 10 da ~50ms hash; balance entre seguridad y latencia.
+const OTP_BCRYPT_ROUNDS = 10;
+// G5 (TAREA 7): comentario obligatorio cuando acknowledgmentType !== 'agree'.
+const ACK_COMMENT_MIN_LENGTH = 10;
+const ACK_COMMENT_MAX_LENGTH = 2000;
+
+/** TAREA 7 / G5 — opciones de acknowledgment al firmar. */
+export interface AcknowledgmentOptions {
+  type?: AcknowledgmentType;
+  comment?: string;
+}
+
+/** TAREA 5 / G2 — opciones de rol de firma. */
+export interface SignAsOptions {
+  /** Por default RECIPIENT. AUTHOR para manager/external que firma su feedback emitido. */
+  signatureRole?: SignatureRole;
+}
 
 @Injectable()
 export class SignaturesService {
   constructor(
     @InjectRepository(DocumentSignature)
     private readonly signatureRepo: Repository<DocumentSignature>,
+    @InjectRepository(SignatureOtpToken)
+    private readonly otpRepo: Repository<SignatureOtpToken>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     @InjectRepository(EvaluationCycle)
@@ -34,29 +62,71 @@ export class SignaturesService {
     private readonly actionRepo: Repository<DevelopmentAction>,
     @InjectRepository(Contract)
     private readonly contractRepo: Repository<Contract>,
+    @InjectRepository(CalibrationSession)
+    private readonly calibrationRepo: Repository<CalibrationSession>,
+    @InjectRepository(CalibrationEntry)
+    private readonly calibrationEntryRepo: Repository<CalibrationEntry>,
     private readonly emailService: EmailService,
     private readonly auditService: AuditService,
+    private readonly evaluationsService: EvaluationsService,
+    private readonly authorizationService: SignatureAuthorizationService,
   ) {}
 
   // ─── Request Signature (send OTP) ───────────────────────────────────
 
-  async requestSignature(tenantId: string, userId: string, documentType: string, documentId: string) {
+  async requestSignature(
+    tenantId: string,
+    userId: string,
+    role: string,
+    documentType: string,
+    documentId: string,
+    signAs?: SignAsOptions,
+  ) {
+    const sigRole = signAs?.signatureRole ?? SignatureRole.RECIPIENT;
+
     const user = await this.userRepo.findOne({ where: { id: userId, tenantId } });
     if (!user) throw new NotFoundException('Usuario no encontrado');
 
-    // Validate document exists
+    // G1 audit fix + G2: validar autorización con el rol de firma solicitado.
+    await this.authorizationService.assertCanSign(
+      tenantId, userId, role, documentType, documentId, sigRole,
+    );
+
+    // G9 audit fix: rate limiting — max 3 tokens activos del user en la
+    // última hora. Previene flood de OTPs (mail bombing, brute force prep).
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    const recentActiveCount = await this.otpRepo.count({
+      where: {
+        userId,
+        consumedAt: IsNull(),
+        expiresAt: MoreThan(new Date()),
+        createdAt: MoreThan(oneHourAgo),
+      },
+    });
+    if (recentActiveCount >= MAX_ACTIVE_TOKENS_PER_USER_PER_HOUR) {
+      throw new HttpException(
+        'Has solicitado demasiados códigos de verificación recientemente. Intenta nuevamente en una hora.',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
+    // Validate document exists (idempotente con assertCanSign, sirve para nombre)
     const docName = await this.getDocumentName(tenantId, documentType, documentId);
 
-    // Generate cryptographically secure 6-digit OTP
+    // Generate cryptographically secure 6-digit OTP (plaintext SOLO para email)
     const code = String(crypto.randomInt(100000, 999999));
     const expires = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
 
-    // Store OTP in dedicated signature fields (not shared with password reset)
-    user.signatureOtp = code;
-    user.signatureOtpExpires = expires;
-    await this.userRepo.save(user);
+    // G9: hashear con bcrypt antes de persistir. Plaintext NUNCA toca DB.
+    const codeHash = await bcrypt.hash(code, OTP_BCRYPT_ROUNDS);
+    await this.otpRepo.save(
+      this.otpRepo.create({
+        tenantId, userId, documentType, documentId,
+        codeHash, expiresAt: expires,
+      }),
+    );
 
-    // Send OTP email
+    // Send OTP email (plaintext, una sola vez)
     await this.emailService.sendSignatureOtp(user.email, {
       firstName: user.firstName,
       documentType: this.getDocumentTypeLabel(documentType),
@@ -73,13 +143,30 @@ export class SignaturesService {
   async verifyAndSign(
     tenantId: string,
     userId: string,
+    role: string,
     documentType: string,
     documentId: string,
     otpCode: string,
     ipAddress?: string,
+    acknowledgment?: AcknowledgmentOptions,
+    signAs?: SignAsOptions,
   ): Promise<DocumentSignature> {
+    // G5 (TAREA 7): validar acknowledgment antes de cualquier side-effect
+    const ackType = acknowledgment?.type ?? AcknowledgmentType.AGREE;
+    const ackComment = acknowledgment?.comment?.trim() || null;
+    this.validateAcknowledgment(ackType, ackComment);
+
+    // G2 (TAREA 5): rol de firma — default RECIPIENT (compat histórica)
+    const sigRole = signAs?.signatureRole ?? SignatureRole.RECIPIENT;
+
     const user = await this.userRepo.findOne({ where: { id: userId, tenantId } });
     if (!user) throw new NotFoundException('Usuario no encontrado');
+
+    // G1 audit fix + G2/G3: re-validar autorización al firmar, ahora con
+    // signatureRole. Defense in depth.
+    await this.authorizationService.assertCanSign(
+      tenantId, userId, role, documentType, documentId, sigRole,
+    );
 
     // Check for existing valid signature (prevent duplicates)
     const existing = await this.signatureRepo.findOne({
@@ -89,18 +176,47 @@ export class SignaturesService {
       throw new BadRequestException('Este documento ya fue firmado por ti.');
     }
 
-    // Verify OTP (dedicated signature fields)
-    if (!user.signatureOtp || user.signatureOtp !== otpCode) {
-      throw new BadRequestException('Código de verificación inválido');
-    }
-    if (!user.signatureOtpExpires || new Date() > user.signatureOtpExpires) {
-      throw new BadRequestException('El código de verificación ha expirado. Solicita uno nuevo.');
+    // G9: Buscar el token activo más reciente para (user, documentType, documentId).
+    const token = await this.otpRepo.findOne({
+      where: {
+        tenantId, userId, documentType, documentId,
+        consumedAt: IsNull(),
+        expiresAt: MoreThan(new Date()),
+      },
+      order: { createdAt: 'DESC' },
+    });
+    if (!token) {
+      // Mensaje genérico para no revelar si fue inválido / expirado / inexistente
+      throw new BadRequestException('Código de verificación inválido o expirado. Solicita uno nuevo.');
     }
 
-    // Clear OTP
-    user.signatureOtp = null;
-    user.signatureOtpExpires = null;
-    await this.userRepo.save(user);
+    // G9: defensa anti-bruteforce. Si llegó al cap, token bloqueado.
+    if (token.attempts >= MAX_ATTEMPTS_PER_TOKEN) {
+      throw new BadRequestException('Has agotado los intentos para este código. Solicita uno nuevo.');
+    }
+
+    // G9: incremento atómico de attempts ANTES de comparar (defensa contra
+    // race conditions concurrentes). Si dos verificaciones llegan a la vez,
+    // el WHERE attempts < MAX evita exceder el cap.
+    const updateRes = await this.otpRepo
+      .createQueryBuilder()
+      .update(SignatureOtpToken)
+      .set({ attempts: () => 'attempts + 1' })
+      .where('id = :id AND attempts < :max', { id: token.id, max: MAX_ATTEMPTS_PER_TOKEN })
+      .execute();
+    if (!updateRes.affected) {
+      // Otro request lo bloqueó entre nuestro findOne y update
+      throw new BadRequestException('Has agotado los intentos para este código. Solicita uno nuevo.');
+    }
+
+    // Comparación con bcrypt (constant time)
+    const matches = await bcrypt.compare(otpCode, token.codeHash);
+    if (!matches) {
+      throw new BadRequestException('Código de verificación inválido o expirado. Solicita uno nuevo.');
+    }
+
+    // OTP válido → marcar token como consumido (no reutilizable)
+    await this.otpRepo.update(token.id, { consumedAt: new Date() });
 
     // Generate document hash
     const documentContent = await this.getDocumentContent(tenantId, documentType, documentId);
@@ -118,18 +234,34 @@ export class SignaturesService {
       signerIp: ipAddress || null,
       verificationMethod: 'otp_email',
       status: 'valid',
+      // G2/G5/G3: rol de firma viene del caller; default RECIPIENT.
+      // El SignatureAuthorizationService ya validó que el rol del usuario
+      // tiene derecho a firmar con este sigRole.
+      signatureRole: sigRole,
+      acknowledgmentType: ackType,
+      acknowledgmentComment: ackComment,
     });
     const saved = await this.signatureRepo.save(signature);
 
-    // Audit log
+    // Audit log (incluye acknowledgmentType + signatureRole para trazabilidad legal)
     this.auditService.log(
       tenantId, userId, 'document.signed', 'signature', saved.id,
-      { documentType, documentId, documentHash, verificationMethod: 'otp_email' },
+      {
+        documentType, documentId, documentHash,
+        verificationMethod: 'otp_email',
+        signatureRole: sigRole,
+        acknowledgmentType: ackType,
+        hasComment: !!ackComment,
+      },
       ipAddress,
     ).catch(() => {});
 
-    // Auto-activate contract after signature
-    if (documentType === 'contract') {
+    // G5 (TAREA 7): si fue DECLINE, NO transicionar estados del documento.
+    // El contrato queda como pending_signature; el rechazo queda registrado
+    // en la firma como evidencia legal. Solo AGREE / AGREE_WITH_COMMENTS
+    // disparan la auto-activación.
+    const isAffirmative = ackType !== AcknowledgmentType.DECLINE;
+    if (isAffirmative && documentType === 'contract') {
       const contract = await this.contractRepo.findOne({ where: { id: documentId, tenantId } });
       if (contract && contract.status === 'pending_signature') {
         contract.status = 'active';
@@ -137,7 +269,278 @@ export class SignaturesService {
       }
     }
 
+    if (documentType === 'evaluation_response') {
+      // T5.3 (origin/main) — Audit P0 (Issue A): freezar el estado de los
+      // objetivos del evaluado en un snapshot per-signature al firmar.
+      // Esto evita que el documento firmado mute retroactivamente cuando
+      // los objetivos siguen progresando después de la firma. Best-effort:
+      // si el snapshot falla, la firma igual se persiste — la integridad
+      // del evaluation signature no depende de este snapshot (defensa
+      // en profundidad). Se ejecuta SIEMPRE (incluido decline) porque
+      // el snapshot representa el estado al momento de la firma sea cual
+      // sea el acknowledgmentType.
+      const response = await this.responseRepo.findOne({
+        where: { id: documentId, tenantId },
+        select: ['id', 'assignmentId'],
+      });
+      if (response?.assignmentId) {
+        this.evaluationsService
+          .captureAssignmentObjectiveSnapshot(response.assignmentId, userId)
+          .catch(() => undefined);
+      }
+
+      // G6 (TAREA 12, audit fixes): denormalizar timestamp en
+      // evaluation_responses para queries rápidas "evaluación firmada por
+      // X rol" sin JOIN. Solo si fue afirmativa (decline NO cuenta como
+      // firma de respaldo — queda registrado en document_signatures pero
+      // no se considera "firmada" para reportes).
+      if (isAffirmative) {
+        const ts = saved.signedAt ?? new Date();
+        await this.updateEvaluationResponseSignedTimestamp(
+          tenantId, documentId, sigRole, ts,
+        );
+      }
+    }
+
     return saved;
+  }
+
+  /**
+   * G6 (TAREA 12) — actualiza el timestamp denormalizado en
+   * evaluation_responses según el signatureRole de la firma.
+   * Llamado en background; un fallo NO debe bloquear la firma.
+   */
+  private async updateEvaluationResponseSignedTimestamp(
+    tenantId: string,
+    documentId: string,
+    sigRole: SignatureRole,
+    signedAt: Date,
+  ): Promise<void> {
+    const fieldMap: Record<SignatureRole, string> = {
+      [SignatureRole.AUTHOR]: 'authorSignedAt',
+      [SignatureRole.RECIPIENT]: 'recipientSignedAt',
+      [SignatureRole.EMPLOYER_WITNESS]: 'witnessedAt',
+    };
+    const field = fieldMap[sigRole];
+    if (!field) return;
+    try {
+      await this.responseRepo.update(
+        { id: documentId, tenantId },
+        { [field]: signedAt } as any,
+      );
+    } catch {
+      // Best-effort; firma ya está creada y es la fuente de verdad.
+    }
+  }
+
+  // ─── G3 (TAREA 6): consultas por signatureRole ──────────────────────
+
+  /**
+   * Devuelve true si el documento tiene una firma valida con el rol
+   * solicitado. Usado por evaluations.service para validar que un
+   * ciclo no se cierra sin la firma correspondiente cuando
+   * tenant.settings.requireEmployerWitness === true.
+   *
+   * Multi-tenant: filtra por tenantId.
+   */
+  async hasSignatureWithRole(
+    tenantId: string,
+    documentType: string,
+    documentId: string,
+    signatureRole: SignatureRole,
+  ): Promise<boolean> {
+    const count = await this.signatureRepo.count({
+      where: {
+        tenantId, documentType, documentId,
+        status: 'valid',
+        signatureRole,
+      },
+    });
+    return count > 0;
+  }
+
+  /**
+   * G3 / Mejora #3 (UI) — Lista evaluation_responses pendientes de firma
+   * de testigo del empleador (employer_witness). Pendiente = el evaluatee
+   * ya firmó (recipientSignedAt) pero aún no hay firma de witness.
+   *
+   * Usa los campos denormalizados (G6/T12) para evitar JOINs caros a
+   * document_signatures.
+   *
+   * Multi-tenant: filtra por tenantId del JWT.
+   */
+  async getPendingEmployerWitness(tenantId: string): Promise<Array<{
+    responseId: string;
+    assignmentId: string;
+    cycleId: string;
+    cycleName: string;
+    evaluateeId: string;
+    evaluateeName: string;
+    recipientSignedAt: Date;
+  }>> {
+    const rows = await this.responseRepo
+      .createQueryBuilder('er')
+      .innerJoin('evaluation_assignments', 'a', 'a.id = er.assignmentId')
+      .innerJoin('evaluation_cycles', 'c', 'c.id = a.cycle_id')
+      .innerJoin('users', 'u', 'u.id = a.evaluatee_id')
+      .where('er.tenantId = :tenantId', { tenantId })
+      .andWhere('er.recipientSignedAt IS NOT NULL')
+      .andWhere('er.witnessedAt IS NULL')
+      .select([
+        'er.id AS "responseId"',
+        'a.id AS "assignmentId"',
+        'c.id AS "cycleId"',
+        'c.name AS "cycleName"',
+        'u.id AS "evaluateeId"',
+        'u.first_name AS "firstName"',
+        'u.last_name AS "lastName"',
+        'er.recipientSignedAt AS "recipientSignedAt"',
+      ])
+      .orderBy('er.recipientSignedAt', 'ASC') // los más antiguos primero
+      .limit(200)
+      .getRawMany();
+
+    return rows.map((r: any) => ({
+      responseId: r.responseId,
+      assignmentId: r.assignmentId,
+      cycleId: r.cycleId,
+      cycleName: r.cycleName,
+      evaluateeId: r.evaluateeId,
+      evaluateeName: `${r.firstName || ''} ${r.lastName || ''}`.trim() || 'Sin nombre',
+      recipientSignedAt: r.recipientSignedAt,
+    }));
+  }
+
+  // ─── G8 (TAREA 9): Revocación de firma ──────────────────────────────
+
+  /**
+   * Revoca una firma valida marcandola como status='revoked' con metadata
+   * de auditoria (quien, cuando, por que). NO elimina la fila — auditoria
+   * legal exige preservarla.
+   *
+   * Solo super_admin puede invocar (validacion en controller via @Roles).
+   * El service exige reason con min 20 chars para forzar justificacion seria.
+   */
+  async revokeSignature(
+    tenantId: string,
+    actorId: string,
+    actorRole: string,
+    signatureId: string,
+    reason: string,
+    ipAddress?: string,
+  ): Promise<DocumentSignature> {
+    if (actorRole !== 'super_admin') {
+      // Defense in depth — el RolesGuard ya filtra, pero validamos otra vez.
+      throw new BadRequestException('Solo super_admin puede revocar firmas');
+    }
+    const cleanReason = (reason ?? '').trim();
+    if (cleanReason.length < 20) {
+      throw new BadRequestException('La razón de revocación debe tener al menos 20 caracteres');
+    }
+    if (cleanReason.length > 2000) {
+      throw new BadRequestException('La razón no puede superar los 2000 caracteres');
+    }
+
+    const sig = await this.signatureRepo.findOne({ where: { id: signatureId, tenantId } });
+    if (!sig) throw new NotFoundException('Firma no encontrada');
+
+    if (sig.status === 'revoked') {
+      throw new ConflictException('La firma ya fue revocada anteriormente');
+    }
+
+    sig.status = 'revoked';
+    sig.revokedAt = new Date();
+    sig.revokedBy = actorId;
+    sig.revocationReason = cleanReason;
+    const saved = await this.signatureRepo.save(sig);
+
+    // B1 fix: si la firma revocada era de evaluation_response, recalcular
+    // el campo denormalizado (G6/T12). Sin esto, recipientSignedAt/etc.
+    // quedaba apuntando a una firma revocada → reportes y closeCycle
+    // tendrían falsos positivos.
+    if (sig.documentType === 'evaluation_response' && sig.signatureRole) {
+      await this.recomputeDenormalizedTimestamp(
+        tenantId, sig.documentId, sig.signatureRole,
+      );
+    }
+
+    this.auditService.log(
+      tenantId, actorId, 'document.signature.revoked', 'signature', saved.id,
+      {
+        documentType: sig.documentType, documentId: sig.documentId,
+        originalSignedBy: sig.signedBy, reason: cleanReason,
+      },
+      ipAddress,
+    ).catch(() => {});
+
+    return saved;
+  }
+
+  /**
+   * B1 fix — Recalcula el timestamp denormalizado en evaluation_responses
+   * tras una revocación. Si quedan otras firmas válidas con el mismo rol,
+   * usa el MAX(signedAt) de ellas. Si no quedan, pone NULL.
+   */
+  private async recomputeDenormalizedTimestamp(
+    tenantId: string,
+    documentId: string,
+    sigRole: SignatureRole,
+  ): Promise<void> {
+    const fieldMap: Record<SignatureRole, string> = {
+      [SignatureRole.AUTHOR]: 'authorSignedAt',
+      [SignatureRole.RECIPIENT]: 'recipientSignedAt',
+      [SignatureRole.EMPLOYER_WITNESS]: 'witnessedAt',
+    };
+    const field = fieldMap[sigRole];
+    if (!field) return;
+
+    // Buscar la firma válida más reciente (después de la revocación)
+    // con el mismo rol y documento.
+    const remaining = await this.signatureRepo.findOne({
+      where: {
+        tenantId,
+        documentType: 'evaluation_response',
+        documentId,
+        signatureRole: sigRole,
+        status: 'valid',
+      },
+      order: { signedAt: 'DESC' },
+    });
+    const newTs = remaining?.signedAt ?? null;
+    try {
+      await this.responseRepo.update(
+        { id: documentId, tenantId },
+        { [field]: newTs } as any,
+      );
+    } catch {
+      // Best-effort; document_signatures sigue siendo source of truth.
+    }
+  }
+
+  /**
+   * G5 (TAREA 7) — valida la combinación acknowledgmentType + comment.
+   *
+   *  - 'agree' acepta comment vacío.
+   *  - 'agree_with_comments' y 'decline' EXIGEN comment con min/max length.
+   */
+  private validateAcknowledgment(type: AcknowledgmentType, comment: string | null) {
+    if (!Object.values(AcknowledgmentType).includes(type)) {
+      throw new BadRequestException('Tipo de reconocimiento inválido');
+    }
+    if (type === AcknowledgmentType.AGREE) {
+      // comment opcional; ignoramos si vino
+      return;
+    }
+    if (!comment || comment.length < ACK_COMMENT_MIN_LENGTH) {
+      throw new BadRequestException(
+        `Para "${type}" debes incluir un comentario de al menos ${ACK_COMMENT_MIN_LENGTH} caracteres.`,
+      );
+    }
+    if (comment.length > ACK_COMMENT_MAX_LENGTH) {
+      throw new BadRequestException(
+        `El comentario no puede superar los ${ACK_COMMENT_MAX_LENGTH} caracteres.`,
+      );
+    }
   }
 
   // ─── List Signatures ────────────────────────────────────────────────
@@ -257,7 +660,41 @@ export class SignaturesService {
         });
       }
       case 'calibration_session': {
-        return JSON.stringify({ id: documentId, type: 'calibration_session', tenantId });
+        // G10 (TAREA 11): hash sobre contenido REAL — antes era stub
+        // {id, type, tenantId} que daba integridad ficticia.
+        const session = await this.calibrationRepo.findOne({ where: { id: documentId, tenantId } });
+        if (!session) throw new NotFoundException('Sesión de calibración no encontrada');
+        // B2 review (post-mortem): calibration_entries no tiene tenant_id propio.
+        // Aislamiento cross-tenant es vía FK session_id ON DELETE CASCADE +
+        // verificación previa de session.tenantId en línea anterior. Una
+        // entry con sessionId apuntando a otra tenant es DB-impossible.
+        const entries = await this.calibrationEntryRepo.find({
+          where: { sessionId: documentId },
+          order: { id: 'ASC' }, // orden estable para hash reproducible
+        });
+        return this.canonicalJson({
+          id: session.id,
+          name: session.name,
+          status: session.status,
+          departmentId: session.departmentId,
+          moderatorId: session.moderatorId,
+          minQuorum: session.minQuorum,
+          expectedDistribution: session.expectedDistribution,
+          notes: session.notes,
+          // entries en orden estable; cada uno serializado solo con campos
+          // de contenido (no timestamps de filas)
+          entries: entries.map((e) => ({
+            id: e.id,
+            userId: e.userId,
+            originalScore: e.originalScore,
+            adjustedScore: e.adjustedScore,
+            originalPotential: e.originalPotential,
+            adjustedPotential: e.adjustedPotential,
+            rationale: e.rationale,
+            status: e.status,
+            approvalStatus: e.approvalStatus,
+          })),
+        });
       }
       case 'contract': {
         const contract = await this.contractRepo.findOne({ where: { id: documentId, tenantId } });
@@ -285,8 +722,12 @@ export class SignaturesService {
       }
       case 'evaluation_response':
         return `Evaluación ${documentId.slice(0, 8)}`;
-      case 'calibration_session':
-        return `Sesión de Calibración ${documentId.slice(0, 8)}`;
+      case 'calibration_session': {
+        const session = await this.calibrationRepo.findOne({
+          where: { id: documentId, tenantId }, select: ['id', 'name'],
+        });
+        return session?.name || `Sesión de Calibración ${documentId.slice(0, 8)}`;
+      }
       case 'contract': {
         const contract = await this.contractRepo.findOne({ where: { id: documentId, tenantId }, select: ['id', 'title'] });
         return contract?.title || `Contrato ${documentId.slice(0, 8)}`;
@@ -305,5 +746,31 @@ export class SignaturesService {
       contract: 'Contrato',
     };
     return labels[type] || type;
+  }
+
+  /**
+   * G10 (TAREA 11) — Serialización canónica con orden de keys estable
+   * para hashes reproducibles. JSON.stringify default no garantiza orden,
+   * lo cual rompía la integridad cuando el motor JS reordenaba keys.
+   *
+   * - Objects: keys ordenadas alfabéticamente.
+   * - Arrays: orden preservado (el caller debe pre-ordenar).
+   * - Primitivos: tal cual.
+   * - null/undefined: null.
+   */
+  private canonicalJson(value: any): string {
+    return JSON.stringify(this.canonicalize(value));
+  }
+
+  private canonicalize(value: any): any {
+    if (value === null || value === undefined) return null;
+    if (Array.isArray(value)) return value.map((v) => this.canonicalize(v));
+    if (typeof value === 'object') {
+      const sortedKeys = Object.keys(value).sort();
+      const out: Record<string, any> = {};
+      for (const k of sortedKeys) out[k] = this.canonicalize(value[k]);
+      return out;
+    }
+    return value;
   }
 }

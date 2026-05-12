@@ -7,6 +7,7 @@ import { PeerAssignment } from './entities/peer-assignment.entity';
 import { CycleStage } from './entities/cycle-stage.entity';
 import { CycleOrgSnapshot } from './entities/cycle-org-snapshot.entity';
 import { CycleEvaluateeWeight } from './entities/cycle-evaluatee-weight.entity';
+import { EvaluationObjectiveSnapshot } from './entities/evaluation-objective-snapshot.entity';
 import { FormTemplate } from '../templates/entities/form-template.entity';
 import { FormSubTemplate } from '../templates/entities/form-sub-template.entity';
 import { User } from '../users/entities/user.entity';
@@ -30,6 +31,7 @@ import { AuditLog } from '../audit/entities/audit-log.entity';
       CycleStage,
       CycleOrgSnapshot,
       CycleEvaluateeWeight,
+      EvaluationObjectiveSnapshot,
       FormTemplate,
       FormSubTemplate,
       User,

@@ -491,7 +491,7 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange, onDataLoaded }: { 
                                   <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{users.length} colaboradores</span>
                                 </button>
                                 {isExpanded && (
-                                  <table style={{ width: '100%', minWidth: '760px' }}>
+                                  <div className="table-wrapper"><table style={{ width: '100%', minWidth: '760px' }}>
                                     <thead>
                                       <tr>
                                         <SortTh field="name" label="Colaborador" />
@@ -547,7 +547,7 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange, onDataLoaded }: { 
                           );
                         })}
                                     </tbody>
-                                  </table>
+                                  </table></div>
                                 )}
                               </div>
                             );
@@ -558,7 +558,7 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange, onDataLoaded }: { 
 
                     {/* Tabla plana: cuando hay filtro de depto O pocos usuarios */}
                     {(boxDeptFilter || selectedUsers.length <= 10) && (
-                    <table style={{ minWidth: '760px' }}>
+                    <div className="table-wrapper"><table style={{ minWidth: '760px' }}>
                       <thead>
                         <tr>
                           <SortTh field="name" label="Colaborador" />
@@ -610,7 +610,7 @@ function NineBoxTab({ cycles, selectedCycleId, onCycleChange, onDataLoaded }: { 
                           );
                         })}
                       </tbody>
-                    </table>
+                    </table></div>
                     )}
                   </div>
                 </div>

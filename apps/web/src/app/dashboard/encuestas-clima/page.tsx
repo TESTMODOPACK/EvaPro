@@ -395,7 +395,7 @@ function EncuestasClimaPageContent() {
             <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.5rem' }}>{'📊'} ¿Qué es el eNPS?</div>
             <div style={{ padding: '0.6rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
               <p style={{ margin: '0 0 0.35rem' }}>
-                El <strong>eNPS (Employee Net Promoter Score)</strong> mide la lealtad y satisfacción de los colaboradores. Se calcula como <strong>% Promotores − % Detractores</strong>.
+                El <strong>eNPS (Índice de Recomendación del Colaborador)</strong> mide la lealtad y satisfacción de los colaboradores. Se calcula como <strong>% Promotores − % Detractores</strong>.
               </p>
               <p style={{ margin: '0 0 0.35rem' }}>
                 <strong>Escala:</strong> va de <strong>−100</strong> (todos detractores) a <strong>+100</strong> (todos promotores).

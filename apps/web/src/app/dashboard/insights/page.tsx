@@ -367,7 +367,7 @@ function FlightRiskSection() {
             Actualizado: {new Date(generatedAt).toLocaleString('es-CL')}
           </span>
         </div>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+        <div className="table-wrapper"><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
           <thead>
             <tr style={{ borderBottom: '2px solid var(--border)' }}>
               <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>#</th>
@@ -421,7 +421,7 @@ function FlightRiskSection() {
                 );
               })}
           </tbody>
-        </table>
+        </table></div>
         {totalPages > 1 && (
           <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '1rem', marginTop: '1rem' }}>
             <button className="btn-ghost" style={{ fontSize: '0.82rem', padding: '0.3rem 0.75rem' }} disabled={pageFR <= 1} onClick={() => setPageFR(p => p - 1)}>Anterior</button>
@@ -854,7 +854,7 @@ function RetentionSection() {
             <p>{allRecs.length === 0 ? t('insights.noRiskEmployees') : 'Sin resultados para los filtros seleccionados'}</p>
           </div>
         ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+          <div className="table-wrapper"><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
             <thead>
               <tr style={{ borderBottom: '2px solid var(--border)' }}>
                 <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Colaborador</th>
@@ -900,7 +900,7 @@ function RetentionSection() {
                 );
               })}
             </tbody>
-          </table>
+          </table></div>
         )}
         {totalPages > 1 && (
           <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '1rem', marginTop: '1rem' }}>

@@ -349,6 +349,96 @@ export class UsersService {
     return { data, total, page: safePage, limit: safeLimit };
   }
 
+  /**
+   * Picker scope — devuelve TODOS los usuarios activos del tenant con
+   * SOLO campos públicos. Usado por dropdowns de selección
+   * (reconocimientos, feedback, cualquier picker tipo "elige a alguien").
+   *
+   * Diferencias clave vs findAll():
+   *  - NO aplica scope manager (P6.1) — los managers SÍ pueden ver
+   *    todo el tenant para reconocer a cualquiera, no solo su equipo.
+   *    Esto alinea con best practice del sector (Bonusly, Workhuman,
+   *    Lattice) y permite upward + cross-team recognition.
+   *  - SOLO retorna campos no-sensibles (sin rut, birthDate, gender,
+   *    nationality, contractType, hireDate, salaryBand, etc.).
+   *  - Sin paginación (devuelve hasta MAX_PICKER, default 500).
+   *  - Sin filtros server-side: el frontend filtra en cliente
+   *    (department, search) sobre el dataset cacheado.
+   *
+   * Caller role:
+   *  - super_admin / tenant_admin / manager / employee → permitido
+   *  - external → BLOCKED (evaluadores externos no deben ver staff)
+   *
+   * NOTA: este método NO usa el filtro de manager scope. La info que
+   * devuelve es equivalente a la "vista reducida" de directory que
+   * employees ya ven en findAll() — no se expone nada nuevo.
+   */
+  async findAllForPicker(
+    tenantId: string,
+    callerRole: string,
+  ): Promise<{
+    data: Array<{
+      id: string;
+      firstName: string;
+      lastName: string;
+      email: string;
+      position: string | null;
+      positionId: string | null;
+      department: string | null;
+      departmentId: string | null;
+      role: string;
+      hierarchyLevel: number | null;
+      managerId: string | null;
+      language: string | null;
+    }>;
+    total: number;
+  }> {
+    if (callerRole === 'external') {
+      // Defense in depth — el RolesGuard ya bloquea, pero validamos otra vez.
+      throw new ForbiddenException('Rol external no puede consultar el picker de usuarios');
+    }
+    const MAX_PICKER = 500;
+    const users = await this.userRepository
+      .createQueryBuilder('user')
+      .where('user.tenantId = :tenantId', { tenantId })
+      .andWhere('user.isActive = true')
+      .andWhere('user.role != :excluded', { excluded: 'super_admin' })
+      .select([
+        'user.id',
+        'user.firstName',
+        'user.lastName',
+        'user.email',
+        'user.position',
+        'user.positionId',
+        'user.department',
+        'user.departmentId',
+        'user.role',
+        'user.hierarchyLevel',
+        'user.managerId',
+        'user.language',
+      ])
+      .orderBy('user.firstName', 'ASC')
+      .addOrderBy('user.lastName', 'ASC')
+      .take(MAX_PICKER)
+      .getMany();
+
+    const data = users.map((u) => ({
+      id: u.id,
+      firstName: u.firstName,
+      lastName: u.lastName,
+      email: u.email,
+      position: u.position ?? null,
+      positionId: u.positionId ?? null,
+      department: u.department ?? null,
+      departmentId: u.departmentId ?? null,
+      role: u.role,
+      hierarchyLevel: u.hierarchyLevel ?? null,
+      managerId: u.managerId ?? null,
+      language: u.language ?? null,
+    }));
+    return { data, total: data.length };
+  }
+
   async create(tenantId: string, dto: CreateUserDto): Promise<User> {
     // Check plan limits
     const sub = await this.subscriptionsService.findByTenantId(tenantId);
