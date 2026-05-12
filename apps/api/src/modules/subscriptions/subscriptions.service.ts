@@ -781,113 +781,35 @@ export class SubscriptionsService {
   }
 
   // ─── Payment History ──────────────────────────────────────────────────
-
-  async registerPayment(
-    subscriptionId: string,
-    dto: any,
-    changedBy?: string,
-  ): Promise<PaymentHistory> {
-    const sub = await this.findById(subscriptionId);
-
-    // Validate required fields
-    if (dto.amount == null || isNaN(Number(dto.amount))) {
-      throw new BadRequestException(
-        'El campo "amount" es requerido y debe ser numérico',
-      );
-    }
-    if (!dto.periodStart || !dto.periodEnd) {
-      throw new BadRequestException(
-        'Los campos "periodStart" y "periodEnd" son requeridos',
-      );
-    }
-    const periodStart = new Date(dto.periodStart);
-    const periodEnd = new Date(dto.periodEnd);
-    if (isNaN(periodStart.getTime()) || isNaN(periodEnd.getTime())) {
-      throw new BadRequestException(
-        'Las fechas "periodStart" y "periodEnd" deben ser válidas',
-      );
-    }
-    if (periodEnd < periodStart) {
-      throw new BadRequestException(
-        'La fecha fin del período debe ser igual o posterior a la fecha inicio',
-      );
-    }
-
-    // Guard: cannot register payment on cancelled subscription
-    if (sub.status === SubscriptionStatus.CANCELLED) {
-      throw new ForbiddenException(
-        'No se puede registrar un pago en una suscripción cancelada. Reactive la suscripción primero.',
-      );
-    }
-
-    const payment = this.paymentRepo.create({
-      tenantId: sub.tenantId,
-      subscriptionId: sub.id,
-      amount: Number(dto.amount),
-      currency: dto.currency || sub.plan?.currency || 'UF',
-      billingPeriod:
-        dto.billingPeriod || sub.billingPeriod || BillingPeriod.MONTHLY,
-      periodStart,
-      periodEnd,
-      status: dto.status || PaymentStatus.PAID,
-      paymentMethod: dto.paymentMethod || null,
-      transactionRef: dto.transactionRef || null,
-      notes: dto.notes || null,
-      paidAt:
-        (dto.status || PaymentStatus.PAID) === PaymentStatus.PAID
-          ? dto.paidAt
-            ? new Date(dto.paidAt)
-            : new Date()
-          : null,
-    });
-    const saved = await this.paymentRepo.save(payment);
-
-    // Update subscription billing info
-    if (saved.status === PaymentStatus.PAID) {
-      sub.lastPaymentDate = saved.paidAt || new Date();
-      sub.lastPaymentAmount = Number(saved.amount);
-
-      // Calculate next billing date, ensuring it's never in the past
-      let nextBilling = this.calculateNextBillingDate(
-        periodEnd,
-        sub.billingPeriod || BillingPeriod.MONTHLY,
-      );
-      const now = new Date();
-      while (nextBilling < now) {
-        nextBilling = this.calculateNextBillingDate(
-          nextBilling,
-          sub.billingPeriod || BillingPeriod.MONTHLY,
-        );
-      }
-      sub.nextBillingDate = nextBilling;
-
-      // Reactivate if was suspended/expired
-      if (
-        sub.status === SubscriptionStatus.SUSPENDED ||
-        sub.status === SubscriptionStatus.EXPIRED
-      ) {
-        sub.status = SubscriptionStatus.ACTIVE;
-      }
-      await this.subRepo.save(sub);
-    }
-
-    if (changedBy) {
-      await this.auditService.log(
-        sub.tenantId,
-        changedBy,
-        'payment.registered',
-        'payment',
-        saved.id,
-        {
-          amount: Number(saved.amount),
-          currency: saved.currency,
-          status: saved.status,
-        },
-      );
-    }
-
-    return saved;
-  }
+  //
+  // Post-auditoria Fases 0-5: el metodo legacy `registerPayment` fue
+  // ELIMINADO porque violaba 8 reglas de negocio del nuevo modelo:
+  //
+  //   1. Pagos sin invoice asociada -> sin snapshot fiscal SII (T3.3-fix-1).
+  //   2. Doble cobro: super_admin podia pagar aqui + en /facturacion
+  //      (markAsPaid) sobre la misma factura -> duplicado en
+  //      payment_history.
+  //   3. Saltea credit notes auto-aplicadas (T2.4.2).
+  //   4. Saltea metricas SaaS DSO/collection rate (T4.2) — cuentan invoices.
+  //   5. Saltea settings dinamicos de IVA/prefijo (T4.5).
+  //   6. Saltea cron auto-renewal/dunning (T0.2 + T1.1) — operan sobre
+  //      invoices, no sobre pagos sueltos.
+  //   7. Audit trail incompleto: no encadena a invoice id.
+  //   8. nextBillingDate manual recalculado podia chocar con la lógica
+  //      de continuidad historica (T0.1).
+  //
+  // FLUJO CORRECTO: super_admin -> /dashboard/facturacion ->
+  //   1. "Generar factura del periodo" (genera invoice DRAFT con
+  //      snapshot fiscal + credit notes aplicadas + IVA dinamico).
+  //   2. "Marcar como pagada" (markAsPaid en invoices.service)
+  //      -> crea payment_history vinculado a invoice + audit log SII.
+  //
+  // Los registros payment_history HISTORICOS (creados pre-eliminacion)
+  // se mantienen intactos en BD. Solo se eliminan las puertas de entrada
+  // (endpoint + UI button) para prevenir mas datos huerfanos.
+  // updatePayment y deletePayment se mantienen por si super_admin
+  // necesita corregir entradas viejas; igual deben usarse con cuidado
+  // y solo sobre rows con invoiceId=NULL.
 
   /**
    * Fase 3 / Tarea 3.1 — Paginacion real (vs el `take: 50` hardcoded).

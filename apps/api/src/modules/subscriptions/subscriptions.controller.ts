@@ -297,15 +297,17 @@ export class SubscriptionsController {
     return this.subscriptionsService.getPaymentsBySubscription(id);
   }
 
-  @Post(':id/payments')
-  @Roles('super_admin')
-  registerPayment(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: any,
-    @Request() req: any,
-  ) {
-    return this.subscriptionsService.registerPayment(id, dto, req.user?.userId);
-  }
+  // ─── POST /:id/payments — ELIMINADO post-auditoria Fases 0-5 ─────────
+  // El endpoint legacy `POST /subscriptions/:id/payments` creaba
+  // payment_history sin invoice asociada y permitia DOBLE COBRO
+  // (super_admin podia pagar aqui + en /facturacion via markAsPaid).
+  //
+  // Flujo correcto:
+  //   1. POST /invoices/generate/:subscriptionId (super_admin)
+  //   2. PATCH /invoices/:id/pay   (super_admin, ejecuta markAsPaid)
+  //
+  // Ver comentario completo en subscriptions.service.ts seccion
+  // "Payment History".
 
   @Patch('payments/:paymentId')
   @Roles('super_admin')

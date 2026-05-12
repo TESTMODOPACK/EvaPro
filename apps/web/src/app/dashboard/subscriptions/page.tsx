@@ -121,19 +121,9 @@ export default function SubscriptionsPage() {
   const [editingSubId, setEditingSubId] = useState<string | null>(null);
   const [subForm, setSubForm] = useState({ ...emptySubForm });
 
-  // Payment form
-  const [showPaymentForm, setShowPaymentForm] = useState(false);
-  const [paymentSubId, setPaymentSubId] = useState<string | null>(null);
-  const [paymentSubName, setPaymentSubName] = useState('');
-  const [paymentForm, setPaymentForm] = useState({
-    amount: '', periodStart: '', periodEnd: '',
-    paymentMethod: 'transferencia', transactionRef: '', notes: '', status: 'paid',
-  });
-  const resetPaymentForm = () => {
-    setShowPaymentForm(false); setPaymentSubId(null); setPaymentSubName('');
-    setPaymentForm({ amount: '', periodStart: '', periodEnd: '', paymentMethod: 'transferencia', transactionRef: '', notes: '', status: 'paid' });
-    setError('');
-  };
+  // Payment form ELIMINADO — el super_admin paga via /facturacion
+  // (markAsPaid sobre invoice). Ver comentario en backend
+  // subscriptions.service.ts seccion "Payment History".
 
   // Payment history
   const [showPaymentsFor, setShowPaymentsFor] = useState<string | null>(null);
@@ -358,60 +348,12 @@ export default function SubscriptionsPage() {
 
   // ── Payments ───────────────────────────────────────────────────────────
 
-  const startPayment = (sub: any) => {
-    const orgName = sub.tenant?.name ?? tenantMap[sub.tenantId] ?? sub.tenantId;
-    setPaymentSubId(sub.id);
-    setPaymentSubName(orgName);
-    // Auto-fill period based on current date
-    const now = new Date();
-    const start = new Date(now.getFullYear(), now.getMonth(), 1);
-    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-    // Pre-fill amount from plan price
-    const plan = planMap[sub.planId];
-    setPaymentForm({
-      amount: plan?.monthlyPrice ? String(Number(plan.monthlyPrice)) : '',
-      periodStart: start.toISOString().slice(0, 10),
-      periodEnd: end.toISOString().slice(0, 10),
-      paymentMethod: 'transferencia',
-      transactionRef: '',
-      notes: '',
-      status: 'paid',
-    });
-    setShowPaymentForm(true);
-    setError('');
-  };
-
-  const handleRegisterPayment = async () => {
-    if (!token || !paymentSubId) return;
-    if (!paymentForm.amount || !paymentForm.periodStart || !paymentForm.periodEnd) {
-      setError('Complete monto, fecha inicio y fecha fin del per\u00edodo');
-      return;
-    }
-    if (new Date(paymentForm.periodEnd) < new Date(paymentForm.periodStart)) {
-      setError('La fecha fin del per\u00edodo debe ser posterior a la fecha inicio');
-      return;
-    }
-    setSaving(true); setError('');
-    try {
-      await api.subscriptions.registerPayment(token, paymentSubId, {
-        amount: parseFloat(paymentForm.amount),
-        periodStart: paymentForm.periodStart,
-        periodEnd: paymentForm.periodEnd,
-        paymentMethod: paymentForm.paymentMethod || null,
-        transactionRef: paymentForm.transactionRef || null,
-        notes: paymentForm.notes || null,
-        status: paymentForm.status,
-      });
-      setSuccess('Pago registrado exitosamente');
-      resetPaymentForm();
-      fetchData();
-      setTimeout(() => setSuccess(''), 3000);
-    } catch (e: any) {
-      setError(e.message || 'Error al registrar el pago');
-    } finally {
-      setSaving(false);
-    }
-  };
+  // startPayment + handleRegisterPayment ELIMINADOS post-auditoria
+  // Fases 0-5. El flujo correcto es:
+  //   /dashboard/facturacion -> Generar factura -> Marcar como pagada.
+  // Esto evita el doble cobro y mantiene consistencia con invoice
+  // snapshot fiscal, credit notes auto-aplicadas, dunning y metricas
+  // SaaS (DSO, collection rate).
 
   const loadPaymentHistory = async (subId: string) => {
     if (showPaymentsFor === subId) { setShowPaymentsFor(null); return; }
@@ -890,71 +832,12 @@ export default function SubscriptionsPage() {
             </div>
           )}
 
-          {/* Payment form */}
-          {showPaymentForm && paymentSubId && (
-            <div className="card animate-fade-up" style={{ padding: '1.5rem', marginBottom: '1.5rem', borderLeft: '4px solid var(--accent)' }}>
-              <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '1.25rem' }}>
-                Registrar pago — {paymentSubName}
-              </h3>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
-                <div>
-                  <label style={labelStyle}>Monto (UF) *</label>
-                  <input style={inputStyle} type="number" step="0.01" min="0" placeholder="3.50"
-                    value={paymentForm.amount} onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })} />
-                </div>
-                <div>
-                  <label style={labelStyle}>Período inicio *</label>
-                  <input style={inputStyle} type="date" value={paymentForm.periodStart}
-                    onChange={(e) => setPaymentForm({ ...paymentForm, periodStart: e.target.value })} />
-                </div>
-                <div>
-                  <label style={labelStyle}>Período fin *</label>
-                  <input style={inputStyle} type="date" value={paymentForm.periodEnd}
-                    onChange={(e) => setPaymentForm({ ...paymentForm, periodEnd: e.target.value })} />
-                </div>
-                <div>
-                  <label style={labelStyle}>Método de pago</label>
-                  <select style={inputStyle} value={paymentForm.paymentMethod}
-                    onChange={(e) => setPaymentForm({ ...paymentForm, paymentMethod: e.target.value })}>
-                    <option value="transferencia">Transferencia bancaria</option>
-                    <option value="tarjeta">Tarjeta de crédito</option>
-                    <option value="efectivo">Efectivo</option>
-                    <option value="otro">Otro</option>
-                  </select>
-                </div>
-                <div>
-                  <label style={labelStyle}>N° comprobante / referencia</label>
-                  <input style={inputStyle} placeholder="Ej: TRF-123456"
-                    value={paymentForm.transactionRef} onChange={(e) => setPaymentForm({ ...paymentForm, transactionRef: e.target.value })} />
-                </div>
-                <div>
-                  <label style={labelStyle}>Estado</label>
-                  <select style={inputStyle} value={paymentForm.status}
-                    onChange={(e) => setPaymentForm({ ...paymentForm, status: e.target.value })}>
-                    <option value="paid">Pagado</option>
-                    <option value="pending">Pendiente</option>
-                    <option value="overdue">Vencido</option>
-                  </select>
-                </div>
-                <div style={{ gridColumn: 'span 3' }}>
-                  <label style={labelStyle}>Notas</label>
-                  <input style={inputStyle} placeholder="Notas opcionales..."
-                    value={paymentForm.notes} onChange={(e) => setPaymentForm({ ...paymentForm, notes: e.target.value })} />
-                </div>
-              </div>
-              {error && (
-                <div style={{ padding: '0.75rem 1rem', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 'var(--radius-sm)', color: '#dc2626', fontSize: '0.85rem', marginTop: '1rem' }}>
-                  {error}
-                </div>
-              )}
-              <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.25rem' }}>
-                <button className="btn-primary" onClick={handleRegisterPayment} disabled={saving}>
-                  {saving ? 'Registrando...' : 'Registrar pago'}
-                </button>
-                <button className="btn-ghost" onClick={resetPaymentForm}>Cancelar</button>
-              </div>
-            </div>
-          )}
+          {/*
+            Formulario "Registrar pago" ELIMINADO post-auditoria Fases 0-5.
+            Razon: ver comentario en subscriptions.service.ts seccion
+            "Payment History". El flujo correcto es:
+              /dashboard/facturacion -> Generar factura -> Marcar como pagada.
+          */}
 
           {/* Subscription filters */}
           <div className="card animate-fade-up" style={{ padding: '0.75rem', marginBottom: '1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -1062,11 +945,19 @@ export default function SubscriptionsPage() {
                               <button className="btn-ghost" style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }} onClick={() => startEditSub(sub)}>
                                 Editar
                               </button>
-                              {sub.status !== 'cancelled' && (
-                                <button className="btn-primary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }} onClick={() => startPayment(sub)}>
-                                  Pago
-                                </button>
-                              )}
+                              {/*
+                                Boton "Pago" ELIMINADO post-auditoria Fases 0-5.
+                                Razon: registrar pago aqui creaba payment_history
+                                sin invoice asociada, permitiendo doble cobro
+                                cuando el super_admin tambien usaba "Marcar
+                                como pagada" en /dashboard/facturacion sobre
+                                la misma factura.
+
+                                Flujo correcto: ir a /dashboard/facturacion ->
+                                Generar factura (si no existe) -> Marcar como
+                                pagada. Eso crea payment_history vinculado a
+                                invoice + audit log SII completo.
+                              */}
                               <button className="btn-ghost" style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }} onClick={() => loadPaymentHistory(sub.id)}>
                                 {showPaymentsFor === sub.id ? 'Ocultar' : 'Historial'}
                               </button>

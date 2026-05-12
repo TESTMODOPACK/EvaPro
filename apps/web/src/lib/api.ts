@@ -573,8 +573,11 @@ export const api = {
       return request<{ data: any[]; total: number }>(`/subscriptions/my-payments${suffix}`, {}, token);
     },
     getPayments: (token: string, id: string) => request<any[]>(`/subscriptions/${id}/payments`, {}, token),
-    registerPayment: (token: string, id: string, data: any) =>
-      request<any>(`/subscriptions/${id}/payments`, { method: "POST", body: JSON.stringify(data) }, token),
+    // registerPayment ELIMINADO post-auditoria Fases 0-5.
+    // El super_admin paga via api.invoices.markAsPaid sobre una invoice
+    // existente (genera previamente con api.invoices.generate). Esto
+    // garantiza vinculacion invoice<->payment_history y previene doble
+    // cobro. Ver comentario backend en subscriptions.service.ts.
     updatePayment: (token: string, paymentId: string, data: any) =>
       request<any>(`/subscriptions/payments/${paymentId}`, { method: "PATCH", body: JSON.stringify(data) }, token),
     deletePayment: (token: string, paymentId: string) =>
