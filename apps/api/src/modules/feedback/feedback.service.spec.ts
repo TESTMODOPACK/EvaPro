@@ -84,11 +84,17 @@ describe('FeedbackService — auditoría PR1', () => {
   let checkInRepo: any;
   let quickFeedbackRepo: any;
   let notifications: any;
+  let userRepo: any;
+  let tenantRepo: any;
+  let competencyRepo: any;
 
   beforeEach(async () => {
     checkInRepo = createMockRepository();
     quickFeedbackRepo = createMockRepository();
     notifications = createMockNotificationsService();
+    userRepo = createMockRepository();
+    tenantRepo = createMockRepository();
+    competencyRepo = createMockRepository();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -96,11 +102,11 @@ describe('FeedbackService — auditoría PR1', () => {
         { provide: getRepositoryToken(CheckIn), useValue: checkInRepo },
         { provide: getRepositoryToken(QuickFeedback), useValue: quickFeedbackRepo },
         { provide: getRepositoryToken(MeetingLocation), useValue: createMockRepository() },
-        { provide: getRepositoryToken(User), useValue: createMockRepository() },
-        { provide: getRepositoryToken(Tenant), useValue: createMockRepository() },
+        { provide: getRepositoryToken(User), useValue: userRepo },
+        { provide: getRepositoryToken(Tenant), useValue: tenantRepo },
         { provide: getRepositoryToken(Objective), useValue: createMockRepository() },
         { provide: getRepositoryToken(Recognition), useValue: createMockRepository() },
-        { provide: getRepositoryToken(Competency), useValue: createMockRepository() },
+        { provide: getRepositoryToken(Competency), useValue: competencyRepo },
         {
           provide: AiInsightsService,
           useValue: { generateAgendaSuggestions: jest.fn() },
@@ -290,6 +296,112 @@ describe('FeedbackService — auditoría PR1', () => {
         'manager',
       );
       expect(result.status).toBe(CheckInStatus.CANCELLED);
+    });
+  });
+
+  // ─── Fix C — competencia real (Bugs 4,5,7) ──────────────────────────
+  describe('createQuickFeedback (Fix C: competencia)', () => {
+    function dto(extra: any = {}) {
+      return {
+        toUserId: EMPLOYEE_ID,
+        message: 'Mensaje suficientemente largo para pasar el mínimo de 20.',
+        sentiment: Sentiment.POSITIVE,
+        ...extra,
+      };
+    }
+
+    it('rechaza competencyId que no pertenece al tenant (Bug 7)', async () => {
+      tenantRepo.findOne.mockResolvedValue({ id: TID, settings: {} });
+      userRepo.findOne.mockResolvedValue({ id: EMPLOYEE_ID });
+      competencyRepo.findOne.mockResolvedValue(null); // no existe en tenant
+
+      await expect(
+        service.createQuickFeedback(TID, MANAGER_ID, dto({ competencyId: fakeUuid(999) }), 'manager'),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(quickFeedbackRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('requireCompetency=true sin competencyId → 400 (Bug 4)', async () => {
+      tenantRepo.findOne.mockResolvedValue({
+        id: TID,
+        settings: { feedbackConfig: { requireCompetency: true } },
+      });
+      userRepo.findOne.mockResolvedValue({ id: EMPLOYEE_ID });
+
+      await expect(
+        service.createQuickFeedback(TID, MANAGER_ID, dto(), 'manager'),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('competencyId válido (tenant + activo) se persiste (Bug 5)', async () => {
+      const COMP = fakeUuid(800);
+      tenantRepo.findOne.mockResolvedValue({
+        id: TID,
+        settings: { feedbackConfig: { requireCompetency: true } },
+      });
+      userRepo.findOne.mockResolvedValue({ id: EMPLOYEE_ID, firstName: 'B', lastName: 'E' });
+      competencyRepo.findOne.mockResolvedValue({ id: COMP });
+      quickFeedbackRepo.save.mockImplementation((e: any) => Promise.resolve({ id: 'qf', ...e }));
+
+      await service.createQuickFeedback(TID, MANAGER_ID, dto({ competencyId: COMP }), 'manager');
+
+      expect(competencyRepo.findOne).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: COMP, tenantId: TID, isActive: true } }),
+      );
+      expect(quickFeedbackRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ competencyId: COMP }),
+      );
+    });
+  });
+
+  // ─── Fix D — enforcement de visibility (Bug 6) ──────────────────────
+  describe('exportFeedbackCsv (Fix D: visibility)', () => {
+    const A = fakeUuid(11); // emisor
+    const B = fakeUuid(12); // receptor
+    const M = fakeUuid(13); // manager del receptor
+
+    function fb(visibility: any, over: any = {}) {
+      return makeFeedback({
+        visibility,
+        message: `msg-${visibility}`,
+        fromUserId: A,
+        toUserId: B,
+        fromUser: { firstName: 'Emi', lastName: 'Sor' } as any,
+        toUser: { firstName: 'Rec', lastName: 'Eptor', managerId: M } as any,
+        ...over,
+      });
+    }
+
+    it('export admin: excluye private, mantiene public y manager_only', async () => {
+      checkInRepo.find.mockResolvedValue([]);
+      quickFeedbackRepo.find.mockResolvedValue([
+        fb('public'),
+        fb('private'),
+        fb('manager_only'),
+      ]);
+
+      const csv = await service.exportFeedbackCsv(TID); // admin (sin managerId)
+
+      expect(csv).toContain('msg-public');
+      expect(csv).toContain('msg-manager_only');
+      expect(csv).not.toContain('msg-private');
+    });
+
+    it('export manager: ve private solo si participa; manager_only si es el jefe del receptor', async () => {
+      // getTeamScopeForFeedbackExport hace userRepo.find → reportes del manager
+      userRepo.find.mockResolvedValue([{ id: B }]);
+      checkInRepo.find.mockResolvedValue([]);
+      quickFeedbackRepo.find.mockResolvedValue([
+        fb('public'),
+        fb('private'), // M no es emisor ni receptor → excluir
+        fb('manager_only'), // M es manager del receptor → incluir
+      ]);
+
+      const csv = await service.exportFeedbackCsv(TID, M);
+
+      expect(csv).toContain('msg-public');
+      expect(csv).toContain('msg-manager_only');
+      expect(csv).not.toContain('msg-private');
     });
   });
 });

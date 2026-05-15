@@ -255,6 +255,10 @@ export interface QuickFeedbackData {
   id: string; tenantId: string; fromUserId: string; toUserId: string;
   message: string; sentiment: 'positive' | 'neutral' | 'constructive';
   category: string | null; isAnonymous: boolean; createdAt: string;
+  // Auditoría feedback (Fix C): competencia real por FK. `category`
+  // queda como texto libre legacy para feedback histórico.
+  competencyId?: string | null;
+  competency?: { id: string; name: string } | null;
   fromUser?: UserData; toUser?: UserData;
 }
 

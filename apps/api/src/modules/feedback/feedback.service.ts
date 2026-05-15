@@ -4,7 +4,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, LessThan, MoreThanOrEqual, Not, Repository } from 'typeorm';
 import { runWithCronLock } from '../../common/utils/cron-lock';
 import { CheckIn, CheckInStatus } from './entities/checkin.entity';
-import { QuickFeedback, Sentiment } from './entities/quick-feedback.entity';
+import { QuickFeedback, Sentiment, FeedbackVisibility } from './entities/quick-feedback.entity';
 import { MeetingLocation } from './entities/meeting-location.entity';
 import { CreateCheckInDto, UpdateCheckInDto, RejectCheckInDto } from './dto/create-checkin.dto';
 import { CreateQuickFeedbackDto } from './dto/create-quick-feedback.dto';
@@ -1086,8 +1086,28 @@ export class FeedbackService {
       throw new BadRequestException('La organización no permite enviar feedback anónimo.');
     }
 
-    // 5. Validate competency requirement
-    if (requireCompetency && !dto.category) {
+    // 5. Validar competencia (auditoría feedback / Fix C — Bugs 4,5,7).
+    //    - Antes se validaba `dto.category` (texto libre) en vez del FK
+    //      real `competencyId`, y `competencyId` se guardaba sin verificar
+    //      tenant (fuga cross-tenant). Ahora:
+    //      a) si viene competencyId, debe ser una competencia ACTIVA del
+    //         tenant (cierra Bug 7).
+    //      b) `requireCompetency` valida contra competencyId, no category.
+    //    `category` se mantiene como texto libre opcional (compat datos
+    //    históricos y filtro por categoría).
+    const competencyId: string | null = dto.competencyId || null;
+    if (competencyId) {
+      const comp = await this.competencyRepo.findOne({
+        where: { id: competencyId, tenantId, isActive: true },
+        select: ['id'],
+      });
+      if (!comp) {
+        throw new BadRequestException(
+          'La competencia seleccionada no es válida para esta organización.',
+        );
+      }
+    }
+    if (requireCompetency && !competencyId) {
       throw new BadRequestException('Es obligatorio seleccionar una competencia al enviar feedback.');
     }
 
@@ -1103,7 +1123,7 @@ export class FeedbackService {
       category: dto.category,
       isAnonymous: dto.isAnonymous ?? false,
       visibility: dto.visibility,
-      competencyId: dto.competencyId || null,
+      competencyId,
     });
     const saved = await this.quickFeedbackRepo.save(qf);
 
@@ -1284,6 +1304,37 @@ export class FeedbackService {
     return [managerId, ...reports.map((u) => u.id)];
   }
 
+  /**
+   * Auditoría feedback (Fix D — Bug 6) — enforcement de `visibility` en
+   * los exports (única ruta donde un tercero ve feedback ajeno). Reglas:
+   *   - public        → visible para cualquier scope de export.
+   *   - private       → SOLO emisor o receptor (admin NO exento; la
+   *                      trazabilidad de moderación va por audit_logs).
+   *   - manager_only  → receptor, el manager del receptor, o admin.
+   *
+   * `managerId` definido = export de un manager; undefined = export de
+   * admin (tenant completo).
+   */
+  private filterFeedbackByVisibility(
+    feedback: QuickFeedback[],
+    managerId: string | undefined,
+  ): QuickFeedback[] {
+    const isAdminExport = !managerId;
+    return feedback.filter((f) => {
+      const vis = f.visibility || FeedbackVisibility.PUBLIC;
+      if (vis === FeedbackVisibility.PUBLIC) return true;
+      // Emisor o receptor siempre ve lo suyo.
+      if (managerId && (f.fromUserId === managerId || f.toUserId === managerId)) {
+        return true;
+      }
+      if (vis === FeedbackVisibility.MANAGER_ONLY) {
+        return isAdminExport || (!!managerId && f.toUser?.managerId === managerId);
+      }
+      // private: solo emisor/receptor (ya resuelto arriba) → excluir.
+      return false;
+    });
+  }
+
   async exportFeedbackCsv(tenantId: string, managerId?: string): Promise<string> {
     const teamIds = await this.getTeamScopeForFeedbackExport(tenantId, managerId);
     const checkinWhere: any = { tenantId };
@@ -1300,14 +1351,17 @@ export class FeedbackService {
         relations: ['manager', 'employee'],
         order: { scheduledDate: 'DESC' },
       });
-      const feedback = await this.quickFeedbackRepo.find({
-        where: [
-          { tenantId, fromUserId: In(teamIds) },
-          { tenantId, toUserId: In(teamIds) },
-        ],
-        relations: ['fromUser', 'toUser'],
-        order: { createdAt: 'DESC' },
-      });
+      const feedback = this.filterFeedbackByVisibility(
+        await this.quickFeedbackRepo.find({
+          where: [
+            { tenantId, fromUserId: In(teamIds) },
+            { tenantId, toUserId: In(teamIds) },
+          ],
+          relations: ['fromUser', 'toUser'],
+          order: { createdAt: 'DESC' },
+        }),
+        managerId,
+      );
       return this.buildFeedbackCsv(checkins, feedback);
     }
 
@@ -1316,11 +1370,14 @@ export class FeedbackService {
       relations: ['manager', 'employee'],
       order: { scheduledDate: 'DESC' },
     });
-    const feedback = await this.quickFeedbackRepo.find({
-      where: feedbackWhere,
-      relations: ['fromUser', 'toUser'],
-      order: { createdAt: 'DESC' },
-    });
+    const feedback = this.filterFeedbackByVisibility(
+      await this.quickFeedbackRepo.find({
+        where: feedbackWhere,
+        relations: ['fromUser', 'toUser'],
+        order: { createdAt: 'DESC' },
+      }),
+      managerId,
+    );
     return this.buildFeedbackCsv(checkins, feedback);
   }
 
@@ -1379,20 +1436,23 @@ export class FeedbackService {
           relations: ['manager', 'employee'],
           order: { scheduledDate: 'DESC' },
         });
-    const feedback = teamIds
-      ? await this.quickFeedbackRepo.find({
-          where: [
-            { tenantId, fromUserId: In(teamIds) },
-            { tenantId, toUserId: In(teamIds) },
-          ],
-          relations: ['fromUser', 'toUser'],
-          order: { createdAt: 'DESC' },
-        })
-      : await this.quickFeedbackRepo.find({
-          where: { tenantId },
-          relations: ['fromUser', 'toUser'],
-          order: { createdAt: 'DESC' },
-        });
+    const feedback = this.filterFeedbackByVisibility(
+      teamIds
+        ? await this.quickFeedbackRepo.find({
+            where: [
+              { tenantId, fromUserId: In(teamIds) },
+              { tenantId, toUserId: In(teamIds) },
+            ],
+            relations: ['fromUser', 'toUser'],
+            order: { createdAt: 'DESC' },
+          })
+        : await this.quickFeedbackRepo.find({
+            where: { tenantId },
+            relations: ['fromUser', 'toUser'],
+            order: { createdAt: 'DESC' },
+          }),
+      managerId,
+    );
 
     const ExcelJS = (await import('exceljs')).default;
     const wb = new ExcelJS.Workbook();
