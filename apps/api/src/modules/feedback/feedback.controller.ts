@@ -90,13 +90,40 @@ export class FeedbackController {
   }
 
   @Patch('checkins/:id')
-  @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
+  @Roles('super_admin', 'tenant_admin', 'manager')
   updateCheckIn(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
     @Body() dto: UpdateCheckInDto,
   ) {
-    return this.feedbackService.updateCheckIn(req.user.tenantId, id, dto);
+    return this.feedbackService.updateCheckIn(
+      req.user.tenantId,
+      id,
+      req.user.userId,
+      req.user.role,
+      dto,
+    );
+  }
+
+  /**
+   * Auditoría feedback (Fix B) — anula un check-in. Reemplaza el patrón
+   * inseguro `PATCH /checkins/:id { status:'cancelled' }`. Solo admin o
+   * el encargado dueño (validado en el service).
+   */
+  @Post('checkins/:id/cancel')
+  @Roles('super_admin', 'tenant_admin', 'manager')
+  cancelCheckIn(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+    @Body() body?: { reason?: string },
+  ) {
+    return this.feedbackService.cancelCheckIn(
+      req.user.tenantId,
+      id,
+      req.user.userId,
+      req.user.role,
+      body?.reason,
+    );
   }
 
   @Post('checkins/request')
@@ -114,7 +141,7 @@ export class FeedbackController {
     @Body() body?: { scheduledDate?: string; scheduledTime?: string; locationId?: string },
   ) {
     const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
-    return this.feedbackService.acceptCheckInRequest(tenantId, id, req.user.userId, body);
+    return this.feedbackService.acceptCheckInRequest(tenantId, id, req.user.userId, req.user.role, body);
   }
 
   @Delete('checkins/:id')
@@ -275,8 +302,11 @@ export class FeedbackController {
     );
   }
 
+  // Auditoría feedback (Bug 9) — rechazar es la acción del colaborador
+  // asignado declinando su 1:1. El servicio ya exige ci.employeeId ===
+  // userId; @Roles se alinea a 'employee' (admins anulan vía /cancel).
   @Post('checkins/:id/reject')
-  @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
+  @Roles('employee')
   rejectCheckIn(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,

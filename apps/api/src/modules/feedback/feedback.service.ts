@@ -4,7 +4,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, LessThan, MoreThanOrEqual, Not, Repository } from 'typeorm';
 import { runWithCronLock } from '../../common/utils/cron-lock';
 import { CheckIn, CheckInStatus } from './entities/checkin.entity';
-import { QuickFeedback, Sentiment } from './entities/quick-feedback.entity';
+import { QuickFeedback, Sentiment, FeedbackVisibility } from './entities/quick-feedback.entity';
 import { MeetingLocation } from './entities/meeting-location.entity';
 import { CreateCheckInDto, UpdateCheckInDto, RejectCheckInDto } from './dto/create-checkin.dto';
 import { CreateQuickFeedbackDto } from './dto/create-quick-feedback.dto';
@@ -222,9 +222,28 @@ export class FeedbackService {
     return saved as CheckIn;
   }
 
-  async updateCheckIn(tenantId: string, id: string, dto: UpdateCheckInDto): Promise<CheckIn> {
+  async updateCheckIn(
+    tenantId: string,
+    id: string,
+    userId: string,
+    role: string,
+    dto: UpdateCheckInDto,
+  ): Promise<CheckIn> {
     const ci = await this.checkInRepo.findOne({ where: { id, tenantId } });
     if (!ci) throw new NotFoundException('Check-in no encontrado');
+
+    // Auditoría feedback (Fix B) — autorización. Antes este método NO
+    // validaba participante: cualquier usuario del tenant podía editar
+    // cualquier check-in (IDOR). Solo el encargado dueño o un admin
+    // pueden editar los campos del check-in. Las transiciones de estado
+    // (completar / rechazar / aceptar / anular) tienen endpoints
+    // dedicados — este método ya NO muta `status`.
+    const isAdmin = role === 'super_admin' || role === 'tenant_admin';
+    if (!isAdmin && ci.managerId !== userId) {
+      throw new ForbiddenException(
+        'Solo el encargado del check-in o un administrador puede editarlo.',
+      );
+    }
 
     // v3.1 — si se reprograma (cambia date y/o time), validar que no quede
     // en el pasado. Merge con lo existente para validar con la combinación
@@ -241,8 +260,89 @@ export class FeedbackService {
     if (dto.scheduledTime !== undefined) ci.scheduledTime = dto.scheduledTime;
     if (dto.locationId !== undefined) ci.locationId = dto.locationId;
     if (dto.actionItems !== undefined) ci.actionItems = dto.actionItems;
-    if (dto.status !== undefined) ci.status = dto.status as any;
+    // `status` deliberadamente NO se procesa aquí. Las transiciones van por
+    // endpoints dedicados: /complete, /reject, /accept, /cancel. Esto evita
+    // saltarse su lógica (completedAt, auditoría, carry-over, notifs).
     return this.checkInRepo.save(ci);
+  }
+
+  /**
+   * Auditoría feedback (Fix B) — anula un check-in SCHEDULED/REQUESTED.
+   * Sustituye al antiguo flujo `PATCH /checkins/:id { status:'cancelled' }`
+   * que no auditaba, no notificaba ni validaba autorización en el server.
+   *
+   * Reglas de negocio:
+   *  - Solo `SCHEDULED` o `REQUESTED` (un `COMPLETED` es evidencia; un
+   *    `CANCELLED`/`REJECTED` ya es terminal → idempotencia defensiva).
+   *  - Autorización: admin (super_admin/tenant_admin) o el encargado
+   *    dueño (`ci.managerId === userId`). Espeja el gate del frontend.
+   *  - Persiste `cancelledAt` + `cancelReason`, audita y notifica a la
+   *    contraparte (o a ambos participantes si lo anula un admin).
+   */
+  async cancelCheckIn(
+    tenantId: string,
+    id: string,
+    userId: string,
+    role: string,
+    reason?: string,
+  ): Promise<CheckIn> {
+    const ci = await this.checkInRepo.findOne({ where: { id, tenantId } });
+    if (!ci) throw new NotFoundException('Check-in no encontrado');
+
+    if (ci.status === CheckInStatus.COMPLETED) {
+      throw new BadRequestException(
+        'No se puede anular un check-in completado. Los registros completados son evidencia.',
+      );
+    }
+    if (ci.status !== CheckInStatus.SCHEDULED && ci.status !== CheckInStatus.REQUESTED) {
+      throw new BadRequestException(
+        'Solo se pueden anular check-ins programados o solicitados.',
+      );
+    }
+
+    const isAdmin = role === 'super_admin' || role === 'tenant_admin';
+    if (!isAdmin && ci.managerId !== userId) {
+      throw new ForbiddenException(
+        'Solo el encargado del check-in o un administrador puede anularlo.',
+      );
+    }
+
+    ci.status = CheckInStatus.CANCELLED;
+    ci.cancelledAt = new Date();
+    ci.cancelReason = reason?.trim() || null;
+    const saved = await this.checkInRepo.save(ci);
+
+    this.auditService
+      .log(tenantId, userId, 'checkin.cancelled', 'checkin', ci.id, {
+        topic: ci.topic,
+        managerId: ci.managerId,
+        employeeId: ci.employeeId,
+        reason: ci.cancelReason,
+      })
+      .catch(() => {});
+
+    // Notificar a la(s) contraparte(s): todos los participantes menos
+    // quien anuló. Si lo anula un admin que no participa, se notifica a
+    // ambos. Fire-and-forget — no bloquea la respuesta.
+    const targets = [ci.managerId, ci.employeeId].filter(
+      (uid, idx, arr) => uid !== userId && arr.indexOf(uid) === idx,
+    );
+    for (const target of targets) {
+      this.notificationsService
+        .create({
+          tenantId,
+          userId: target,
+          type: NotificationType.GENERAL,
+          title: 'Check-in anulado',
+          message: `Se anuló el check-in "${ci.topic}"${
+            ci.cancelReason ? `. Motivo: ${ci.cancelReason}` : ''
+          }`,
+          metadata: { checkInId: ci.id },
+        })
+        .catch(() => {});
+    }
+
+    return saved;
   }
 
   async addTopicToCheckIn(tenantId: string, checkInId: string, userId: string, text: string): Promise<CheckIn> {
@@ -431,43 +531,85 @@ export class FeedbackService {
               select: ['id', 'tenantId', 'managerId', 'employeeId', 'topic', 'scheduledDate'],
             });
 
-            if (stale.length === 0) {
-              return;
-            }
+            if (stale.length > 0) {
+              const autoNote =
+                'Cerrado automáticamente por política de cierre de Eva360: han pasado ' +
+                'más de 5 días desde la fecha programada sin registrar el resultado de la ' +
+                'reunión. El encargado puede agregar retroactivamente notas, minuta, ' +
+                'acuerdos y valoración desde el botón "Editar información" en esta reunión.';
 
-            const autoNote =
-              'Cerrado automáticamente por política de cierre de Eva360: han pasado ' +
-              'más de 5 días desde la fecha programada sin registrar el resultado de la ' +
-              'reunión. El encargado puede agregar retroactivamente notas, minuta, ' +
-              'acuerdos y valoración desde el botón "Editar información" en esta reunión.';
-
-            for (const ci of stale) {
-              try {
-                await this.checkInRepo.update(
-                  { id: ci.id },
-                  {
-                    status: CheckInStatus.COMPLETED,
-                    autoCompleted: true,
-                    completedAt: new Date(),
-                    notes: autoNote,
-                  },
-                );
-                await this.auditService
-                  .log(ci.tenantId, null, 'checkin.auto_completed', 'checkin', ci.id, {
-                    topic: ci.topic,
-                    scheduledDate: ci.scheduledDate,
-                  })
-                  .catch(() => undefined);
-              } catch (err: any) {
-                this.logger.warn(
-                  `[autoCompleteStaleCheckIns] falló cerrar ${ci.id}: ${err?.message}`,
-                );
+              for (const ci of stale) {
+                try {
+                  await this.checkInRepo.update(
+                    { id: ci.id },
+                    {
+                      status: CheckInStatus.COMPLETED,
+                      autoCompleted: true,
+                      completedAt: new Date(),
+                      notes: autoNote,
+                    },
+                  );
+                  await this.auditService
+                    .log(ci.tenantId, null, 'checkin.auto_completed', 'checkin', ci.id, {
+                      topic: ci.topic,
+                      scheduledDate: ci.scheduledDate,
+                    })
+                    .catch(() => undefined);
+                } catch (err: any) {
+                  this.logger.warn(
+                    `[autoCompleteStaleCheckIns] falló cerrar ${ci.id}: ${err?.message}`,
+                  );
+                }
               }
+
+              this.logger.log(
+                `[autoCompleteStaleCheckIns] tenant=${tenantId.slice(0, 8)} auto-cerrados: ${stale.length}`,
+              );
             }
 
-            this.logger.log(
-              `[autoCompleteStaleCheckIns] tenant=${tenantId.slice(0, 8)} auto-cerrados: ${stale.length}`,
-            );
+            // Auditoría feedback (Bug 11) — las solicitudes (REQUESTED)
+            // nunca expiraban: quedaban colgadas indefinidamente si el
+            // encargado nunca las aceptaba. Se anulan tras 14 días sin
+            // aceptación. Misma cron tenant-scoped; corre siempre, incluso
+            // si no hubo SCHEDULED vencidos.
+            const reqCutoff = new Date();
+            reqCutoff.setUTCDate(reqCutoff.getUTCDate() - 14);
+            const staleRequests = await this.checkInRepo.find({
+              where: {
+                tenantId,
+                status: CheckInStatus.REQUESTED,
+                createdAt: LessThan(reqCutoff) as any,
+              },
+              select: ['id', 'tenantId', 'managerId', 'employeeId', 'topic'],
+            });
+
+            if (staleRequests.length > 0) {
+              for (const ci of staleRequests) {
+                try {
+                  await this.checkInRepo.update(
+                    { id: ci.id },
+                    {
+                      status: CheckInStatus.CANCELLED,
+                      cancelledAt: new Date(),
+                      cancelReason:
+                        'Solicitud de 1:1 expirada: no fue aceptada dentro de 14 días.',
+                    },
+                  );
+                  await this.auditService
+                    .log(ci.tenantId, null, 'checkin.request_expired', 'checkin', ci.id, {
+                      topic: ci.topic,
+                    })
+                    .catch(() => undefined);
+                } catch (err: any) {
+                  this.logger.warn(
+                    `[autoCompleteStaleCheckIns] falló expirar solicitud ${ci.id}: ${err?.message}`,
+                  );
+                }
+              }
+              this.logger.log(
+                `[autoCompleteStaleCheckIns] tenant=${tenantId.slice(0, 8)} solicitudes expiradas: ${staleRequests.length}`,
+              );
+            }
           },
         );
       },
@@ -542,7 +684,7 @@ export class FeedbackService {
   }
 
   /** Manager accepts a requested check-in — changes status to scheduled */
-  async acceptCheckInRequest(tenantId: string | undefined, checkInId: string, managerId: string, data?: { scheduledDate?: string; scheduledTime?: string; locationId?: string }): Promise<CheckIn> {
+  async acceptCheckInRequest(tenantId: string | undefined, checkInId: string, managerId: string, role: string, data?: { scheduledDate?: string; scheduledTime?: string; locationId?: string }): Promise<CheckIn> {
     const where = tenantId ? { id: checkInId, tenantId } : { id: checkInId };
     const ci = await this.checkInRepo.findOne({ where });
     if (!ci) throw new NotFoundException('Check-in no encontrado');
@@ -550,13 +692,18 @@ export class FeedbackService {
     if (ci.status !== CheckInStatus.REQUESTED) {
       throw new BadRequestException('Solo se pueden aceptar solicitudes pendientes');
     }
-    // Semántica: super_admin puede aceptar cross-tenant (soporte); tenant_admin/manager
-    // siguen validados contra managerId.
-    if (ci.managerId !== managerId && !tenantId) {
-      // Super_admin OK — se acepta en nombre del manager. Log claro para auditoría.
-      this.logger.log(`super_admin ${managerId} accepting check-in ${checkInId} on behalf of manager ${ci.managerId}`);
-    } else if (ci.managerId !== managerId) {
-      throw new ForbiddenException('Solo el encargado asignado puede aceptar esta solicitud');
+    // Auditoría feedback (Bug 9) — alineación @Roles/servicio. Antes solo
+    // super_admin (vía tenantId undefined) podía aceptar en nombre del
+    // manager; tenant_admin estaba en @Roles pero el servicio lo bloqueaba.
+    // Ahora cualquier admin (super_admin/tenant_admin) puede aceptar en
+    // nombre del encargado; el resto solo si es el encargado asignado.
+    const isAdmin = role === 'super_admin' || role === 'tenant_admin';
+    if (ci.managerId !== managerId) {
+      if (isAdmin) {
+        this.logger.log(`admin ${managerId} (${role}) accepting check-in ${checkInId} on behalf of manager ${ci.managerId}`);
+      } else {
+        throw new ForbiddenException('Solo el encargado asignado o un administrador puede aceptar esta solicitud');
+      }
     }
 
     // v3.1 — validar fecha/hora futuras. Si el manager ajusta fecha al
@@ -924,10 +1071,22 @@ export class FeedbackService {
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '') // strip combining diacritics
       .replace(/[^a-z\s]/g, '');       // keep only letters and spaces
-    const normalizedWords = this.PROHIBITED_WORDS.map((w) =>
-      w.normalize('NFD').replace(/[\u0300-\u036f]/g, ''),
+    // Auditor\u00eda feedback (Fix / Bug 12) \u2014 antes se usaba
+    // `normalized.includes(word)` (substring) \u2192 falsos positivos
+    // ("inutil" dentro de "reinutilizable", "tonto" en "espont\u00f3neo...").
+    // Ahora match por l\u00edmite de palabra con sufijo plural opcional, sobre
+    // el texto ya normalizado (solo [a-z\s], los \b son fiables).
+    const normalizedWords = Array.from(
+      new Set(
+        this.PROHIBITED_WORDS.map((w) =>
+          w.normalize('NFD').replace(/[\u0300-\u036f]/g, ''),
+        ),
+      ),
     );
-    const found = normalizedWords.find((word) => normalized.includes(word));
+    const profanityRe = new RegExp(
+      `\\b(?:${normalizedWords.join('|')})(?:es|s)?\\b`,
+    );
+    const found = profanityRe.test(normalized);
     if (found) {
       throw new BadRequestException(
         'El feedback contiene lenguaje inapropiado. El feedback debe estar enfocado en comportamientos y resultados, no en la persona.',
@@ -944,9 +1103,18 @@ export class FeedbackService {
     const minLength: number = fbConfig.minMessageLength || 20;
     const requireCompetency: boolean = fbConfig.requireCompetency === true;
 
-    // 2. Validate recipient exists in same tenant
-    const recipientData = await this.userRepo.findOne({ where: { id: dto.toUserId, tenantId }, select: ['id', 'department', 'departmentId', 'managerId'] });
+    // 2. Validar destinatario (auditoría feedback / Bug 10).
+    //    - No tiene sentido auto-feedback (sesga métricas y summary).
+    //    - No se envía feedback a un colaborador inactivo (no lo verá y
+    //      ensucia received/summary del usuario dado de baja).
+    if (dto.toUserId === fromUserId) {
+      throw new BadRequestException('No puedes enviarte feedback a ti mismo.');
+    }
+    const recipientData = await this.userRepo.findOne({ where: { id: dto.toUserId, tenantId }, select: ['id', 'department', 'departmentId', 'managerId', 'isActive'] });
     if (!recipientData) throw new NotFoundException('Destinatario no encontrado en esta organización');
+    if (recipientData.isActive === false) {
+      throw new BadRequestException('No puedes enviar feedback a un colaborador inactivo.');
+    }
 
     // 3. Apply scope restrictions (configurable by admin)
     if (scope !== 'all' && role !== 'tenant_admin' && role !== 'super_admin') {
@@ -986,8 +1154,28 @@ export class FeedbackService {
       throw new BadRequestException('La organización no permite enviar feedback anónimo.');
     }
 
-    // 5. Validate competency requirement
-    if (requireCompetency && !dto.category) {
+    // 5. Validar competencia (auditoría feedback / Fix C — Bugs 4,5,7).
+    //    - Antes se validaba `dto.category` (texto libre) en vez del FK
+    //      real `competencyId`, y `competencyId` se guardaba sin verificar
+    //      tenant (fuga cross-tenant). Ahora:
+    //      a) si viene competencyId, debe ser una competencia ACTIVA del
+    //         tenant (cierra Bug 7).
+    //      b) `requireCompetency` valida contra competencyId, no category.
+    //    `category` se mantiene como texto libre opcional (compat datos
+    //    históricos y filtro por categoría).
+    const competencyId: string | null = dto.competencyId || null;
+    if (competencyId) {
+      const comp = await this.competencyRepo.findOne({
+        where: { id: competencyId, tenantId, isActive: true },
+        select: ['id'],
+      });
+      if (!comp) {
+        throw new BadRequestException(
+          'La competencia seleccionada no es válida para esta organización.',
+        );
+      }
+    }
+    if (requireCompetency && !competencyId) {
       throw new BadRequestException('Es obligatorio seleccionar una competencia al enviar feedback.');
     }
 
@@ -1003,7 +1191,7 @@ export class FeedbackService {
       category: dto.category,
       isAnonymous: dto.isAnonymous ?? false,
       visibility: dto.visibility,
-      competencyId: dto.competencyId || null,
+      competencyId,
     });
     const saved = await this.quickFeedbackRepo.save(qf);
 
@@ -1058,12 +1246,35 @@ export class FeedbackService {
     return saved;
   }
 
+  /**
+   * Auditoría feedback (Fix A) — elimina la identidad del emisor en
+   * feedback marcado `isAnonymous` ANTES de exponerlo por la API. Mutamos
+   * en memoria los objetos ya cargados (no se persiste). El rastro real
+   * del emisor se conserva únicamente en `audit_logs` (evento
+   * `feedback.sent`, acceso admin) para moderación anti-abuso.
+   *
+   * Nota: no se usa en `findFeedbackGiven` porque ahí el caller ES el
+   * emisor (no hay fuga).
+   */
+  private stripAnonymousSender<
+    T extends { isAnonymous?: boolean; fromUserId?: string | null; fromUser?: unknown },
+  >(list: T[]): T[] {
+    for (const f of list) {
+      if (f.isAnonymous) {
+        f.fromUserId = null;
+        f.fromUser = null;
+      }
+    }
+    return list;
+  }
+
   async findFeedbackReceived(tenantId: string, userId: string): Promise<QuickFeedback[]> {
-    return this.quickFeedbackRepo.find({
+    const list = await this.quickFeedbackRepo.find({
       where: { tenantId, toUserId: userId },
       relations: ['fromUser', 'competency'],
       order: { createdAt: 'DESC' },
     });
+    return this.stripAnonymousSender(list);
   }
 
   async findFeedbackGiven(tenantId: string, userId: string): Promise<QuickFeedback[]> {
@@ -1161,6 +1372,37 @@ export class FeedbackService {
     return [managerId, ...reports.map((u) => u.id)];
   }
 
+  /**
+   * Auditoría feedback (Fix D — Bug 6) — enforcement de `visibility` en
+   * los exports (única ruta donde un tercero ve feedback ajeno). Reglas:
+   *   - public        → visible para cualquier scope de export.
+   *   - private       → SOLO emisor o receptor (admin NO exento; la
+   *                      trazabilidad de moderación va por audit_logs).
+   *   - manager_only  → receptor, el manager del receptor, o admin.
+   *
+   * `managerId` definido = export de un manager; undefined = export de
+   * admin (tenant completo).
+   */
+  private filterFeedbackByVisibility(
+    feedback: QuickFeedback[],
+    managerId: string | undefined,
+  ): QuickFeedback[] {
+    const isAdminExport = !managerId;
+    return feedback.filter((f) => {
+      const vis = f.visibility || FeedbackVisibility.PUBLIC;
+      if (vis === FeedbackVisibility.PUBLIC) return true;
+      // Emisor o receptor siempre ve lo suyo.
+      if (managerId && (f.fromUserId === managerId || f.toUserId === managerId)) {
+        return true;
+      }
+      if (vis === FeedbackVisibility.MANAGER_ONLY) {
+        return isAdminExport || (!!managerId && f.toUser?.managerId === managerId);
+      }
+      // private: solo emisor/receptor (ya resuelto arriba) → excluir.
+      return false;
+    });
+  }
+
   async exportFeedbackCsv(tenantId: string, managerId?: string): Promise<string> {
     const teamIds = await this.getTeamScopeForFeedbackExport(tenantId, managerId);
     const checkinWhere: any = { tenantId };
@@ -1177,14 +1419,17 @@ export class FeedbackService {
         relations: ['manager', 'employee'],
         order: { scheduledDate: 'DESC' },
       });
-      const feedback = await this.quickFeedbackRepo.find({
-        where: [
-          { tenantId, fromUserId: In(teamIds) },
-          { tenantId, toUserId: In(teamIds) },
-        ],
-        relations: ['fromUser', 'toUser'],
-        order: { createdAt: 'DESC' },
-      });
+      const feedback = this.filterFeedbackByVisibility(
+        await this.quickFeedbackRepo.find({
+          where: [
+            { tenantId, fromUserId: In(teamIds) },
+            { tenantId, toUserId: In(teamIds) },
+          ],
+          relations: ['fromUser', 'toUser'],
+          order: { createdAt: 'DESC' },
+        }),
+        managerId,
+      );
       return this.buildFeedbackCsv(checkins, feedback);
     }
 
@@ -1193,11 +1438,14 @@ export class FeedbackService {
       relations: ['manager', 'employee'],
       order: { scheduledDate: 'DESC' },
     });
-    const feedback = await this.quickFeedbackRepo.find({
-      where: feedbackWhere,
-      relations: ['fromUser', 'toUser'],
-      order: { createdAt: 'DESC' },
-    });
+    const feedback = this.filterFeedbackByVisibility(
+      await this.quickFeedbackRepo.find({
+        where: feedbackWhere,
+        relations: ['fromUser', 'toUser'],
+        order: { createdAt: 'DESC' },
+      }),
+      managerId,
+    );
     return this.buildFeedbackCsv(checkins, feedback);
   }
 
@@ -1225,7 +1473,13 @@ export class FeedbackService {
     lines.push('Feedback Rápido');
     lines.push('Fecha,De,Para,Categoría,Sentimiento,Mensaje');
     for (const f of feedback) {
-      const from = f.fromUser ? `${f.fromUser.firstName} ${f.fromUser.lastName}` : '';
+      // Fix A — el export de manager/admin también debe respetar el
+      // anonimato (era un residuo de Bug 1: de-anonimizaba en CSV).
+      const from = f.isAnonymous
+        ? 'Anónimo'
+        : f.fromUser
+          ? `${f.fromUser.firstName} ${f.fromUser.lastName}`
+          : '';
       const to = f.toUser ? `${f.toUser.firstName} ${f.toUser.lastName}` : '';
       const date = f.createdAt ? new Date(f.createdAt).toLocaleDateString('es-CL') : '';
       lines.push([date, esc(from), esc(to), esc(f.category || ''), f.sentiment || '', esc(f.message || '')].join(','));
@@ -1250,20 +1504,23 @@ export class FeedbackService {
           relations: ['manager', 'employee'],
           order: { scheduledDate: 'DESC' },
         });
-    const feedback = teamIds
-      ? await this.quickFeedbackRepo.find({
-          where: [
-            { tenantId, fromUserId: In(teamIds) },
-            { tenantId, toUserId: In(teamIds) },
-          ],
-          relations: ['fromUser', 'toUser'],
-          order: { createdAt: 'DESC' },
-        })
-      : await this.quickFeedbackRepo.find({
-          where: { tenantId },
-          relations: ['fromUser', 'toUser'],
-          order: { createdAt: 'DESC' },
-        });
+    const feedback = this.filterFeedbackByVisibility(
+      teamIds
+        ? await this.quickFeedbackRepo.find({
+            where: [
+              { tenantId, fromUserId: In(teamIds) },
+              { tenantId, toUserId: In(teamIds) },
+            ],
+            relations: ['fromUser', 'toUser'],
+            order: { createdAt: 'DESC' },
+          })
+        : await this.quickFeedbackRepo.find({
+            where: { tenantId },
+            relations: ['fromUser', 'toUser'],
+            order: { createdAt: 'DESC' },
+          }),
+      managerId,
+    );
 
     const ExcelJS = (await import('exceljs')).default;
     const wb = new ExcelJS.Workbook();
@@ -1292,7 +1549,12 @@ export class FeedbackService {
     for (const f of feedback) {
       ws2.addRow([
         f.createdAt ? new Date(f.createdAt).toLocaleDateString('es-CL') : '',
-        f.fromUser ? `${f.fromUser.firstName} ${f.fromUser.lastName}` : '',
+        // Fix A — respeta anonimato también en el XLSX (residuo de Bug 1).
+        f.isAnonymous
+          ? 'Anónimo'
+          : f.fromUser
+            ? `${f.fromUser.firstName} ${f.fromUser.lastName}`
+            : '',
         f.toUser ? `${f.toUser.firstName} ${f.toUser.lastName}` : '',
         f.category || '', f.sentiment || '', f.message || '',
       ]);
@@ -1468,15 +1730,20 @@ export class FeedbackService {
     // 3. QuickFeedback dado/recibido por el employee en las últimas 4 semanas.
     const fourWeeksAgo = new Date();
     fourWeeksAgo.setDate(fourWeeksAgo.getDate() - 28);
-    const feedbacks = await this.quickFeedbackRepo.find({
-      where: [
-        { tenantId, toUserId: ci.employeeId, createdAt: MoreThanOrEqual(fourWeeksAgo) },
-        { tenantId, fromUserId: ci.employeeId, createdAt: MoreThanOrEqual(fourWeeksAgo) },
-      ],
-      relations: ['fromUser'],
-      order: { createdAt: 'DESC' },
-      take: 10,
-    });
+    // Fix A — strip de emisor anónimo: si el employee recibió (o emitió)
+    // feedback anónimo, el manager que prepara el 1:1 no debe poder
+    // deducir la identidad vía fromUserId/fromName.
+    const feedbacks = this.stripAnonymousSender(
+      await this.quickFeedbackRepo.find({
+        where: [
+          { tenantId, toUserId: ci.employeeId, createdAt: MoreThanOrEqual(fourWeeksAgo) },
+          { tenantId, fromUserId: ci.employeeId, createdAt: MoreThanOrEqual(fourWeeksAgo) },
+        ],
+        relations: ['fromUser'],
+        order: { createdAt: 'DESC' },
+        take: 10,
+      }),
+    );
     const recentFeedback: NonNullable<CheckIn['magicAgenda']>['recentFeedback'] = feedbacks.map((f) => ({
       feedbackId: f.id,
       fromUserId: f.fromUserId,

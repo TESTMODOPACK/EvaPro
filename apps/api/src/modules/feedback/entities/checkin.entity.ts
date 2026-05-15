@@ -170,6 +170,18 @@ export class CheckIn {
   @JoinColumn({ name: 'rejected_by' })
   rejectedByUser: User | null;
 
+  /**
+   * Auditoría feedback (Fix B) — metadata de anulación. Distinta de
+   * `rejection_reason` (rechazo por el colaborador). Se setea al anular un
+   * check-in SCHEDULED/REQUESTED vía `cancelCheckIn` o por la cascada de
+   * traslado de usuario (`user-transferred.listener`).
+   */
+  @Column({ type: 'timestamptz', name: 'cancelled_at', nullable: true })
+  cancelledAt: Date | null;
+
+  @Column({ type: 'text', name: 'cancel_reason', nullable: true })
+  cancelReason: string | null;
+
   @Column({ type: 'uuid', name: 'development_plan_id', nullable: true, comment: 'Plan de desarrollo vinculado a este check-in' })
   developmentPlanId: string | null;
 

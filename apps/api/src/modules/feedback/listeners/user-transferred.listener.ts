@@ -78,14 +78,18 @@ export class FeedbackUserTransferredListener {
 
       // Cancelar todos en una update batch
       const cancelReason = `Cancelado por traslado del colaborador. Anterior manager: ${event.previous.managerId}, nuevo: ${event.current.managerId ?? '(sin asignar)'}.`;
+      // Auditoría feedback (Fix B) — `cancelledAt`/`cancelReason` ahora son
+      // columnas reales de la entidad CheckIn. Antes este `.set(... as any)`
+      // referenciaba columnas inexistentes: el UPDATE fallaba en runtime y
+      // el catch lo silenciaba → la cascada de traslado NO cancelaba nada.
       await this.checkinRepo
         .createQueryBuilder()
-        .update()
+        .update(CheckIn)
         .set({
           status: CheckInStatus.CANCELLED,
           cancelledAt: new Date(),
           cancelReason,
-        } as any)
+        })
         .where('id IN (:...ids)', { ids: targets.map((t) => t.id) })
         .execute();
 

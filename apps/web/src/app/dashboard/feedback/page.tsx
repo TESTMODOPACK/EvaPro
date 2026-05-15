@@ -1065,7 +1065,9 @@ function QuickFeedbackTab() {
 
   const [subTab, setSubTab] = useState<QuickSubTab>('received');
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ toUserId: '', message: '', sentiment: 'positive' as Sentiment, category: '', isAnonymous: false });
+  // Auditoría feedback (Fix C): el selector ahora referencia la
+  // competencia por ID (FK real), no metiendo el nombre en `category`.
+  const [form, setForm] = useState({ toUserId: '', message: '', sentiment: 'positive' as Sentiment, competencyId: '', isAnonymous: false });
   const [recipientSearch, setRecipientSearch] = useState('');
   const [recipientDeptFilter, setRecipientDeptFilter] = useState('');
 
@@ -1118,12 +1120,12 @@ function QuickFeedbackTab() {
         toUserId: form.toUserId,
         message: form.message,
         sentiment: form.sentiment,
-        ...(form.category ? { category: form.category } : {}),
+        ...(form.competencyId ? { competencyId: form.competencyId } : {}),
         isAnonymous: form.isAnonymous,
       },
       {
         onSuccess: () => {
-          setForm({ toUserId: '', message: '', sentiment: 'positive', category: '', isAnonymous: false });
+          setForm({ toUserId: '', message: '', sentiment: 'positive', competencyId: '', isAnonymous: false });
           setShowForm(false);
           setSendError('');
         },
@@ -1260,13 +1262,13 @@ function QuickFeedbackTab() {
               </label>
               <select
                 className="input"
-                value={form.category}
-                onChange={(e) => setForm({ ...form, category: e.target.value })}
+                value={form.competencyId}
+                onChange={(e) => setForm({ ...form, competencyId: e.target.value })}
                 style={{ width: '100%' }}
               >
                 <option value="">— Sin competencia asociada —</option>
                 {(Array.isArray(competencies) ? competencies : []).map((c: any) => (
-                  <option key={c.id} value={c.name}>{c.name}{c.category ? ` (${c.category})` : ''}</option>
+                  <option key={c.id} value={c.id}>{c.name}{c.category ? ` (${c.category})` : ''}</option>
                 ))}
               </select>
             </div>
@@ -1285,7 +1287,7 @@ function QuickFeedbackTab() {
           <button
             className="btn-primary"
             onClick={handleSend}
-            disabled={sendFeedback.isPending || !form.toUserId || !form.message || (fbRequireCompetency && !form.category)}
+            disabled={sendFeedback.isPending || !form.toUserId || !form.message || (fbRequireCompetency && !form.competencyId)}
           >
             {sendFeedback.isPending ? t('common.loading') : t('feedback.sendFeedback')}
           </button>
@@ -1334,8 +1336,8 @@ function QuickFeedbackTab() {
                     <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>{personLabel}</span>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    {fb.category && (
-                      <span className="badge badge-accent" style={{ fontSize: '0.7rem' }}>{fb.category}</span>
+                    {(fb.competency?.name || fb.category) && (
+                      <span className="badge badge-accent" style={{ fontSize: '0.7rem' }}>{fb.competency?.name || fb.category}</span>
                     )}
                     <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{formatDate(fb.createdAt)}</span>
                   </div>

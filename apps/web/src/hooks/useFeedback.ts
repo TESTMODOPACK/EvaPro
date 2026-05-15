@@ -93,7 +93,7 @@ export function useCancelCheckIn() {
   const token = useAuthStore((s) => s.token);
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.feedback.updateCheckIn(token!, id, { status: 'cancelled' }),
+    mutationFn: (id: string) => api.feedback.cancelCheckIn(token!, id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['feedback', 'checkins'] }),
   });
 }
