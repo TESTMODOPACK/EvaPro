@@ -222,9 +222,28 @@ export class FeedbackService {
     return saved as CheckIn;
   }
 
-  async updateCheckIn(tenantId: string, id: string, dto: UpdateCheckInDto): Promise<CheckIn> {
+  async updateCheckIn(
+    tenantId: string,
+    id: string,
+    userId: string,
+    role: string,
+    dto: UpdateCheckInDto,
+  ): Promise<CheckIn> {
     const ci = await this.checkInRepo.findOne({ where: { id, tenantId } });
     if (!ci) throw new NotFoundException('Check-in no encontrado');
+
+    // Auditoría feedback (Fix B) — autorización. Antes este método NO
+    // validaba participante: cualquier usuario del tenant podía editar
+    // cualquier check-in (IDOR). Solo el encargado dueño o un admin
+    // pueden editar los campos del check-in. Las transiciones de estado
+    // (completar / rechazar / aceptar / anular) tienen endpoints
+    // dedicados — este método ya NO muta `status`.
+    const isAdmin = role === 'super_admin' || role === 'tenant_admin';
+    if (!isAdmin && ci.managerId !== userId) {
+      throw new ForbiddenException(
+        'Solo el encargado del check-in o un administrador puede editarlo.',
+      );
+    }
 
     // v3.1 — si se reprograma (cambia date y/o time), validar que no quede
     // en el pasado. Merge con lo existente para validar con la combinación
@@ -241,8 +260,89 @@ export class FeedbackService {
     if (dto.scheduledTime !== undefined) ci.scheduledTime = dto.scheduledTime;
     if (dto.locationId !== undefined) ci.locationId = dto.locationId;
     if (dto.actionItems !== undefined) ci.actionItems = dto.actionItems;
-    if (dto.status !== undefined) ci.status = dto.status as any;
+    // `status` deliberadamente NO se procesa aquí. Las transiciones van por
+    // endpoints dedicados: /complete, /reject, /accept, /cancel. Esto evita
+    // saltarse su lógica (completedAt, auditoría, carry-over, notifs).
     return this.checkInRepo.save(ci);
+  }
+
+  /**
+   * Auditoría feedback (Fix B) — anula un check-in SCHEDULED/REQUESTED.
+   * Sustituye al antiguo flujo `PATCH /checkins/:id { status:'cancelled' }`
+   * que no auditaba, no notificaba ni validaba autorización en el server.
+   *
+   * Reglas de negocio:
+   *  - Solo `SCHEDULED` o `REQUESTED` (un `COMPLETED` es evidencia; un
+   *    `CANCELLED`/`REJECTED` ya es terminal → idempotencia defensiva).
+   *  - Autorización: admin (super_admin/tenant_admin) o el encargado
+   *    dueño (`ci.managerId === userId`). Espeja el gate del frontend.
+   *  - Persiste `cancelledAt` + `cancelReason`, audita y notifica a la
+   *    contraparte (o a ambos participantes si lo anula un admin).
+   */
+  async cancelCheckIn(
+    tenantId: string,
+    id: string,
+    userId: string,
+    role: string,
+    reason?: string,
+  ): Promise<CheckIn> {
+    const ci = await this.checkInRepo.findOne({ where: { id, tenantId } });
+    if (!ci) throw new NotFoundException('Check-in no encontrado');
+
+    if (ci.status === CheckInStatus.COMPLETED) {
+      throw new BadRequestException(
+        'No se puede anular un check-in completado. Los registros completados son evidencia.',
+      );
+    }
+    if (ci.status !== CheckInStatus.SCHEDULED && ci.status !== CheckInStatus.REQUESTED) {
+      throw new BadRequestException(
+        'Solo se pueden anular check-ins programados o solicitados.',
+      );
+    }
+
+    const isAdmin = role === 'super_admin' || role === 'tenant_admin';
+    if (!isAdmin && ci.managerId !== userId) {
+      throw new ForbiddenException(
+        'Solo el encargado del check-in o un administrador puede anularlo.',
+      );
+    }
+
+    ci.status = CheckInStatus.CANCELLED;
+    ci.cancelledAt = new Date();
+    ci.cancelReason = reason?.trim() || null;
+    const saved = await this.checkInRepo.save(ci);
+
+    this.auditService
+      .log(tenantId, userId, 'checkin.cancelled', 'checkin', ci.id, {
+        topic: ci.topic,
+        managerId: ci.managerId,
+        employeeId: ci.employeeId,
+        reason: ci.cancelReason,
+      })
+      .catch(() => {});
+
+    // Notificar a la(s) contraparte(s): todos los participantes menos
+    // quien anuló. Si lo anula un admin que no participa, se notifica a
+    // ambos. Fire-and-forget — no bloquea la respuesta.
+    const targets = [ci.managerId, ci.employeeId].filter(
+      (uid, idx, arr) => uid !== userId && arr.indexOf(uid) === idx,
+    );
+    for (const target of targets) {
+      this.notificationsService
+        .create({
+          tenantId,
+          userId: target,
+          type: NotificationType.GENERAL,
+          title: 'Check-in anulado',
+          message: `Se anuló el check-in "${ci.topic}"${
+            ci.cancelReason ? `. Motivo: ${ci.cancelReason}` : ''
+          }`,
+          metadata: { checkInId: ci.id },
+        })
+        .catch(() => {});
+    }
+
+    return saved;
   }
 
   async addTopicToCheckIn(tenantId: string, checkInId: string, userId: string, text: string): Promise<CheckIn> {
@@ -1058,12 +1158,35 @@ export class FeedbackService {
     return saved;
   }
 
+  /**
+   * Auditoría feedback (Fix A) — elimina la identidad del emisor en
+   * feedback marcado `isAnonymous` ANTES de exponerlo por la API. Mutamos
+   * en memoria los objetos ya cargados (no se persiste). El rastro real
+   * del emisor se conserva únicamente en `audit_logs` (evento
+   * `feedback.sent`, acceso admin) para moderación anti-abuso.
+   *
+   * Nota: no se usa en `findFeedbackGiven` porque ahí el caller ES el
+   * emisor (no hay fuga).
+   */
+  private stripAnonymousSender<
+    T extends { isAnonymous?: boolean; fromUserId?: string | null; fromUser?: unknown },
+  >(list: T[]): T[] {
+    for (const f of list) {
+      if (f.isAnonymous) {
+        f.fromUserId = null;
+        f.fromUser = null;
+      }
+    }
+    return list;
+  }
+
   async findFeedbackReceived(tenantId: string, userId: string): Promise<QuickFeedback[]> {
-    return this.quickFeedbackRepo.find({
+    const list = await this.quickFeedbackRepo.find({
       where: { tenantId, toUserId: userId },
       relations: ['fromUser', 'competency'],
       order: { createdAt: 'DESC' },
     });
+    return this.stripAnonymousSender(list);
   }
 
   async findFeedbackGiven(tenantId: string, userId: string): Promise<QuickFeedback[]> {
@@ -1225,7 +1348,13 @@ export class FeedbackService {
     lines.push('Feedback Rápido');
     lines.push('Fecha,De,Para,Categoría,Sentimiento,Mensaje');
     for (const f of feedback) {
-      const from = f.fromUser ? `${f.fromUser.firstName} ${f.fromUser.lastName}` : '';
+      // Fix A — el export de manager/admin también debe respetar el
+      // anonimato (era un residuo de Bug 1: de-anonimizaba en CSV).
+      const from = f.isAnonymous
+        ? 'Anónimo'
+        : f.fromUser
+          ? `${f.fromUser.firstName} ${f.fromUser.lastName}`
+          : '';
       const to = f.toUser ? `${f.toUser.firstName} ${f.toUser.lastName}` : '';
       const date = f.createdAt ? new Date(f.createdAt).toLocaleDateString('es-CL') : '';
       lines.push([date, esc(from), esc(to), esc(f.category || ''), f.sentiment || '', esc(f.message || '')].join(','));
@@ -1292,7 +1421,12 @@ export class FeedbackService {
     for (const f of feedback) {
       ws2.addRow([
         f.createdAt ? new Date(f.createdAt).toLocaleDateString('es-CL') : '',
-        f.fromUser ? `${f.fromUser.firstName} ${f.fromUser.lastName}` : '',
+        // Fix A — respeta anonimato también en el XLSX (residuo de Bug 1).
+        f.isAnonymous
+          ? 'Anónimo'
+          : f.fromUser
+            ? `${f.fromUser.firstName} ${f.fromUser.lastName}`
+            : '',
         f.toUser ? `${f.toUser.firstName} ${f.toUser.lastName}` : '',
         f.category || '', f.sentiment || '', f.message || '',
       ]);
@@ -1468,15 +1602,20 @@ export class FeedbackService {
     // 3. QuickFeedback dado/recibido por el employee en las últimas 4 semanas.
     const fourWeeksAgo = new Date();
     fourWeeksAgo.setDate(fourWeeksAgo.getDate() - 28);
-    const feedbacks = await this.quickFeedbackRepo.find({
-      where: [
-        { tenantId, toUserId: ci.employeeId, createdAt: MoreThanOrEqual(fourWeeksAgo) },
-        { tenantId, fromUserId: ci.employeeId, createdAt: MoreThanOrEqual(fourWeeksAgo) },
-      ],
-      relations: ['fromUser'],
-      order: { createdAt: 'DESC' },
-      take: 10,
-    });
+    // Fix A — strip de emisor anónimo: si el employee recibió (o emitió)
+    // feedback anónimo, el manager que prepara el 1:1 no debe poder
+    // deducir la identidad vía fromUserId/fromName.
+    const feedbacks = this.stripAnonymousSender(
+      await this.quickFeedbackRepo.find({
+        where: [
+          { tenantId, toUserId: ci.employeeId, createdAt: MoreThanOrEqual(fourWeeksAgo) },
+          { tenantId, fromUserId: ci.employeeId, createdAt: MoreThanOrEqual(fourWeeksAgo) },
+        ],
+        relations: ['fromUser'],
+        order: { createdAt: 'DESC' },
+        take: 10,
+      }),
+    );
     const recentFeedback: NonNullable<CheckIn['magicAgenda']>['recentFeedback'] = feedbacks.map((f) => ({
       feedbackId: f.id,
       fromUserId: f.fromUserId,

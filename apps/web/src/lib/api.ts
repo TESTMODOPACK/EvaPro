@@ -1189,6 +1189,15 @@ export const api = {
       }>>("/feedback/my-topics", {}, token),
     updateCheckIn: (token: string, id: string, data: any) =>
       request<CheckInData>(`/feedback/checkins/${id}`, { method: "PATCH", body: JSON.stringify(data) }, token),
+    /** Auditoría feedback (Fix B) — anula un check-in vía endpoint
+     *  dedicado (authz + auditoría server-side). Reemplaza el patrón
+     *  inseguro updateCheckIn(id, { status: 'cancelled' }). */
+    cancelCheckIn: (token: string, id: string, reason?: string) =>
+      request<CheckInData>(
+        `/feedback/checkins/${id}/cancel`,
+        { method: "POST", ...(reason ? { body: JSON.stringify({ reason }) } : {}) },
+        token,
+      ),
     completeCheckIn: (token: string, id: string, data?: { notes?: string; actionItems?: any[]; rating?: number; minutes?: string }) =>
       request<CheckInData>(`/feedback/checkins/${id}/complete`, { method: "POST", ...(data ? { body: JSON.stringify(data) } : {}) }, token),
     /** Permite a cualquier participante (manager/employee) proponer un tema

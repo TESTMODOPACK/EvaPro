@@ -90,13 +90,40 @@ export class FeedbackController {
   }
 
   @Patch('checkins/:id')
-  @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
+  @Roles('super_admin', 'tenant_admin', 'manager')
   updateCheckIn(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
     @Body() dto: UpdateCheckInDto,
   ) {
-    return this.feedbackService.updateCheckIn(req.user.tenantId, id, dto);
+    return this.feedbackService.updateCheckIn(
+      req.user.tenantId,
+      id,
+      req.user.userId,
+      req.user.role,
+      dto,
+    );
+  }
+
+  /**
+   * Auditoría feedback (Fix B) — anula un check-in. Reemplaza el patrón
+   * inseguro `PATCH /checkins/:id { status:'cancelled' }`. Solo admin o
+   * el encargado dueño (validado en el service).
+   */
+  @Post('checkins/:id/cancel')
+  @Roles('super_admin', 'tenant_admin', 'manager')
+  cancelCheckIn(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+    @Body() body?: { reason?: string },
+  ) {
+    return this.feedbackService.cancelCheckIn(
+      req.user.tenantId,
+      id,
+      req.user.userId,
+      req.user.role,
+      body?.reason,
+    );
   }
 
   @Post('checkins/request')

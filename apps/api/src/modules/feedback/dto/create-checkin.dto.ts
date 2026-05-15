@@ -54,9 +54,9 @@ export class UpdateCheckInDto {
   @IsOptional()
   actionItems?: { text: string; completed: boolean }[];
 
-  @IsString()
-  @IsOptional()
-  status?: string;
+  // `status` removido (auditoría feedback / Fix B): las transiciones de
+  // estado van por endpoints dedicados (/complete, /reject, /accept,
+  // /cancel), no por el PATCH genérico.
 }
 
 export class RejectCheckInDto {
