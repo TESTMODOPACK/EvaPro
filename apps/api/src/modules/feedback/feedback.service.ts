@@ -531,43 +531,85 @@ export class FeedbackService {
               select: ['id', 'tenantId', 'managerId', 'employeeId', 'topic', 'scheduledDate'],
             });
 
-            if (stale.length === 0) {
-              return;
-            }
+            if (stale.length > 0) {
+              const autoNote =
+                'Cerrado automáticamente por política de cierre de Eva360: han pasado ' +
+                'más de 5 días desde la fecha programada sin registrar el resultado de la ' +
+                'reunión. El encargado puede agregar retroactivamente notas, minuta, ' +
+                'acuerdos y valoración desde el botón "Editar información" en esta reunión.';
 
-            const autoNote =
-              'Cerrado automáticamente por política de cierre de Eva360: han pasado ' +
-              'más de 5 días desde la fecha programada sin registrar el resultado de la ' +
-              'reunión. El encargado puede agregar retroactivamente notas, minuta, ' +
-              'acuerdos y valoración desde el botón "Editar información" en esta reunión.';
-
-            for (const ci of stale) {
-              try {
-                await this.checkInRepo.update(
-                  { id: ci.id },
-                  {
-                    status: CheckInStatus.COMPLETED,
-                    autoCompleted: true,
-                    completedAt: new Date(),
-                    notes: autoNote,
-                  },
-                );
-                await this.auditService
-                  .log(ci.tenantId, null, 'checkin.auto_completed', 'checkin', ci.id, {
-                    topic: ci.topic,
-                    scheduledDate: ci.scheduledDate,
-                  })
-                  .catch(() => undefined);
-              } catch (err: any) {
-                this.logger.warn(
-                  `[autoCompleteStaleCheckIns] falló cerrar ${ci.id}: ${err?.message}`,
-                );
+              for (const ci of stale) {
+                try {
+                  await this.checkInRepo.update(
+                    { id: ci.id },
+                    {
+                      status: CheckInStatus.COMPLETED,
+                      autoCompleted: true,
+                      completedAt: new Date(),
+                      notes: autoNote,
+                    },
+                  );
+                  await this.auditService
+                    .log(ci.tenantId, null, 'checkin.auto_completed', 'checkin', ci.id, {
+                      topic: ci.topic,
+                      scheduledDate: ci.scheduledDate,
+                    })
+                    .catch(() => undefined);
+                } catch (err: any) {
+                  this.logger.warn(
+                    `[autoCompleteStaleCheckIns] falló cerrar ${ci.id}: ${err?.message}`,
+                  );
+                }
               }
+
+              this.logger.log(
+                `[autoCompleteStaleCheckIns] tenant=${tenantId.slice(0, 8)} auto-cerrados: ${stale.length}`,
+              );
             }
 
-            this.logger.log(
-              `[autoCompleteStaleCheckIns] tenant=${tenantId.slice(0, 8)} auto-cerrados: ${stale.length}`,
-            );
+            // Auditoría feedback (Bug 11) — las solicitudes (REQUESTED)
+            // nunca expiraban: quedaban colgadas indefinidamente si el
+            // encargado nunca las aceptaba. Se anulan tras 14 días sin
+            // aceptación. Misma cron tenant-scoped; corre siempre, incluso
+            // si no hubo SCHEDULED vencidos.
+            const reqCutoff = new Date();
+            reqCutoff.setUTCDate(reqCutoff.getUTCDate() - 14);
+            const staleRequests = await this.checkInRepo.find({
+              where: {
+                tenantId,
+                status: CheckInStatus.REQUESTED,
+                createdAt: LessThan(reqCutoff) as any,
+              },
+              select: ['id', 'tenantId', 'managerId', 'employeeId', 'topic'],
+            });
+
+            if (staleRequests.length > 0) {
+              for (const ci of staleRequests) {
+                try {
+                  await this.checkInRepo.update(
+                    { id: ci.id },
+                    {
+                      status: CheckInStatus.CANCELLED,
+                      cancelledAt: new Date(),
+                      cancelReason:
+                        'Solicitud de 1:1 expirada: no fue aceptada dentro de 14 días.',
+                    },
+                  );
+                  await this.auditService
+                    .log(ci.tenantId, null, 'checkin.request_expired', 'checkin', ci.id, {
+                      topic: ci.topic,
+                    })
+                    .catch(() => undefined);
+                } catch (err: any) {
+                  this.logger.warn(
+                    `[autoCompleteStaleCheckIns] falló expirar solicitud ${ci.id}: ${err?.message}`,
+                  );
+                }
+              }
+              this.logger.log(
+                `[autoCompleteStaleCheckIns] tenant=${tenantId.slice(0, 8)} solicitudes expiradas: ${staleRequests.length}`,
+              );
+            }
           },
         );
       },
@@ -642,7 +684,7 @@ export class FeedbackService {
   }
 
   /** Manager accepts a requested check-in — changes status to scheduled */
-  async acceptCheckInRequest(tenantId: string | undefined, checkInId: string, managerId: string, data?: { scheduledDate?: string; scheduledTime?: string; locationId?: string }): Promise<CheckIn> {
+  async acceptCheckInRequest(tenantId: string | undefined, checkInId: string, managerId: string, role: string, data?: { scheduledDate?: string; scheduledTime?: string; locationId?: string }): Promise<CheckIn> {
     const where = tenantId ? { id: checkInId, tenantId } : { id: checkInId };
     const ci = await this.checkInRepo.findOne({ where });
     if (!ci) throw new NotFoundException('Check-in no encontrado');
@@ -650,13 +692,18 @@ export class FeedbackService {
     if (ci.status !== CheckInStatus.REQUESTED) {
       throw new BadRequestException('Solo se pueden aceptar solicitudes pendientes');
     }
-    // Semántica: super_admin puede aceptar cross-tenant (soporte); tenant_admin/manager
-    // siguen validados contra managerId.
-    if (ci.managerId !== managerId && !tenantId) {
-      // Super_admin OK — se acepta en nombre del manager. Log claro para auditoría.
-      this.logger.log(`super_admin ${managerId} accepting check-in ${checkInId} on behalf of manager ${ci.managerId}`);
-    } else if (ci.managerId !== managerId) {
-      throw new ForbiddenException('Solo el encargado asignado puede aceptar esta solicitud');
+    // Auditoría feedback (Bug 9) — alineación @Roles/servicio. Antes solo
+    // super_admin (vía tenantId undefined) podía aceptar en nombre del
+    // manager; tenant_admin estaba en @Roles pero el servicio lo bloqueaba.
+    // Ahora cualquier admin (super_admin/tenant_admin) puede aceptar en
+    // nombre del encargado; el resto solo si es el encargado asignado.
+    const isAdmin = role === 'super_admin' || role === 'tenant_admin';
+    if (ci.managerId !== managerId) {
+      if (isAdmin) {
+        this.logger.log(`admin ${managerId} (${role}) accepting check-in ${checkInId} on behalf of manager ${ci.managerId}`);
+      } else {
+        throw new ForbiddenException('Solo el encargado asignado o un administrador puede aceptar esta solicitud');
+      }
     }
 
     // v3.1 — validar fecha/hora futuras. Si el manager ajusta fecha al
@@ -1024,10 +1071,22 @@ export class FeedbackService {
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '') // strip combining diacritics
       .replace(/[^a-z\s]/g, '');       // keep only letters and spaces
-    const normalizedWords = this.PROHIBITED_WORDS.map((w) =>
-      w.normalize('NFD').replace(/[\u0300-\u036f]/g, ''),
+    // Auditor\u00eda feedback (Fix / Bug 12) \u2014 antes se usaba
+    // `normalized.includes(word)` (substring) \u2192 falsos positivos
+    // ("inutil" dentro de "reinutilizable", "tonto" en "espont\u00f3neo...").
+    // Ahora match por l\u00edmite de palabra con sufijo plural opcional, sobre
+    // el texto ya normalizado (solo [a-z\s], los \b son fiables).
+    const normalizedWords = Array.from(
+      new Set(
+        this.PROHIBITED_WORDS.map((w) =>
+          w.normalize('NFD').replace(/[\u0300-\u036f]/g, ''),
+        ),
+      ),
     );
-    const found = normalizedWords.find((word) => normalized.includes(word));
+    const profanityRe = new RegExp(
+      `\\b(?:${normalizedWords.join('|')})(?:es|s)?\\b`,
+    );
+    const found = profanityRe.test(normalized);
     if (found) {
       throw new BadRequestException(
         'El feedback contiene lenguaje inapropiado. El feedback debe estar enfocado en comportamientos y resultados, no en la persona.',
@@ -1044,9 +1103,18 @@ export class FeedbackService {
     const minLength: number = fbConfig.minMessageLength || 20;
     const requireCompetency: boolean = fbConfig.requireCompetency === true;
 
-    // 2. Validate recipient exists in same tenant
-    const recipientData = await this.userRepo.findOne({ where: { id: dto.toUserId, tenantId }, select: ['id', 'department', 'departmentId', 'managerId'] });
+    // 2. Validar destinatario (auditoría feedback / Bug 10).
+    //    - No tiene sentido auto-feedback (sesga métricas y summary).
+    //    - No se envía feedback a un colaborador inactivo (no lo verá y
+    //      ensucia received/summary del usuario dado de baja).
+    if (dto.toUserId === fromUserId) {
+      throw new BadRequestException('No puedes enviarte feedback a ti mismo.');
+    }
+    const recipientData = await this.userRepo.findOne({ where: { id: dto.toUserId, tenantId }, select: ['id', 'department', 'departmentId', 'managerId', 'isActive'] });
     if (!recipientData) throw new NotFoundException('Destinatario no encontrado en esta organización');
+    if (recipientData.isActive === false) {
+      throw new BadRequestException('No puedes enviar feedback a un colaborador inactivo.');
+    }
 
     // 3. Apply scope restrictions (configurable by admin)
     if (scope !== 'all' && role !== 'tenant_admin' && role !== 'super_admin') {

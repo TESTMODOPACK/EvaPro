@@ -141,7 +141,7 @@ export class FeedbackController {
     @Body() body?: { scheduledDate?: string; scheduledTime?: string; locationId?: string },
   ) {
     const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
-    return this.feedbackService.acceptCheckInRequest(tenantId, id, req.user.userId, body);
+    return this.feedbackService.acceptCheckInRequest(tenantId, id, req.user.userId, req.user.role, body);
   }
 
   @Delete('checkins/:id')
@@ -302,8 +302,11 @@ export class FeedbackController {
     );
   }
 
+  // Auditoría feedback (Bug 9) — rechazar es la acción del colaborador
+  // asignado declinando su 1:1. El servicio ya exige ci.employeeId ===
+  // userId; @Roles se alinea a 'employee' (admins anulan vía /cancel).
   @Post('checkins/:id/reject')
-  @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
+  @Roles('employee')
   rejectCheckIn(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,

@@ -1,11 +1,16 @@
 /**
- * feedback.service.spec.ts — Auditoría feedback PR1.
+ * feedback.service.spec.ts — Auditoría feedback PR1-PR3.
  *
- * Cubre los fixes críticos de la auditoría:
- *  - Fix A: anonimato real (stripAnonymousSender en findFeedbackReceived).
- *  - Fix B: autorización de updateCheckIn (IDOR) + no muta `status`.
- *  - Fix B: cancelCheckIn (guards de estado, authz, metadata, audit, notif).
+ * PR1: Fix A (anonimato), Fix B (updateCheckIn IDOR, cancelCheckIn).
+ * PR2: Fix C (competencia real), Fix D (visibility en exports).
+ * PR3: Bug 9 (accept on-behalf), Bug 10 (self/inactivo),
+ *      Bug 11 (expiry REQUESTED), Bug 12 (groserías por palabra).
  */
+// Bug 11 — el cron usa runWithCronLock (util module-level). Lo
+// neutralizamos para poder ejercitar la lógica interna en unit test.
+jest.mock('../../common/utils/cron-lock', () => ({
+  runWithCronLock: (_n: string, _ds: any, _l: any, fn: () => Promise<void>) => fn(),
+}));
 import { Test, TestingModule } from '@nestjs/testing';
 import {
   BadRequestException,
@@ -125,7 +130,15 @@ describe('FeedbackService — auditoría PR1', () => {
         { provide: DataSource, useValue: createMockDataSource() },
         {
           provide: TenantCronRunner,
-          useValue: { runForEachTenant: jest.fn().mockResolvedValue([]) },
+          useValue: {
+            // Invoca el callback con TID para poder testear la lógica
+            // interna de los crons tenant-scoped (Bug 11).
+            runForEachTenant: jest.fn(
+              async (_name: string, cb: (t: string) => Promise<void>) => {
+                await cb(TID);
+              },
+            ),
+          },
         },
       ],
     }).compile();
@@ -402,6 +415,120 @@ describe('FeedbackService — auditoría PR1', () => {
       expect(csv).toContain('msg-public');
       expect(csv).toContain('msg-manager_only');
       expect(csv).not.toContain('msg-private');
+    });
+  });
+
+  // ─── Bug 9 — accept on-behalf por admin ─────────────────────────────
+  describe('acceptCheckInRequest (Bug 9)', () => {
+    function requested() {
+      return makeCheckIn({
+        status: CheckInStatus.REQUESTED,
+        managerId: MANAGER_ID,
+        scheduledDate: new Date('2099-02-01') as any,
+      });
+    }
+
+    it('un tenant_admin que no es el encargado puede aceptar en su nombre', async () => {
+      checkInRepo.findOne.mockResolvedValue(requested());
+      checkInRepo.update.mockResolvedValue({ affected: 1 });
+      checkInRepo.createQueryBuilder.mockReturnValue({
+        leftJoinAndSelect: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue(makeCheckIn({ status: CheckInStatus.SCHEDULED })),
+      });
+
+      await expect(
+        service.acceptCheckInRequest(TID, CI_ID, ADMIN_ID, 'tenant_admin'),
+      ).resolves.toBeDefined();
+      expect(checkInRepo.update).toHaveBeenCalled();
+    });
+
+    it('un usuario que no es encargado ni admin recibe 403', async () => {
+      checkInRepo.findOne.mockResolvedValue(requested());
+      await expect(
+        service.acceptCheckInRequest(TID, CI_ID, OUTSIDER_ID, 'manager'),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+  });
+
+  // ─── Bug 10 — auto-feedback / receptor inactivo ─────────────────────
+  describe('createQuickFeedback (Bug 10)', () => {
+    const baseDto = {
+      message: 'Mensaje suficientemente largo para superar el mínimo.',
+      sentiment: Sentiment.POSITIVE,
+    };
+
+    it('rechaza enviarse feedback a sí mismo', async () => {
+      tenantRepo.findOne.mockResolvedValue({ id: TID, settings: {} });
+      await expect(
+        service.createQuickFeedback(TID, MANAGER_ID, { ...baseDto, toUserId: MANAGER_ID }, 'manager'),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('rechaza feedback a un colaborador inactivo', async () => {
+      tenantRepo.findOne.mockResolvedValue({ id: TID, settings: {} });
+      userRepo.findOne.mockResolvedValue({ id: EMPLOYEE_ID, isActive: false });
+      await expect(
+        service.createQuickFeedback(TID, MANAGER_ID, { ...baseDto, toUserId: EMPLOYEE_ID }, 'manager'),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+  });
+
+  // ─── Bug 12 — groserías por límite de palabra ───────────────────────
+  describe('validateFeedbackContent (Bug 12)', () => {
+    const send = (message: string) => {
+      tenantRepo.findOne.mockResolvedValue({ id: TID, settings: {} });
+      userRepo.findOne.mockResolvedValue({ id: EMPLOYEE_ID, isActive: true });
+      quickFeedbackRepo.save.mockImplementation((e: any) => Promise.resolve({ id: 'qf', ...e }));
+      return service.createQuickFeedback(
+        TID,
+        MANAGER_ID,
+        { toUserId: EMPLOYEE_ID, message, sentiment: Sentiment.POSITIVE },
+        'manager',
+      );
+    };
+
+    it('NO bloquea un falso positivo por substring ("reinutilizable")', async () => {
+      await expect(
+        send('El componente quedó reinutilizable y muy bien documentado, gran avance.'),
+      ).resolves.toBeDefined();
+    });
+
+    it('bloquea una grosería real como palabra ("inútil")', async () => {
+      await expect(
+        send('Sinceramente tu aporte fue inútil y no sirvió para nada en absoluto.'),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('bloquea la forma plural ("idiotas")', async () => {
+      await expect(
+        send('Dejen de comportarse como idiotas durante las reuniones del equipo.'),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+  });
+
+  // ─── Bug 11 — expiry de solicitudes REQUESTED ───────────────────────
+  describe('autoCompleteStaleCheckIns (Bug 11)', () => {
+    it('anula solicitudes REQUESTED con más de 14 días', async () => {
+      // 1ª find = SCHEDULED vencidos (vacío); 2ª find = REQUESTED viejos.
+      checkInRepo.find
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([
+          { id: fakeUuid(901), tenantId: TID, managerId: MANAGER_ID, employeeId: EMPLOYEE_ID, topic: 'Solicitud vieja' },
+        ]);
+      checkInRepo.update.mockResolvedValue({ affected: 1 });
+
+      await service.autoCompleteStaleCheckIns();
+
+      expect(checkInRepo.update).toHaveBeenCalledWith(
+        { id: fakeUuid(901) },
+        expect.objectContaining({
+          status: CheckInStatus.CANCELLED,
+          cancelledAt: expect.any(Date),
+          cancelReason: expect.stringContaining('expirada'),
+        }),
+      );
     });
   });
 });
