@@ -40,7 +40,23 @@ export class AuthService {
     pass: string,
     tenantId?: string,
   ): Promise<any> {
-    const user = await this.usersService.findByEmail(email, tenantId);
+    let user: User | null;
+    if (tenantId) {
+      // Selector explícito (uuid/slug/RUT): único por @Unique(tenantId,email).
+      user = await this.usersService.findByEmail(email, tenantId);
+    } else {
+      // B1-02: sin selector, el email puede existir en varios tenants. NO
+      // resolver con getOne() (orden no determinístico → autenticación
+      // contra el tenant equivocado). Si hay >1 match, exigir selección de
+      // organización; no validamos password ni incrementamos lockout
+      // (no sabemos contra qué usuario). El rate-limit por IP del
+      // controller sigue aplicando.
+      const matches = await this.usersService.findAllByEmail(email);
+      if (matches.length > 1) {
+        return { requiresTenantSelection: true };
+      }
+      user = matches[0] ?? null;
+    }
     if (!user || !user.passwordHash) {
       // Don't reveal which half failed. Also don't increment lockout — we
       // can't pin a counter to a non-existent user. The controller's IP-

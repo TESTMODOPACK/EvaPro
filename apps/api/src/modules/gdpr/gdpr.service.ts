@@ -66,10 +66,13 @@ export class GdprService {
       if (!user) throw new Error(`User ${userId} not found`);
 
       const { buffer, sizeBytes, truncated } = await this.exportBuilder.buildUserExport(userId);
-      const { url } = await this.exportBuilder.uploadZip(buffer, 'user', userId);
+      // Calcular el vencimiento ANTES de subir para que la URL firmada de
+      // Cloudinary expire exactamente cuando lo dice la DB (B1-27).
+      const fileExpiresAt = new Date(Date.now() + EXPORT_LINK_TTL_MS);
+      const { url } = await this.exportBuilder.uploadZip(buffer, 'user', userId, fileExpiresAt);
 
       req.fileUrl = url;
-      req.fileExpiresAt = new Date(Date.now() + EXPORT_LINK_TTL_MS);
+      req.fileExpiresAt = fileExpiresAt;
       req.status = 'completed';
       req.completedAt = new Date();
       req.metadata = { sizeBytes, truncated };
@@ -154,10 +157,12 @@ export class GdprService {
       const { buffer, sizeBytes, truncated } = await this.exportBuilder.buildTenantExport(tenantId, {
         anonymize,
       });
-      const { url } = await this.exportBuilder.uploadZip(buffer, 'tenant', tenantId);
+      // Vencimiento antes de subir → URL firmada expira con la DB (B1-27).
+      const fileExpiresAt = new Date(Date.now() + EXPORT_LINK_TTL_MS);
+      const { url } = await this.exportBuilder.uploadZip(buffer, 'tenant', tenantId, fileExpiresAt);
 
       req.fileUrl = url;
-      req.fileExpiresAt = new Date(Date.now() + EXPORT_LINK_TTL_MS);
+      req.fileExpiresAt = fileExpiresAt;
       req.status = 'completed';
       req.completedAt = new Date();
       req.metadata = { ...(req.metadata ?? {}), sizeBytes, truncated };

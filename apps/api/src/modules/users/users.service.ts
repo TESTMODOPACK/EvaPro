@@ -213,6 +213,22 @@ export class UsersService {
     return query.getOne();
   }
 
+  /**
+   * B1-02: lookup por email SIN filtro de tenant, devolviendo TODAS las
+   * coincidencias. El email es único solo por (tenantId, email) — el mismo
+   * email puede existir en varios tenants. Se usa en login para detectar
+   * ambigüedad y exigir selector de organización en vez de resolver con
+   * un getOne() de orden no determinístico (que podía autenticar contra
+   * el tenant equivocado).
+   */
+  async findAllByEmail(email: string): Promise<User[]> {
+    return this.userRepository
+      .createQueryBuilder('user')
+      .leftJoinAndSelect('user.tenant', 'tenant')
+      .where('user.email = :email', { email })
+      .getMany();
+  }
+
   async findById(id: string): Promise<User> {
     const user = await this.userRepository.findOne({ where: { id } });
     if (!user) throw new NotFoundException('Usuario no encontrado');

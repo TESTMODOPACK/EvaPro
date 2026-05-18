@@ -121,6 +121,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       email: payload.email,
       tenantId: payload.tenantId || null,
       role: payload.role,
+      // `iat` (segundos epoch) = momento de emisión del token. Se expone
+      // para que /support/impersonate/end calcule la duración SIN parsear
+      // el header Authorization (vacío en modo cookie httpOnly — B1-01).
+      iat: payload.iat,
       // Forwarded to controllers + guards so they can act accordingly.
       impersonatedBy: payload.impersonatedBy,
       impersonationReason: payload.impersonationReason,

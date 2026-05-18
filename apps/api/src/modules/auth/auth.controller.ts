@@ -238,6 +238,16 @@ export class AuthController {
       loginDto.tenantId,
     );
 
+    // B1-02: email ambiguo entre tenants sin selector → pedir organización.
+    // No es fallo de credenciales: no se registra intento fallido.
+    if (user && (user as any).requiresTenantSelection) {
+      return {
+        requiresTenantSelection: true,
+        message:
+          'Indica tu organización para continuar (este correo está asociado a más de una empresa).',
+      };
+    }
+
     if (!user) {
       // Record failed attempt + audit log
       recordFailedAttempt(clientIp, loginDto.email);

@@ -45,7 +45,15 @@ describe('AuthService', () => {
   beforeEach(async () => {
     usersService = {
       findByEmail: jest.fn(),
+      findAllByEmail: jest.fn(),
     };
+    // B1-02: por defecto, findAllByEmail refleja a findByEmail (1 match)
+    // para que los tests existentes de validateUser (sin selector) sigan
+    // pasando. Los tests de ambigüedad lo sobreescriben explícitamente.
+    usersService.findAllByEmail.mockImplementation(async () => {
+      const u = await usersService.findByEmail();
+      return u ? [u] : [];
+    });
     jwtService = {
       sign: jest.fn().mockReturnValue('mock-jwt-token'),
       verify: jest.fn(),
@@ -143,6 +151,50 @@ describe('AuthService', () => {
 
       expect(result).toBeDefined();
       expect(result.role).toBe('super_admin');
+    });
+
+    // ─── B1-02: ambigüedad de tenant ─────────────────────────────────
+    it('B1-02: email en >1 tenant sin selector → requiresTenantSelection (sin validar password)', async () => {
+      const a = createMockUser({ tenantId: fakeUuid(1), passwordHash: 'x' });
+      const b = createMockUser({ tenantId: fakeUuid(2), passwordHash: 'y' });
+      usersService.findAllByEmail.mockResolvedValue([a, b]);
+
+      const result = await service.validateUser('shared@evapro.demo', 'whatever');
+
+      expect(result).toEqual({ requiresTenantSelection: true });
+      // No se intentó resolver con findByEmail (getOne no determinístico).
+      expect(usersService.findByEmail).not.toHaveBeenCalled();
+    });
+
+    it('B1-02: con selector explícito usa findByEmail (único por tenant), no findAllByEmail', async () => {
+      const hash = await bcrypt.hash('Password123', 10);
+      const user = createMockUser({ passwordHash: hash });
+      usersService.findByEmail.mockResolvedValue(user);
+
+      const result = await service.validateUser(
+        'test@evapro.demo',
+        'Password123',
+        fakeUuid(7),
+      );
+
+      expect(result).toBeDefined();
+      expect(result.email).toBe('test@evapro.demo');
+      expect(usersService.findByEmail).toHaveBeenCalledWith(
+        'test@evapro.demo',
+        fakeUuid(7),
+      );
+      expect(usersService.findAllByEmail).not.toHaveBeenCalled();
+    });
+
+    it('B1-02: email en un solo tenant sin selector → login normal', async () => {
+      const hash = await bcrypt.hash('Password123', 10);
+      const user = createMockUser({ passwordHash: hash });
+      usersService.findAllByEmail.mockResolvedValue([user]);
+
+      const result = await service.validateUser('solo@evapro.demo', 'Password123');
+
+      expect(result).toBeDefined();
+      expect(result.email).toBe('test@evapro.demo');
     });
   });
 

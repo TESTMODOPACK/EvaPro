@@ -31,6 +31,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { UploadsService } from '../uploads/uploads.service';
 import { resolveOperatingTenantId } from '../../common/utils/tenant-scope';
+import { sanitizeUser } from '../../common/utils/sanitize-user';
 
 @Controller('users')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
@@ -42,8 +43,9 @@ export class UsersController {
 
   /** GET /users/me */
   @Get('me')
-  findMe(@Request() req: any) {
-    return this.usersService.findById(req.user.userId);
+  async findMe(@Request() req: any) {
+    // B1-10: nunca exponer passwordHash/twoFactorSecret/resetCode/etc.
+    return sanitizeUser(await this.usersService.findById(req.user.userId));
   }
 
   /** GET /users?page=1&limit=10&search=ana&department=Ventas&role=employee&status=active
@@ -54,7 +56,7 @@ export class UsersController {
    * managerId === callerUserId cuando role=manager. */
   @Get()
   @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
-  findAll(
+  async findAll(
     @Request() req: any,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
@@ -72,10 +74,13 @@ export class UsersController {
       : undefined;
     // super_admin can query any tenant's users via ?tenantId=
     const tenantId = (req.user.role === 'super_admin' && filterTenantId) ? filterTenantId : req.user.tenantId;
-    return this.usersService.findAll(
+    const res = await this.usersService.findAll(
       tenantId, page, limit, filters,
       req.user.role, req.user.userId,
     );
+    // B1-10: la rama admin/manager de findAll no aplica .select(), así que
+    // las filas traen secretos — strip antes de responder.
+    return { ...res, data: res.data.map((u) => sanitizeUser(u)) };
   }
 
   /**
@@ -141,13 +146,17 @@ export class UsersController {
    *   employee                   → solo self
    */
   @Get(':id')
-  findOne(
+  async findOne(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
   ) {
     const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
-    return this.usersService.assertCanAccessUser(
-      req.user.userId, req.user.role, id, tenantId,
+    // B1-10: assertCanAccessUser devuelve la entidad completa (con
+    // secretos) — strip antes de responder al cliente.
+    return sanitizeUser(
+      await this.usersService.assertCanAccessUser(
+        req.user.userId, req.user.role, id, tenantId,
+      ),
     );
   }
 
