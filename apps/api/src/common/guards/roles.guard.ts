@@ -20,7 +20,10 @@ export class RolesGuard implements CanActivate {
     }
     const req = context.switchToHttp().getRequest();
     const { user } = req;
-    const allowed = requiredRoles.some((role) => user?.role?.includes(role));
+    // Igualdad estricta, NO substring: `includes` permitiría que un rol
+    // cuyo nombre contenga a otro (p.ej. un futuro 'external_admin' vs
+    // '@Roles("admin")') escale privilegios silenciosamente.
+    const allowed = requiredRoles.some((role) => user?.role === role);
     if (!allowed) {
       // access.denied — logueo asíncrono, no bloquea el 403
       // Solo el rol del actor determina el scope: super_admin → tenantId=null

@@ -9,6 +9,25 @@ import { firstValueFrom } from 'rxjs';
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
+ * Marcador de "contexto de sistema": la RLS policy lo reconoce como
+ * bypass. Se usa SOLO para super_admin (rol verificado del JWT) y para
+ * requests sin autenticar (login/health/jobboard público leen tablas
+ * tenant-scoped ANTES de tener un user — p.ej. users en findByEmail).
+ * Coincide con `TenantCronRunner.runAsSystem` y la policy F4B/F4C.
+ */
+const RLS_SYSTEM_BYPASS = '';
+
+/**
+ * Sentinel fail-CLOSED: UUID nil. Ningún tenant real tiene este id
+ * (uuid v4 nunca lo genera), así que `tenant_id::text = '0000...'`
+ * no matchea ninguna fila y, al no ser '', NO dispara el bypass de la
+ * policy. Se usa cuando un usuario AUTENTICADO no-super_admin no trae
+ * un tenantId UUID válido: antes esto caía en '' (fail-OPEN, fuga
+ * cross-tenant — hallazgo B4-32); ahora niega todo.
+ */
+const RLS_DENY_ALL = '00000000-0000-0000-0000-000000000000';
+
+/**
  * Interceptor que setea `app.current_tenant_id` en la transaccion de
  * Postgres para cada request, alimentando las (futuras) RLS policies.
  *
@@ -100,17 +119,19 @@ export class TenantContextInterceptor implements NestInterceptor {
 
   /**
    * Determina el valor a setear en `app.current_tenant_id`:
-   * - super_admin: '' (el RLS policy debe permitir bypass cuando el
-   *   valor es vacio Y el role es super_admin — que viene del JWT, no
-   *   del GUC)
-   * - tenantId UUID valido: el UUID literal
-   * - cualquier otro caso: '' (fail-safe; las queries no deberian ver
-   *   datos cross-tenant)
+   * - sin user (pre-auth: login/health/jobboard público): SYSTEM_BYPASS.
+   *   Estos endpoints leen tablas tenant-scoped antes de existir un
+   *   user (p.ej. findByEmail en login) y no pueden fallar cerrado.
+   * - super_admin (rol del JWT, no del GUC): SYSTEM_BYPASS.
+   * - tenantId UUID valido: el UUID literal → RLS filtra a ese tenant.
+   * - usuario AUTENTICADO no-super_admin sin tenantId UUID valido:
+   *   DENY_ALL (fail-CLOSED). Antes retornaba '' (fail-OPEN: la RLS no
+   *   aislaba y había fuga cross-tenant — hallazgo B4-32).
    */
   private resolveTenantValue(user: any): string {
-    if (!user) return '';
-    if (user.role === 'super_admin') return '';
+    if (!user) return RLS_SYSTEM_BYPASS;
+    if (user.role === 'super_admin') return RLS_SYSTEM_BYPASS;
     if (user.tenantId && UUID_REGEX.test(user.tenantId)) return user.tenantId;
-    return '';
+    return RLS_DENY_ALL;
   }
 }
