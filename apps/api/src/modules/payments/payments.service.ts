@@ -378,13 +378,19 @@ export class PaymentsService {
         status: 'refunded',
         // No piso completedAt — preservo el momento del pago original;
         // refundedAt vive en metadata.
-        metadata: () => `metadata || '${JSON.stringify({
+        // B6-01: patch jsonb como parámetro bindeado, NO interpolación
+        // de template string (event.amount/currency vienen del provider).
+        metadata: () => `metadata || :patch::jsonb`,
+      })
+      .where('id = :id AND status = :prev', { id: session.id, prev: 'paid' })
+      .setParameter(
+        'patch',
+        JSON.stringify({
           refundedAt: new Date().toISOString(),
           refundAmount: event.amount ?? null,
           refundCurrency: event.currency ?? null,
-        }).replace(/'/g, "''")}'::jsonb`,
-      })
-      .where('id = :id AND status = :prev', { id: session.id, prev: 'paid' })
+        }),
+      )
       .execute();
 
     if ((result.affected ?? 0) === 0) {
@@ -498,13 +504,18 @@ export class PaymentsService {
       .update(PaymentSession)
       .set({
         status: 'disputed',
-        metadata: () => `metadata || '${JSON.stringify({
+        // B6-01: patch jsonb bindeado (event.failureReason viene del provider).
+        metadata: () => `metadata || :patch::jsonb`,
+      })
+      .where('id = :id AND status = :prev', { id: session.id, prev: 'paid' })
+      .setParameter(
+        'patch',
+        JSON.stringify({
           disputedAt: new Date().toISOString(),
           disputeReason: event.failureReason ?? null,
           disputeAmount: event.amount ?? null,
-        }).replace(/'/g, "''")}'::jsonb`,
-      })
-      .where('id = :id AND status = :prev', { id: session.id, prev: 'paid' })
+        }),
+      )
       .execute();
 
     if ((result.affected ?? 0) === 0) {
@@ -823,17 +834,23 @@ export class PaymentsService {
       .update(PaymentSession)
       .set({
         status: 'refunded',
-        metadata: () =>
-          `metadata || '${JSON.stringify({
-            refundedAt: new Date().toISOString(),
-            refundAmount,
-            refundCurrency: refundResult.currency,
-            providerRefundId: refundResult.refundId,
-            manualRefund: true,
-            reason: dto.reason,
-          }).replace(/'/g, "''")}'::jsonb`,
+        // B6-01: patch jsonb bindeado. dto.reason lo controla el
+        // super_admin (body del refund manual) — la interpolación previa
+        // con replace(/'/g,"''") era un sanitizado ingenuo explotable.
+        metadata: () => `metadata || :patch::jsonb`,
       })
       .where('id = :id AND status = :prev', { id: session.id, prev: 'paid' })
+      .setParameter(
+        'patch',
+        JSON.stringify({
+          refundedAt: new Date().toISOString(),
+          refundAmount,
+          refundCurrency: refundResult.currency,
+          providerRefundId: refundResult.refundId,
+          manualRefund: true,
+          reason: dto.reason,
+        }),
+      )
       .execute();
 
     if ((updateRes.affected ?? 0) === 0) {
