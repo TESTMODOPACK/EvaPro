@@ -181,7 +181,7 @@ export class TalentController {
     @Body() dto: any,
     @Request() req: any,
   ) {
-    return this.talentService.updateEntry(entryId, dto, req.user.userId);
+    return this.talentService.updateEntry(entryId, dto, req.user.userId, req.user.tenantId);
   }
 
   @Post('calibration/:id/complete')
@@ -208,22 +208,28 @@ export class TalentController {
     @Request() req: any,
     @Body() dto: { approved: boolean },
   ) {
-    return this.talentService.approveCalibrationChange(entryId, req.user.userId, dto.approved);
+    return this.talentService.approveCalibrationChange(
+      entryId,
+      req.user.userId,
+      dto.approved,
+      req.user.tenantId,
+    );
   }
 
   @Get('calibration/:id/distribution')
   @Roles('super_admin', 'tenant_admin', 'manager')
-  distributionAnalysis(@Param('id', ParseUUIDPipe) id: string) {
-    return this.talentService.getDistributionAnalysis(id);
+  distributionAnalysis(@Param('id', ParseUUIDPipe) id: string, @Request() req: any) {
+    return this.talentService.getDistributionAnalysis(id, req.user.tenantId);
   }
 
   @Get('calibration/:id/pdf')
   @Roles('super_admin', 'tenant_admin')
   async calibrationPdf(
     @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
     @Res() res: any,
   ) {
-    const pdfBuffer = await this.talentService.generateCalibrationPdf(id);
+    const pdfBuffer = await this.talentService.generateCalibrationPdf(id, req.user.tenantId);
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename=acta-calibracion-${id}.pdf`);
     return res.send(pdfBuffer);
