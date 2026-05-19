@@ -14,10 +14,16 @@ import {
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { FeatureGuard } from '../../common/guards/feature.guard';
+import { Feature } from '../../common/decorators/feature.decorator';
+import { PlanFeature } from '../../common/constants/plan-features';
 import { OrgDevelopmentService } from './org-development.service';
 
+// B4-24: el controller no aplicaba ningún gating de plan. Desarrollo
+// organizacional es feature Pro+ (ORG_DEVELOPMENT en PLAN_FEATURES).
 @Controller('org-development')
-@UseGuards(AuthGuard('jwt'), RolesGuard)
+@UseGuards(AuthGuard('jwt'), RolesGuard, FeatureGuard)
+@Feature(PlanFeature.ORG_DEVELOPMENT)
 export class OrgDevelopmentController {
   constructor(private readonly service: OrgDevelopmentService) {}
 

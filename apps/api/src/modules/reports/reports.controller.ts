@@ -33,8 +33,15 @@ import { PlanFeature } from '../../common/constants/plan-features';
 import { User } from '../users/entities/user.entity';
 import { assertManagerCanAccessUser } from '../../common/utils/validate-manager-scope';
 
+// B5-03: la clase tenía FeatureGuard pero SIN @Feature → los reportes
+// base (executive-dashboard, cycle summary, individual, analytics,
+// performance-history, team) no exigían ningún plan (bypass de
+// monetización). Gate base a BASIC_REPORTS; los endpoints avanzados ya
+// hacen override con @Feature(ADVANCED_REPORTS/ANALYTICS_REPORTS) y
+// tienen precedencia (reflector.getAllAndOverride: handler > class).
 @Controller('reports')
 @UseGuards(AuthGuard('jwt'), RolesGuard, FeatureGuard)
+@Feature(PlanFeature.BASIC_REPORTS)
 export class ReportsController {
   constructor(
     private readonly reportsService: ReportsService,

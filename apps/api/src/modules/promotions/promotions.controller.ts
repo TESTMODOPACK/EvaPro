@@ -16,6 +16,9 @@ import { Repository } from 'typeorm';
 
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { FeatureGuard } from '../../common/guards/feature.guard';
+import { Feature } from '../../common/decorators/feature.decorator';
+import { PlanFeature } from '../../common/constants/plan-features';
 import { getClientIp } from '../../common/utils/get-client-ip';
 import { User } from '../users/entities/user.entity';
 
@@ -25,8 +28,15 @@ import { PromotionScoringEngineService } from './services/promotion-scoring-engi
 import { PromotionBiasAnalyzerService } from './services/promotion-bias-analyzer.service';
 import { PromotionWorkflowService } from './services/promotion-workflow.service';
 
+// B4-30: el módulo de promociones (datos sensibles: readiness, scores,
+// mood, evaluaciones) no estaba gateado por plan. No existe un
+// PlanFeature dedicado a promociones; se gatea con NINE_BOX — la suite
+// de talento Pro+ a la que pertenece (consume talent_assessments +
+// evaluaciones). Un PlanFeature.PROMOTIONS dedicado queda como follow-up
+// de producto/billing (requiere tocar PLAN_FEATURES + seed de planes).
 @Controller('promotions')
-@UseGuards(AuthGuard('jwt'), RolesGuard)
+@UseGuards(AuthGuard('jwt'), RolesGuard, FeatureGuard)
+@Feature(PlanFeature.NINE_BOX)
 export class PromotionsController {
   constructor(
     @InjectRepository(PromotionRecommendation) private readonly recRepo: Repository<PromotionRecommendation>,
