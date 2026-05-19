@@ -6,6 +6,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { AiQuotaBar, useAiQuota } from '@/components/AiQuotaBar';
 import { useAuthStore } from '@/store/auth.store';
+import { useRequireRole } from '@/hooks/useRequireRole';
 import { useToastStore } from '@/store/toast.store';
 import { api } from '@/lib/api';
 // P8-C: import dinámico de Recharts.
@@ -26,6 +27,15 @@ export default function ResultadosEncuestaPage() {
   const user = useAuthStore((s) => s.user);
   const toast = useToastStore((s) => s.toast);
   const queryClient = useQueryClient();
+  // B7c-01: la página no tenía guard de rol — un employee/external
+  // entraba por URL directa. tenant_admin/super_admin ven todo; manager
+  // se permite SOLO para Tendencias scoped a su equipo (el backend
+  // bloquea encuestas anónimas para manager y aplica k-anonymity).
+  const { isReady, isAllowed } = useRequireRole([
+    'tenant_admin',
+    'super_admin',
+    'manager',
+  ]);
   const isAdmin = user?.role === 'tenant_admin' || user?.role === 'super_admin';
   // T2 — Manager puede ver el tab Tendencias scoped a su equipo (backend
   // filtra a respuestas de su equipo y omite encuestas anonimas).
@@ -183,10 +193,16 @@ export default function ResultadosEncuestaPage() {
   const TABS = [
     { key: 'overview', label: 'Resumen' },
     ...(isAdmin ? [{ key: 'department', label: 'Por Departamento' }] : []),
-    { key: 'responses', label: 'Comentarios' },
+    // B7c-01: Comentarios = texto libre verbatim → solo admin (un
+    // manager nunca debe ver respuestas individuales de clima).
+    ...(isAdmin ? [{ key: 'responses', label: 'Comentarios' }] : []),
     ...(isAdmin ? [{ key: 'ai', label: 'Análisis IA' }] : []),
     ...(canViewTrends ? [{ key: 'trends', label: 'Tendencias' }] : []),
   ];
+
+  // B7c-01: rol no autorizado → no renderizar (useRequireRole ya
+  // redirige). Durante la hidratación seguimos al estado de carga.
+  if (isReady && !isAllowed) return null;
 
   return (
     <div style={{ padding: '2rem 2.5rem', maxWidth: '1100px' }}>
@@ -714,7 +730,7 @@ export default function ResultadosEncuestaPage() {
       )}
 
       {/* ─── Comentarios Tab ─── */}
-      {activeTab === 'responses' && (
+      {activeTab === 'responses' && isAdmin && (
         <CommentsTab openResponses={results.openResponses || []} />
       )}
 

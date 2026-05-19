@@ -1148,16 +1148,53 @@ export class SurveysService {
       ? Number((allScores.reduce((a, b) => a + b, 0) / allScores.length).toFixed(2))
       : 0;
 
+    // B4-16: k-anonymity. Antes getResults exponía texto libre verbatim
+    // y promedios por pregunta sin umbral; en una encuesta anónima con
+    // 1-2 respuestas un admin podía re-identificar al respondiente.
+    // getKAnonymityThreshold devuelve 0 si la encuesta NO es anónima
+    // (sin supresión) o el umbral (default 5) si lo es.
+    const k = this.getKAnonymityThreshold(survey);
+    if (k > 0 && responses.length < k) {
+      return {
+        survey: { id: survey.id, title: survey.title, status: survey.status, isAnonymous: survey.isAnonymous },
+        responseRate: totalAssignments > 0 ? Number(((responses.length / totalAssignments) * 100).toFixed(1)) : 0,
+        totalResponses: responses.length,
+        totalAssigned: totalAssignments,
+        overallAverage: null,
+        averageByCategory: [],
+        averageByQuestion: [],
+        likertDistribution: [],
+        openResponses: [],
+        kAnonymity: { threshold: k, applied: true, suppressed: true },
+      };
+    }
+
+    // total >= k (o encuesta no anónima): además suprimimos por-pregunta
+    // cuando una pregunta concreta recibió < k respuestas (y los
+    // comentarios abiertos de esa pregunta).
+    const kCategory = k > 0 ? averageByCategory.filter((c) => c.count >= k) : averageByCategory;
+    const kQuestion = k > 0 ? averageByQuestion.filter((q) => q.count >= k) : averageByQuestion;
+    const kLikert = k > 0
+      ? likertDistribution.filter((ld) => (questionScores[ld.questionId]?.length ?? 0) >= k)
+      : likertDistribution;
+    let kOpen = openResponses;
+    if (k > 0) {
+      const perQ: Record<string, number> = {};
+      for (const o of openResponses) perQ[o.questionId] = (perQ[o.questionId] ?? 0) + 1;
+      kOpen = openResponses.filter((o) => perQ[o.questionId] >= k);
+    }
+
     return {
       survey: { id: survey.id, title: survey.title, status: survey.status, isAnonymous: survey.isAnonymous },
       responseRate: totalAssignments > 0 ? Number(((responses.length / totalAssignments) * 100).toFixed(1)) : 0,
       totalResponses: responses.length,
       totalAssigned: totalAssignments,
       overallAverage,
-      averageByCategory,
-      averageByQuestion,
-      likertDistribution,
-      openResponses,
+      averageByCategory: kCategory,
+      averageByQuestion: kQuestion,
+      likertDistribution: kLikert,
+      openResponses: kOpen,
+      kAnonymity: { threshold: k, applied: k > 0, suppressed: false },
     };
   }
 
@@ -1228,6 +1265,17 @@ export class SurveysService {
     const total = promoters + passives + detractors;
     if (total === 0) {
       return { enps: null, message: 'Sin respuestas suficientes para calcular eNPS.', source: useNps ? 'nps_question' : 'likert_derived' };
+    }
+    // B4-16: en encuestas anónimas con < k respuestas el desglose
+    // promotores/detractores re-identifica al respondiente.
+    const k = this.getKAnonymityThreshold(survey);
+    if (k > 0 && total < k) {
+      return {
+        enps: null,
+        message: `Se requieren al menos ${k} respuestas para mostrar el eNPS sin comprometer el anonimato (actualmente: ${total}).`,
+        kAnonymity: { threshold: k, applied: true, suppressed: true },
+        source: useNps ? 'nps_question' : 'likert_derived',
+      };
     }
     const enps = Math.round(((promoters - detractors) / total) * 100);
 
@@ -1505,6 +1553,11 @@ export class SurveysService {
       const responseWhere: any = { surveyId: survey.id, tenantId, isComplete: true };
       if (teamIds) responseWhere.respondentId = In([...teamIds]);
       const responses = await this.responseRepo.find({ where: responseWhere });
+
+      // B4-16: una encuesta anónima cerrada con < k respuestas no aporta
+      // al trend (su overallAverage sería atribuible a 1-2 personas).
+      const k = this.getKAnonymityThreshold(survey);
+      if (k > 0 && responses.length < k) continue;
 
       const assignWhere: any = { surveyId: survey.id, tenantId };
       if (teamIds) assignWhere.userId = In([...teamIds]);

@@ -115,7 +115,33 @@ export class PromotionsController {
     if (!rec) {
       throw new BadRequestException('No existe recomendación calculada. Espera al próximo cron.');
     }
-    return rec;
+    return this.redactSensitiveDimensions(rec);
+  }
+
+  /**
+   * B4-25 / B4-26: el breakdown que ve el manager/admin no debe exponer:
+   *  - dimensions.engagement.moodAvg → es el promedio de mood individual
+   *    del colaborador; exponerlo elude el umbral MIN_TEAM_RESPONSES de
+   *    mood-checkins (confidencialidad del estado de ánimo).
+   *  - dimensions.behavioral.raw cuando evaluatorCount < 3 → el agregado
+   *    de feedback 360/peer con 1-2 evaluadores re-identifica al par.
+   * El zScore/weight (valores normalizados que alimentan el composite)
+   * se conservan; solo se omiten los crudos individuales/de baja N.
+   */
+  private redactSensitiveDimensions<T extends { dimensions?: any }>(rec: T): T {
+    const d = rec?.dimensions;
+    if (!d) return rec;
+    const BEHAVIORAL_MIN_EVALUATORS = 3;
+    const dimensions: any = { ...d };
+    if (d.engagement) {
+      dimensions.engagement = { ...d.engagement };
+      delete dimensions.engagement.moodAvg;
+    }
+    if (d.behavioral && (d.behavioral.evaluatorCount ?? 0) < BEHAVIORAL_MIN_EVALUATORS) {
+      dimensions.behavioral = { ...d.behavioral, suppressed: true };
+      delete dimensions.behavioral.raw;
+    }
+    return { ...rec, dimensions };
   }
 
   /**
