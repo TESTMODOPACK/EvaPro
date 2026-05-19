@@ -31,6 +31,7 @@ import { NotificationType } from '../notifications/entities/notification.entity'
 import { PushService } from '../notifications/push.service';
 import { buildPushMessage } from '../notifications/push-messages';
 import { PlanFeature } from '../../common/constants/plan-features';
+import { assertManagerCanAccessUser } from '../../common/utils/validate-manager-scope';
 import { Objective, ObjectiveStatus } from '../objectives/entities/objective.entity';
 import { KeyResult } from '../objectives/entities/key-result.entity';
 
@@ -2431,6 +2432,28 @@ export class EvaluationsService {
     });
     if (!assignment) throw new NotFoundException('Asignación no encontrada');
 
+    // B3-01: control de acceso. Antes este endpoint no validaba nada y
+    // cualquier usuario del tenant podía leer respuestas+scores de la
+    // evaluación de cualquier colega iterando UUIDs. Reglas:
+    //   - evaluador asignado → acceso completo (está llenándola)
+    //   - admin (super_admin/tenant_admin) → acceso completo
+    //   - evaluado o su manager directo → ven el resultado pero NO las
+    //     respuestas crudas (confidencialidad 360°)
+    //   - cualquier otro → 403
+    const isEvaluator =
+      !!callerUserId && assignment.evaluatorId === callerUserId;
+    const isAdmin =
+      callerRole === 'super_admin' || callerRole === 'tenant_admin';
+    if (!isEvaluator) {
+      await assertManagerCanAccessUser(
+        this.userRepo,
+        callerUserId ?? '',
+        callerRole ?? '',
+        assignment.evaluateeId,
+        assignment.tenantId,
+      );
+    }
+
     // Fetch template for the cycle
     let template = null;
     if (assignment.cycle.templateId) {
@@ -2671,10 +2694,18 @@ export class EvaluationsService {
       }
     }
 
+    // B3-01: el evaluado y el manager-de-evaluado pueden ver el resultado
+    // (score/summary) pero NO las respuestas crudas del evaluador.
+    const canSeeAnswers = isEvaluator || isAdmin;
+    const safeResponse =
+      response && !canSeeAnswers
+        ? { ...response, answers: null }
+        : response;
+
     return {
       assignment,
       template,
-      response,
+      response: safeResponse,
       evaluateeObjectives,
       evaluateeObjectivesSummary,
       // T5.4: indica al frontend si los objetivos vienen de snapshot o live,

@@ -211,12 +211,34 @@ export class ObjectivesController {
     );
   }
 
+  /**
+   * B3-14: guard de acceso para endpoints `/objectives/:id*`. Sin esto
+   * cualquier usuario del tenant podía leer/escribir el objetivo (y sus
+   * comentarios/KR/historial) de cualquier colega iterando UUIDs.
+   * assertManagerCanAccessUser ya cubre todos los roles: admin→ok,
+   * self→ok, manager→solo su equipo, employee/external→solo self.
+   * Devuelve el objetivo cargado para reutilizarlo sin doble query.
+   */
+  private async loadObjectiveWithAccess(req: any, id: string) {
+    const tenantId =
+      req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    const objective = await this.objectivesService.findById(tenantId, id);
+    await assertManagerCanAccessUser(
+      this.userRepo,
+      req.user.userId,
+      req.user.role,
+      objective.userId,
+      objective.tenantId,
+    );
+    return objective;
+  }
+
   @Get(':id')
-  findOne(
+  async findOne(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
   ) {
-    return this.objectivesService.findById(req.user.tenantId, id);
+    return this.loadObjectiveWithAccess(req, id);
   }
 
   @Patch(':id')
@@ -323,6 +345,7 @@ export class ObjectivesController {
         cancelSource: dto.cancelSource,
         sourceCancelReason: dto.sourceCancelReason,
       },
+      req.user.role,
     );
   }
 
@@ -477,29 +500,32 @@ export class ObjectivesController {
    * (la columna rejection_reason solo guarda el último).
    */
   @Get(':id/rejection-history')
-  getRejectionHistory(
+  async getRejectionHistory(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
   ) {
+    await this.loadObjectiveWithAccess(req, id);
     return this.objectivesService.listRejectionHistory(req.user.tenantId, id);
   }
 
   // ─── Comments ────────────────────────────────────────────────────────────
 
   @Get(':id/comments')
-  listComments(
+  async listComments(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
   ) {
+    await this.loadObjectiveWithAccess(req, id);
     return this.objectivesService.listComments(req.user.tenantId, id);
   }
 
   @Post(':id/comments')
-  createComment(
+  async createComment(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
     @Body() data: { content: string; type?: string; attachmentUrl?: string; attachmentName?: string },
   ) {
+    await this.loadObjectiveWithAccess(req, id);
     return this.objectivesService.createComment(
       req.user.tenantId, id, req.user.userId, data,
     );
@@ -520,19 +546,21 @@ export class ObjectivesController {
   // ─── Key Results (B2.10) ──────────────────────────────────────────────
 
   @Get(':id/key-results')
-  listKeyResults(
+  async listKeyResults(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
   ) {
+    await this.loadObjectiveWithAccess(req, id);
     return this.objectivesService.listKeyResults(req.user.tenantId, id);
   }
 
   @Post(':id/key-results')
-  createKeyResult(
+  async createKeyResult(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
     @Body() data: { description: string; unit?: string; baseValue?: number; targetValue?: number },
   ) {
+    await this.loadObjectiveWithAccess(req, id);
     return this.objectivesService.createKeyResult(req.user.tenantId, id, data);
   }
 

@@ -981,6 +981,11 @@ export class ObjectivesService {
       cancelSource?: boolean;
       sourceCancelReason?: string;
     },
+    // B3-15: rol del caller. Si es 'manager', cada item se valida contra
+    // su scope (solo objetivos propios o de reportes directos), igual que
+    // bulkApprove. Opcional para no romper callers internos/tests que no
+    // lo pasan (esos casos no aplican scope de manager).
+    callerRole?: string,
   ): Promise<{
     created: Array<{ sourceId: string; newId: string }>;
     cancelled: string[];
@@ -1012,6 +1017,19 @@ export class ObjectivesService {
         if (!source) {
           failed.push({ id: sourceId, reason: 'Objetivo no encontrado' });
           continue;
+        }
+
+        // B3-15: scope per-item para manager (mismo patrón que bulkApprove).
+        // Sin esto un manager podía llevar/cancelar objetivos de cualquier
+        // colaborador del tenant (cancelSource=true es estado terminal).
+        if (callerRole === 'manager' && source.userId !== actorUserId) {
+          await assertManagerCanAccessUser(
+            this.userRepo,
+            actorUserId,
+            callerRole,
+            source.userId,
+            source.tenantId,
+          );
         }
 
         if (

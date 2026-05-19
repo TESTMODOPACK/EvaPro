@@ -19,6 +19,7 @@ import { User } from '../users/entities/user.entity';
 import { TalentAssessment } from '../talent/entities/talent-assessment.entity';
 import { RoleCompetency } from './entities/role-competency.entity';
 import { Position } from '../tenants/entities/position.entity';
+import { assertManagerCanAccessUser } from '../../common/utils/validate-manager-scope';
 import { AuditService } from '../audit/audit.service';
 import { EmailService } from '../notifications/email.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -536,13 +537,30 @@ export class DevelopmentService {
       .getMany();
   }
 
-  async findPlanById(tenantId: string, id: string) {
+  async findPlanById(
+    tenantId: string,
+    id: string,
+    callerUserId?: string,
+    callerRole?: string,
+  ) {
     const plan = await this.plansWithRelationsQb(tenantId)
       .leftJoinAndSelect('p.comments', 'comments', 'comments.tenant_id = p.tenant_id')
       .leftJoinAndSelect('comments.author', 'commentAuthor', 'commentAuthor.tenant_id = p.tenant_id')
       .andWhere('p.id = :id', { id })
       .getOne();
     if (!plan) throw new NotFoundException('Plan de desarrollo no encontrado');
+    // B3-26: sin esto cualquier employee podía leer el PDI completo
+    // (acciones, brechas, comentarios) de cualquier colega por UUID.
+    // Opcional para no romper callers internos que ya validaron acceso.
+    if (callerRole) {
+      await assertManagerCanAccessUser(
+        this.userRepo,
+        callerUserId ?? '',
+        callerRole,
+        plan.userId,
+        plan.tenantId,
+      );
+    }
     return plan;
   }
 
