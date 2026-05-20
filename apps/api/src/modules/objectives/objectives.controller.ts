@@ -475,6 +475,16 @@ export class ObjectivesController {
     if (role === 'tenant_admin' || role === 'manager' || role === 'super_admin') {
       const objective = await this.objectivesService.findById(tenantId, id);
       if (objective.userId !== userId) {
+        // B3-16: para `manager` validar que el owner sea su reporte
+        // directo. Antes cualquier manager podía registrar avances en
+        // objetivos de cualquier colaborador del tenant (solo se exigía
+        // una nota), manipulando KPIs ajenos. Admins (super_admin/
+        // tenant_admin) pasan sin restricción.
+        if (role === 'manager') {
+          await assertManagerCanAccessUser(
+            this.userRepo, userId, role, objective.userId, tenantId,
+          );
+        }
         if (!dto.notes || dto.notes.trim() === '') {
           throw new BadRequestException('Debes indicar el motivo al actualizar el progreso de otro colaborador');
         }

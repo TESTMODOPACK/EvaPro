@@ -450,6 +450,15 @@ export class DevelopmentService {
       dto.userId = createdBy;
     }
 
+    // B3-30: si un manager crea un plan para otro colaborador, validar
+    // que sea reporte directo. Antes cualquier manager podía instanciar
+    // un PDI a nombre de cualquier user del tenant.
+    if (role === 'manager' && dto.userId && dto.userId !== createdBy) {
+      await assertManagerCanAccessUser(
+        this.userRepo, createdBy, role, dto.userId, tenantId,
+      );
+    }
+
     const plan = this.planRepo.create({
       ...dto,
       tenantId,
@@ -874,9 +883,40 @@ export class DevelopmentService {
     return saved;
   }
 
-  async removeAction(tenantId: string, actionId: string) {
+  async removeAction(
+    tenantId: string,
+    actionId: string,
+    actorId?: string,
+    actorRole?: string,
+  ) {
     const action = await this.actionRepo.findOne({ where: { id: actionId, tenantId } });
     if (!action) throw new NotFoundException('Accion no encontrada');
+
+    // B3-27: mismo patrón de ownership que addAction/updateAction —
+    // manager solo puede borrar acciones de planes de su equipo.
+    const hasActorContext =
+      typeof actorRole === 'string' && actorRole.length > 0 &&
+      typeof actorId === 'string' && actorId.length > 0;
+    if (hasActorContext && actorRole !== 'super_admin' && actorRole !== 'tenant_admin') {
+      const plan = await this.planRepo.findOne({ where: { id: action.planId, tenantId } });
+      if (!plan) throw new NotFoundException('Plan de desarrollo no encontrado');
+      if (actorRole === 'employee') {
+        if (plan.userId !== actorId) {
+          throw new ForbiddenException('Solo puedes eliminar acciones de tu propio plan de desarrollo.');
+        }
+      } else if (actorRole === 'manager') {
+        const owner = await this.userRepo.findOne({
+          where: { id: plan.userId, tenantId },
+          select: ['id', 'managerId'],
+        });
+        if (!owner || (owner.managerId !== actorId && plan.userId !== actorId)) {
+          throw new ForbiddenException('Solo puedes eliminar acciones de planes de tu equipo directo.');
+        }
+      } else {
+        throw new ForbiddenException('Rol no autorizado para eliminar acciones.');
+      }
+    }
+
     const planId = action.planId;
     await this.actionRepo.remove(action);
     await this.recalculateProgress(planId);

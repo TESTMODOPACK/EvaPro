@@ -28,6 +28,22 @@ import { resolveOperatingTenantId } from '../../common/utils/tenant-scope';
 @Controller('development')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
 export class DevelopmentController {
+  /**
+   * B3-27/28/29/30: gate de ownership/team-scope reutilizando el
+   * findPlanById endurecido en Grupo 1 Fase 3 — al pasar userId+role
+   * dispara assertManagerCanAccessUser internamente y lanza 403 si el
+   * caller no es admin/self/manager-de-team. Patrón equivalente al
+   * loadObjectiveWithAccess de objectives.controller.
+   */
+  private assertPlanAccess(req: any, planId: string) {
+    return this.developmentService.findPlanById(
+      req.user.tenantId,
+      planId,
+      req.user.userId,
+      req.user.role,
+    );
+  }
+
   constructor(private readonly developmentService: DevelopmentService) {}
 
   // ─── Competencies (no feature gate — base catalog for all plans) ──────
@@ -272,10 +288,11 @@ export class DevelopmentController {
   @UseGuards(FeatureGuard)
   @Feature(PlanFeature.PDI)
   @Roles('super_admin', 'tenant_admin', 'manager')
-  approvePlan(
+  async approvePlan(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
   ) {
+    await this.assertPlanAccess(req, id);
     return this.developmentService.approvePlan(req.user.tenantId, id, req.user.userId);
   }
 
@@ -283,11 +300,12 @@ export class DevelopmentController {
   @UseGuards(FeatureGuard)
   @Feature(PlanFeature.PDI)
   @Roles('super_admin', 'tenant_admin', 'manager')
-  updatePlan(
+  async updatePlan(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
     @Body() dto: any,
   ) {
+    await this.assertPlanAccess(req, id);
     return this.developmentService.updatePlan(req.user.tenantId, id, dto);
   }
 
@@ -295,10 +313,11 @@ export class DevelopmentController {
   @UseGuards(FeatureGuard)
   @Feature(PlanFeature.PDI)
   @Roles('super_admin', 'tenant_admin', 'manager')
-  activatePlan(
+  async activatePlan(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
   ) {
+    await this.assertPlanAccess(req, id);
     return this.developmentService.activatePlan(req.user.tenantId, id, req.user.id);
   }
 
@@ -306,10 +325,11 @@ export class DevelopmentController {
   @UseGuards(FeatureGuard)
   @Feature(PlanFeature.PDI)
   @Roles('super_admin', 'tenant_admin', 'manager')
-  completePlan(
+  async completePlan(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
   ) {
+    await this.assertPlanAccess(req, id);
     return this.developmentService.completePlan(req.user.tenantId, id, req.user.id);
   }
 
@@ -375,27 +395,31 @@ export class DevelopmentController {
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
   ) {
-    return this.developmentService.removeAction(req.user.tenantId, id);
+    return this.developmentService.removeAction(
+      req.user.tenantId, id, req.user.userId, req.user.role,
+    );
   }
 
   // ─── Comments ──────────────────────────────────────────────────────────
 
   @Get('plans/:planId/comments')
   @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
-  listComments(
+  async listComments(
     @Param('planId', ParseUUIDPipe) planId: string,
     @Request() req: any,
   ) {
+    await this.assertPlanAccess(req, planId);
     return this.developmentService.listComments(req.user.tenantId, planId);
   }
 
   @Post('plans/:planId/comments')
   @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
-  createComment(
+  async createComment(
     @Param('planId', ParseUUIDPipe) planId: string,
     @Request() req: any,
     @Body() dto: any,
   ) {
+    await this.assertPlanAccess(req, planId);
     return this.developmentService.createComment(
       req.user.tenantId,
       planId,
