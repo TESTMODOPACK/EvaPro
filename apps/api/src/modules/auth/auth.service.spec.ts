@@ -275,4 +275,40 @@ describe('AuthService', () => {
       ).rejects.toThrow(BadRequestException);
     });
   });
+
+  // ─── refreshToken (B1-03) ────────────────────────────────────────────
+  describe('refreshToken — valida tokenVersion (B1-03)', () => {
+    const TENANT = fakeUuid(50);
+    const USER_ID = fakeUuid(51);
+
+    it('tv del JWT == user.tokenVersion → emite nuevo access_token', async () => {
+      userRepo.findOne.mockResolvedValue({
+        id: USER_ID, isActive: true, tenantId: TENANT, tokenVersion: 3,
+        role: 'employee', email: 'e@e.com', firstName: 'E', lastName: 'E',
+      });
+      tenantRepo.findOne.mockResolvedValue(null);
+      const res = await service.refreshToken(USER_ID, TENANT, 3);
+      expect(res.access_token).toBeDefined();
+    });
+
+    it('tv stale (bumpeado por logout remoto / desvinculación) → 401', async () => {
+      userRepo.findOne.mockResolvedValue({
+        id: USER_ID, isActive: true, tenantId: TENANT, tokenVersion: 5,
+        role: 'employee', email: 'e@e.com', firstName: 'E', lastName: 'E',
+      });
+      await expect(
+        service.refreshToken(USER_ID, TENANT, 3),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+    });
+
+    it('tv undefined (legacy) + user.tokenVersion 0 → permite (compat)', async () => {
+      userRepo.findOne.mockResolvedValue({
+        id: USER_ID, isActive: true, tenantId: TENANT, tokenVersion: 0,
+        role: 'employee', email: 'e@e.com', firstName: 'E', lastName: 'E',
+      });
+      tenantRepo.findOne.mockResolvedValue(null);
+      const res = await service.refreshToken(USER_ID, TENANT);
+      expect(res.access_token).toBeDefined();
+    });
+  });
 });

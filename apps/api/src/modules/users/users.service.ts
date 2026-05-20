@@ -1492,7 +1492,15 @@ export class UsersService {
     return saved;
   }
 
-  async getUserDepartures(userId: string, tenantId: string): Promise<UserDeparture[]> {
+  async getUserDepartures(userId: string, tenantId?: string): Promise<UserDeparture[]> {
+    // B1-11: si no viene tenantId (super_admin cross-tenant), resolverlo
+    // desde el target — sin esto, `tenantId: null` en el where devolvía
+    // siempre array vacío. assertCanAccessUser ya validó acceso arriba.
+    if (!tenantId) {
+      const target = await this.userRepository.findOne({ where: { id: userId }, select: ['id', 'tenantId'] });
+      if (!target) throw new NotFoundException('Usuario no encontrado');
+      tenantId = target.tenantId;
+    }
     return this.departureRepo.find({
       where: { userId, tenantId },
       order: { departureDate: 'DESC' },
@@ -1748,12 +1756,18 @@ export class UsersService {
 
   async registerMovement(
     userId: string,
-    tenantId: string,
+    tenantId: string | undefined,
     dto: CreateMovementDto,
     approvedById?: string,
   ): Promise<UserMovement> {
     const user = await this.findById(userId);
-    if (user.tenantId !== tenantId) throw new NotFoundException('Usuario no encontrado');
+    // B1-11: tenantId puede venir undefined (super_admin cross-tenant).
+    // Si viene, exigir match; si no, derivar del target (assertCanAccess
+    // User ya validó acceso arriba en el controller).
+    if (tenantId && user.tenantId !== tenantId) {
+      throw new NotFoundException('Usuario no encontrado');
+    }
+    tenantId = tenantId ?? user.tenantId;
 
     const movement = this.movementRepo.create({
       tenantId,
@@ -1785,7 +1799,13 @@ export class UsersService {
     return saved;
   }
 
-  async getUserMovements(userId: string, tenantId: string): Promise<UserMovement[]> {
+  async getUserMovements(userId: string, tenantId?: string): Promise<UserMovement[]> {
+    // B1-11: derivar tenant del target cuando undefined (super_admin).
+    if (!tenantId) {
+      const target = await this.userRepository.findOne({ where: { id: userId }, select: ['id', 'tenantId'] });
+      if (!target) throw new NotFoundException('Usuario no encontrado');
+      tenantId = target.tenantId;
+    }
     return this.movementRepo.find({
       where: { userId, tenantId },
       order: { effectiveDate: 'DESC' },
@@ -1813,18 +1833,27 @@ export class UsersService {
    * depender de RecruitmentModule porque RecruitmentModule depende de
    * UsersModule via UsersService.transferUser).
    */
-  async getUserTimeline(userId: string, tenantId: string): Promise<Array<{
+  async getUserTimeline(userId: string, tenantId?: string): Promise<Array<{
     type: 'joined' | 'movement' | 'departure' | 'reactivation' | 'recruitment_candidate';
     date: string; // ISO date string YYYY-MM-DD
     payload: any;
   }>> {
     const events: Array<{ type: any; date: string; payload: any; sortMs: number }> = [];
 
-    // 1. Joined event: hireDate (preferido) o createdAt como fallback
+    // 1. Joined event: hireDate (preferido) o createdAt como fallback.
+    // B1-11: tenantId opcional (super_admin cross-tenant). Si viene, se
+    // filtra; si no, se carga el target sin filtro y se usa su tenantId
+    // para el resto de queries del timeline.
     const user = await this.userRepository.findOne({
-      where: { id: userId, tenantId },
-      select: ['id', 'firstName', 'lastName', 'hireDate', 'createdAt', 'department', 'position', 'isActive'],
+      where: tenantId ? { id: userId, tenantId } : { id: userId },
+      select: ['id', 'firstName', 'lastName', 'hireDate', 'createdAt', 'department', 'position', 'isActive', 'tenantId'],
     });
+    if (!tenantId) tenantId = user?.tenantId;
+    // B1-11 safety: si el target no existe globalmente (o no resolvimos
+    // tenant), devolver timeline vacío en vez de querys con `tenantId
+    // undefined` (TypeORM lo trata como "sin filtro" → cross-tenant leak
+    // teórico aunque hoy los UUIDs sean únicos).
+    if (!tenantId) return [];
     if (user) {
       const joinedDate = user.hireDate
         ? new Date(user.hireDate).toISOString().slice(0, 10)

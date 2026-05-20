@@ -333,9 +333,12 @@ export class UsersController {
     @Request() req: any,
   ) {
     // P6.2 — Manager solo ve departures de sus reportes directos.
+    // B1-11: pasar `tenantId` (scoped: undefined para super_admin), NO
+    // req.user.tenantId (null para super_admin → service comparaba
+    // user.tenantId !== null → 404 SIEMPRE para super_admin).
     const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
     await this.usersService.assertCanAccessUser(req.user.userId, req.user.role, id, tenantId);
-    return this.usersService.getUserDepartures(id, req.user.tenantId);
+    return this.usersService.getUserDepartures(id, tenantId);
   }
 
   // ─── Stage C: Reactivación / Edit / Cancel departure ────────────────────
@@ -394,9 +397,10 @@ export class UsersController {
     @Request() req: any,
     @Body() dto: CreateMovementDto,
   ) {
+    // B1-11: scoped (undefined para super_admin), NO req.user.tenantId.
     const scopedTenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
     await this.usersService.assertCanAccessUser(req.user.userId, req.user.role, id, scopedTenantId);
-    return this.usersService.registerMovement(id, req.user.tenantId, dto, req.user.userId);
+    return this.usersService.registerMovement(id, scopedTenantId, dto, req.user.userId);
   }
 
   /** GET /users/:id/movements — Movement history */
@@ -406,9 +410,10 @@ export class UsersController {
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
   ) {
+    // B1-11: scoped (undefined para super_admin), NO req.user.tenantId.
     const scopedTenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
     await this.usersService.assertCanAccessUser(req.user.userId, req.user.role, id, scopedTenantId);
-    return this.usersService.getUserMovements(id, req.user.tenantId);
+    return this.usersService.getUserMovements(id, scopedTenantId);
   }
 
   /**
@@ -428,9 +433,10 @@ export class UsersController {
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
   ) {
+    // B1-11: scoped (undefined para super_admin), NO req.user.tenantId.
     const scopedTenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
     await this.usersService.assertCanAccessUser(req.user.userId, req.user.role, id, scopedTenantId);
-    return this.usersService.getUserTimeline(id, req.user.tenantId);
+    return this.usersService.getUserTimeline(id, scopedTenantId);
   }
 
   // ─── User Notes (HR Reports) ───────────────────────────────────────────────

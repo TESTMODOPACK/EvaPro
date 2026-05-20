@@ -160,6 +160,7 @@ export class AuthService {
   async refreshToken(
     userId: string,
     tenantId: string | null,
+    tv?: number,
   ): Promise<{ access_token: string }> {
     // Scope the lookup to the tenant claimed in the token. If the user no
     // longer belongs to that tenant (moved, deleted, claim tampered), we
@@ -171,6 +172,16 @@ export class AuthService {
     });
     if (!user || !user.isActive) {
       throw new UnauthorizedException('Usuario inactivo o no encontrado');
+    }
+    // B1-03: rechazar refresh si el tv del token no coincide con el de
+    // BD (bumpeado por desvinculación / reset de password / logout
+    // remoto). Antes faltaba este check y un token revocado se podía
+    // refrescar durante el grace period (15 min) — anulaba el mecanismo
+    // de invalidación. Mismo criterio que jwt.strategy.validate().
+    const tokenTv = tv ?? 0;
+    const userTv = user.tokenVersion ?? 0;
+    if (tokenTv !== userTv) {
+      throw new UnauthorizedException('Sesión expirada — inicie sesión nuevamente');
     }
 
     const payload = {

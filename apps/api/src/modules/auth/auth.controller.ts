@@ -328,6 +328,7 @@ export class AuthController {
     const result = await this.authService.refreshToken(
       req.user.userId,
       req.user.tenantId,
+      req.user.tv,
     );
     // F3 — actualizar cookie httpOnly con el nuevo access token (el cron de
     // refresh del frontend ahora dispara cookie new + body new; cuando Fase

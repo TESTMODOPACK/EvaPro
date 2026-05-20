@@ -53,7 +53,13 @@ export class AuditInterceptor {
           // Fire-and-forget — no bloquear la respuesta por el audit log.
           // Si el audit falla, el usuario recibe su respuesta normal y
           // el error se loguea silenciosamente.
-          const tenantId = user?.tenantId || 'system';
+          // B1-19: antes pasaba 'system' cuando user.tenantId era null
+          // (super_admin), pero audit_logs.tenant_id es columna `uuid` →
+          // el INSERT fallaba y se silenciaba en el .catch → TODAS las
+          // acciones @Audited de super_admin (create/baja tenant, bulk
+          // onboarding, etc.) nunca quedaban registradas. La columna es
+          // nullable; pasar null. audit.service.log ya acepta string|null.
+          const tenantId = user?.tenantId ?? null;
           const userId = user?.userId || user?.id || null;
           const entityId = response?.id || null;
 
