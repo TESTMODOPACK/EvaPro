@@ -19,6 +19,7 @@ import {
   RecurringMetric,
 } from './entities/recurring-metric.entity';
 import { MetricMeasurement } from './entities/metric-measurement.entity';
+import { User } from '../users/entities/user.entity';
 import { AuditService } from '../audit/audit.service';
 import {
   createMockRepository,
@@ -58,10 +59,13 @@ describe('RecurringMetricsService', () => {
   let service: RecurringMetricsService;
   let metricRepo: any;
   let measurementRepo: any;
+  let userRepo: any;
 
   beforeEach(async () => {
     metricRepo = createMockRepository();
     measurementRepo = createMockRepository();
+    // B2-01: userRepo agregado para assertManagerCanAccessUser.
+    userRepo = createMockRepository();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -71,6 +75,7 @@ describe('RecurringMetricsService', () => {
           provide: getRepositoryToken(MetricMeasurement),
           useValue: measurementRepo,
         },
+        { provide: getRepositoryToken(User), useValue: userRepo },
         { provide: AuditService, useValue: createMockAuditService() },
       ],
     }).compile();

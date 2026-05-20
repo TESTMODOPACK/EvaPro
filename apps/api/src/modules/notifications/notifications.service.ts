@@ -4,6 +4,8 @@ import { Repository, LessThan, MoreThan, In } from 'typeorm';
 import { Notification, NotificationType } from './entities/notification.entity';
 import { User } from '../users/entities/user.entity';
 import { EmailService } from './email.service';
+import { NOTIFICATION_CATEGORIES } from '../../common/types/jsonb-schemas';
+import { UpdatePreferencesDto } from './dto/update-preferences.dto';
 
 @Injectable()
 export class NotificationsService {
@@ -339,10 +341,19 @@ export class NotificationsService {
     return user?.notificationPreferences || {};
   }
 
-  async updatePreferences(tenantId: string, userId: string, prefs: Record<string, boolean>): Promise<Record<string, boolean>> {
+  async updatePreferences(tenantId: string, userId: string, prefs: UpdatePreferencesDto): Promise<Record<string, boolean>> {
     const user = await this.userRepo.findOne({ where: { id: userId, tenantId }, select: ['id', 'notificationPreferences'] });
     if (!user) throw new NotFoundException('Usuario no encontrado');
-    const merged = { ...(user.notificationPreferences || {}), ...prefs };
+    // B2-05 defensa en profundidad: aunque la DTO + ValidationPipe ya
+    // filtran claves desconocidas, hacemos un segundo whitelist contra
+    // NOTIFICATION_CATEGORIES en el service para callers internos que no
+    // pasen por el pipe (crons, tests, futuras llamadas directas).
+    const safe: Record<string, boolean> = {};
+    for (const cat of NOTIFICATION_CATEGORIES) {
+      const v = (prefs as Record<string, unknown>)[cat];
+      if (typeof v === 'boolean') safe[cat] = v;
+    }
+    const merged = { ...(user.notificationPreferences || {}), ...safe };
     await this.userRepo.update(user.id, { notificationPreferences: merged });
     return merged;
   }

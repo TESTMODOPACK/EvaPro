@@ -178,7 +178,11 @@ export class RecognitionController {
     return this.service.getUserBadges(req.user.tenantId, req.user.userId);
   }
 
+  // B5-25: antes sin @Roles → cualquier rol autenticado (incl. external)
+  // podía leer puntos/badges de cualquier user del tenant iterando UUIDs.
+  // external queda excluido (no debe ver perfil de gamificación interna).
   @Get('badges/user/:userId')
+  @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
   getUserBadges(
     @Param('userId', ParseUUIDPipe) userId: string,
     @Request() req: any,
@@ -200,7 +204,9 @@ export class RecognitionController {
     return this.service.getUserPoints(req.user.tenantId, req.user.userId);
   }
 
+  // B5-25: ver getUserBadges.
   @Get('points/user/:userId')
+  @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
   getUserPoints(
     @Param('userId', ParseUUIDPipe) userId: string,
     @Request() req: any,

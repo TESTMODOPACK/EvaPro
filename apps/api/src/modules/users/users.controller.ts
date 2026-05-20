@@ -111,7 +111,8 @@ export class UsersController {
     if (!file) throw new BadRequestException('No se envió ningún archivo');
     const allowed = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
     if (!allowed.includes(file.mimetype)) throw new BadRequestException('Solo se permiten archivos PDF o Word (.docx)');
-    const result = await this.uploadsService.uploadFile(file, req.user.tenantId, `users/${req.user.userId}/cv`);
+    // B2-15: pasar uploaderUserId para que el audit registre quién subió el CV.
+    const result = await this.uploadsService.uploadFile(file, req.user.tenantId, `users/${req.user.userId}/cv`, req.user.userId);
     await this.usersService.updateCv(req.user.userId, req.user.tenantId, result.url, file.originalname);
     return { cvUrl: result.url, cvFileName: file.originalname };
   }

@@ -11,6 +11,8 @@ import {
 } from './entities/recurring-metric.entity';
 import { MetricMeasurement } from './entities/metric-measurement.entity';
 import { AuditService } from '../audit/audit.service';
+import { User } from '../users/entities/user.entity';
+import { assertManagerCanAccessUser } from '../../common/utils/validate-manager-scope';
 import { CreateRecurringMetricDto } from './dto/create-recurring-metric.dto';
 import { UpdateRecurringMetricDto } from './dto/update-recurring-metric.dto';
 import { AddMeasurementDto } from './dto/add-measurement.dto';
@@ -39,8 +41,34 @@ export class RecurringMetricsService {
     private readonly metricRepo: Repository<RecurringMetric>,
     @InjectRepository(MetricMeasurement)
     private readonly measurementRepo: Repository<MetricMeasurement>,
+    // B2-01: assertManagerCanAccessUser necesita el repo de User para
+    // validar que el manager sea jefe directo del owner de la métrica.
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
     private readonly auditService: AuditService,
   ) {}
+
+  /**
+   * B2-01: control de ownership/team-scope para escrituras sobre métricas.
+   * Antes PATCH /:id, POST /:id/measurements y DELETE /:id solo filtraban
+   * por tenantId → cualquier employee podía editar/falsificar mediciones
+   * de KPIs de otro colaborador iterando UUIDs. Reusa el primitive de
+   * Grupo 1 Fase 3: admin → ok, self → ok, manager → solo su equipo,
+   * employee/external → solo self.
+   */
+  private async assertMetricMutationAccess(
+    metric: RecurringMetric,
+    actorUserId: string,
+    actorRole: string | undefined,
+  ): Promise<void> {
+    await assertManagerCanAccessUser(
+      this.userRepo,
+      actorUserId,
+      actorRole ?? '',
+      metric.ownerUserId,
+      metric.tenantId,
+    );
+  }
 
   // ─── CRUD de métricas ──────────────────────────────────────────────
 
@@ -128,8 +156,10 @@ export class RecurringMetricsService {
     id: string,
     actorUserId: string,
     dto: UpdateRecurringMetricDto,
+    actorRole?: string,
   ): Promise<RecurringMetric> {
     const metric = await this.findById(tenantId, id);
+    await this.assertMetricMutationAccess(metric, actorUserId, actorRole);
 
     if (dto.name !== undefined) metric.name = dto.name;
     if (dto.description !== undefined)
@@ -172,8 +202,10 @@ export class RecurringMetricsService {
     tenantId: string,
     id: string,
     actorUserId: string,
+    actorRole?: string,
   ): Promise<void> {
     const metric = await this.findById(tenantId, id);
+    await this.assertMetricMutationAccess(metric, actorUserId, actorRole);
     // Soft-delete via isActive=false. Las measurements quedan preservadas.
     metric.isActive = false;
     await this.metricRepo.save(metric);
@@ -198,8 +230,10 @@ export class RecurringMetricsService {
     metricId: string,
     actorUserId: string,
     dto: AddMeasurementDto,
+    actorRole?: string,
   ): Promise<MetricMeasurement> {
     const metric = await this.findById(tenantId, metricId);
+    await this.assertMetricMutationAccess(metric, actorUserId, actorRole);
     if (!metric.isActive) {
       throw new BadRequestException(
         'No se pueden agregar mediciones a una métrica desactivada',
