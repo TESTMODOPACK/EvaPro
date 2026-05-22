@@ -3444,6 +3444,14 @@ export class RecruitmentService {
     const candidate = await this.candidateRepo.findOne({ where: { id: candidateId, tenantId } });
     if (!candidate) throw new NotFoundException('Candidato no encontrado');
 
+    // B6-21: RecruitmentInterview no tiene columna tenant_id (es tabla
+    // de relación). El scope de tenant se enforza pre-fetch vía el
+    // candidate.findOne({where:{id,tenantId}}) de arriba — candidate.id
+    // es un UUID v4 globalmente único, así que interviews matcheadas
+    // por candidateId pertenecen al mismo tenant por construcción. Una
+    // defensa adicional vía JOIN a candidate no agrega seguridad real
+    // (no hay vector de colisión de UUIDs) y aumentaría complejidad.
+    // Verificado: la pre-validación es la barrera correcta.
     return this.interviewRepo.find({
       where: { candidateId },
       relations: ['evaluator'],

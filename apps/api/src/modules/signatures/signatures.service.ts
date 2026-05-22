@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException, ConflictException, HttpException, HttpStatus } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { IsNull, LessThan, MoreThan, Repository } from 'typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { DataSource, IsNull, LessThan, MoreThan, Repository } from 'typeorm';
 import * as crypto from 'crypto';
 import * as bcrypt from 'bcrypt';
 import { AcknowledgmentType, DocumentSignature, SignatureRole } from './entities/document-signature.entity';
@@ -70,6 +70,9 @@ export class SignaturesService {
     private readonly auditService: AuditService,
     private readonly evaluationsService: EvaluationsService,
     private readonly authorizationService: SignatureAuthorizationService,
+    // B6-26: DataSource para verifyAndSign atomic (token+signature+
+    // contract activation deben commit/rollback juntos).
+    @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
 
   // ─── Request Signature (send OTP) ───────────────────────────────────
@@ -215,33 +218,62 @@ export class SignaturesService {
       throw new BadRequestException('Código de verificación inválido o expirado. Solicita uno nuevo.');
     }
 
-    // OTP válido → marcar token como consumido (no reutilizable)
-    await this.otpRepo.update(token.id, { consumedAt: new Date() });
-
-    // Generate document hash
+    // Generate document hash (fuera del tx — read-only)
     const documentContent = await this.getDocumentContent(tenantId, documentType, documentId);
     const documentHash = crypto.createHash('sha256').update(documentContent).digest('hex');
     const documentName = await this.getDocumentName(tenantId, documentType, documentId);
 
-    // Create signature
-    const signature = this.signatureRepo.create({
-      tenantId,
-      documentType,
-      documentId,
-      documentName,
-      documentHash,
-      signedBy: userId,
-      signerIp: ipAddress || null,
-      verificationMethod: 'otp_email',
-      status: 'valid',
-      // G2/G5/G3: rol de firma viene del caller; default RECIPIENT.
-      // El SignatureAuthorizationService ya validó que el rol del usuario
-      // tiene derecho a firmar con este sigRole.
-      signatureRole: sigRole,
-      acknowledgmentType: ackType,
-      acknowledgmentComment: ackComment,
+    // B6-26: consumir el OTP + persistir la firma + activar el contrato
+    // deben ser ATÓMICOS. Antes eran 3 writes secuenciales — un fallo
+    // entre signature.save y contract.save dejaba: token quemado +
+    // firma válida + contrato pending_signature (cliente cree que
+    // firmó pero el contrato no se activó) o, peor, token NO quemado
+    // pero firma válida (re-uso del OTP). Wrap en dataSource.transaction
+    // con repos scoped al manager. La firma legal y la activación del
+    // contrato comprometen el mismo evento jurídico: deben commit/
+    // rollback juntos.
+    const isAffirmative = ackType !== AcknowledgmentType.DECLINE;
+    const saved = await this.dataSource.transaction(async (manager) => {
+      const otpRepoTx = manager.getRepository(SignatureOtpToken);
+      const sigRepoTx = manager.getRepository(DocumentSignature);
+      const contractRepoTx = manager.getRepository(Contract);
+
+      // OTP válido → marcar token como consumido (no reutilizable)
+      await otpRepoTx.update(token.id, { consumedAt: new Date() });
+
+      const signature = sigRepoTx.create({
+        tenantId,
+        documentType,
+        documentId,
+        documentName,
+        documentHash,
+        signedBy: userId,
+        signerIp: ipAddress || null,
+        verificationMethod: 'otp_email',
+        status: 'valid',
+        // G2/G5/G3: rol de firma viene del caller; default RECIPIENT.
+        // El SignatureAuthorizationService ya validó que el rol del usuario
+        // tiene derecho a firmar con este sigRole.
+        signatureRole: sigRole,
+        acknowledgmentType: ackType,
+        acknowledgmentComment: ackComment,
+      });
+      const savedSig = await sigRepoTx.save(signature);
+
+      // B6-26: activación del contrato dentro del mismo tx (movido
+      // adentro). Si la activación falla, el tx rollback dejará la
+      // firma sin persistir y el token sin consumir — el usuario puede
+      // reintentar limpiamente.
+      if (isAffirmative && documentType === 'contract') {
+        const contract = await contractRepoTx.findOne({ where: { id: documentId, tenantId } });
+        if (contract && contract.status === 'pending_signature') {
+          contract.status = 'active';
+          await contractRepoTx.save(contract);
+        }
+      }
+
+      return savedSig;
     });
-    const saved = await this.signatureRepo.save(signature);
 
     // Audit log (incluye acknowledgmentType + signatureRole para trazabilidad legal)
     this.auditService.log(
@@ -256,18 +288,11 @@ export class SignaturesService {
       ipAddress,
     ).catch(() => {});
 
-    // G5 (TAREA 7): si fue DECLINE, NO transicionar estados del documento.
-    // El contrato queda como pending_signature; el rechazo queda registrado
-    // en la firma como evidencia legal. Solo AGREE / AGREE_WITH_COMMENTS
-    // disparan la auto-activación.
-    const isAffirmative = ackType !== AcknowledgmentType.DECLINE;
-    if (isAffirmative && documentType === 'contract') {
-      const contract = await this.contractRepo.findOne({ where: { id: documentId, tenantId } });
-      if (contract && contract.status === 'pending_signature') {
-        contract.status = 'active';
-        await this.contractRepo.save(contract);
-      }
-    }
+    // B6-26: la activación del contrato pending_signature → active ya
+    // ocurrió DENTRO del dataSource.transaction de arriba (atomic con la
+    // persistencia de la firma y el consumo del OTP). G5 (TAREA 7) sigue
+    // vigente: en DECLINE el contrato no se transiciona (el `if
+    // isAffirmative` dentro del tx lo respeta).
 
     if (documentType === 'evaluation_response') {
       // T5.3 (origin/main) — Audit P0 (Issue A): freezar el estado de los
