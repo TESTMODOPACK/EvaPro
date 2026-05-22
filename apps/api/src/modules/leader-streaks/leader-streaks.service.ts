@@ -1,4 +1,7 @@
-import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
+import { ForbiddenException, Inject, Injectable, Logger } from '@nestjs/common';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import type { Cache } from 'cache-manager';
+import { cachedFetch } from '../../common/cache/cache.helper';
 import { InjectRepository } from '@nestjs/typeorm';
 import { MoreThanOrEqual, Repository } from 'typeorm';
 import { CheckIn, CheckInStatus } from '../feedback/entities/checkin.entity';
@@ -65,6 +68,11 @@ export class LeaderStreaksService {
     private readonly recogRepo: Repository<Recognition>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+    // B4-09: cache para amortiguar las ~400 queries por refresh del
+    // leaderboard (100 managers × 4 queries c/u). TTL 5 min: el ranking
+    // de hábitos no cambia segundo-a-segundo y el costo de cache miss
+    // sigue siendo manejable.
+    @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
   ) {}
 
   // ─── Date utils (UTC-based, ISO-week) ────────────────────────────────
@@ -249,23 +257,34 @@ export class LeaderStreaksService {
       throw new ForbiddenException('Solo el administrador del tenant puede ver el ranking.');
     }
 
-    // Managers del tenant (NO incluye tenant_admin — el admin ve el
-    // ranking pero no aparece en él, no es líder operativo).
-    const leaders = await this.userRepo.find({
-      where: { tenantId, role: 'manager', isActive: true },
-      select: ['id', 'firstName', 'lastName', 'department', 'position'],
-      take: 100,
-    });
+    // B4-09: cache 5 min para evitar 400 queries en cada refresh del
+    // panel. El leaderboard es un ranking de hábitos que no cambia
+    // segundo-a-segundo; un TTL corto da freshness aceptable y
+    // controla la presión sobre la BD si varios admins refrescan a la
+    // vez. Una agregación SQL en bloque sería ideal pero requiere
+    // reescribir computeStreaksForUser para arrays — follow-up Alta.
+    return cachedFetch(
+      this.cacheManager,
+      `leader-streaks:leaderboard:${tenantId}`,
+      300,
+      async () => {
+        // Managers del tenant (NO incluye tenant_admin — el admin ve el
+        // ranking pero no aparece en él, no es líder operativo).
+        const leaders = await this.userRepo.find({
+          where: { tenantId, role: 'manager', isActive: true },
+          select: ['id', 'firstName', 'lastName', 'department', 'position'],
+          take: 100,
+        });
 
-    if (leaders.length === 0) return [];
+        if (leaders.length === 0) return [];
 
-    // Calcular en paralelo (controlado — max 100 queries de cada tipo).
-    // Limitación aceptable para la primera iteración; si escala mal,
-    // migrar a un solo query agregado por semana via SQL.
-    const results = await Promise.all(
-      leaders.map((l) => this.computeStreaksForUser(tenantId, l.id)),
+        // Calcular en paralelo (controlado — max 100 queries de cada tipo).
+        const results = await Promise.all(
+          leaders.map((l) => this.computeStreaksForUser(tenantId, l.id)),
+        );
+
+        return results.sort((a, b) => b.totalScore - a.totalScore);
+      },
     );
-
-    return results.sort((a, b) => b.totalScore - a.totalScore);
   }
 }
