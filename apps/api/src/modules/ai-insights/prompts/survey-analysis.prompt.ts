@@ -1,3 +1,9 @@
+import {
+  sanitizeForPrompt,
+  wrapAsUserData,
+  ANTI_INJECTION_NOTICE,
+} from './sanitize';
+
 export function buildSurveyAnalysisPrompt(data: {
   surveyTitle: string;
   responseRate: number;
@@ -9,17 +15,21 @@ export function buildSurveyAnalysisPrompt(data: {
   departmentResults: Array<{ department: string; responseCount: number; average: number }>;
   openResponses: Array<{ questionText: string; category: string; text: string }>;
 }): string {
+  // B5-15: categorías/preguntas/departamentos vienen del tenant; las
+  // respuestas abiertas son texto LIBRE del respondente — máximo
+  // riesgo de prompt-injection. Sanitizar los cortos + wrapAsUserData
+  // las abiertas.
   const categoryList = data.averageByCategory
-    .map((c) => `- ${c.category}: ${c.average}/10 (${c.count} respuestas)`)
+    .map((c) => `- ${sanitizeForPrompt(c.category, 100)}: ${c.average}/10 (${c.count} respuestas)`)
     .join('\n');
 
   const questionList = data.averageByQuestion
     .slice(0, 20)
-    .map((q) => `- [${q.category}] "${q.questionText}": ${q.average}/10`)
+    .map((q) => `- [${sanitizeForPrompt(q.category, 100)}] "${sanitizeForPrompt(q.questionText, 300)}": ${q.average}/10`)
     .join('\n');
 
   const deptList = data.departmentResults
-    .map((d) => `- ${d.department}: ${d.average}/10 (${d.responseCount} respuestas)`)
+    .map((d) => `- ${sanitizeForPrompt(d.department, 100)}: ${d.average}/10 (${d.responseCount} respuestas)`)
     .join('\n');
 
   const enpsInfo = data.enps
@@ -30,14 +40,18 @@ export function buildSurveyAnalysisPrompt(data: {
       })()
     : 'No hay datos de eNPS disponibles.';
 
-  const openTexts = data.openResponses
+  const openTextsBody = data.openResponses
     .slice(0, 30)
-    .map((o) => `- [${o.category}] "${o.text}"`)
+    .map((o) => `- [${sanitizeForPrompt(o.category, 100)}] "${sanitizeForPrompt(o.text, 1500)}"`)
     .join('\n');
+  const openTexts = openTextsBody
+    ? wrapAsUserData('RESPUESTAS ABIERTAS DE LA ENCUESTA', openTextsBody, 60000)
+    : 'Sin respuestas abiertas.';
+  const safeSurveyTitle = sanitizeForPrompt(data.surveyTitle, 200);
 
   return `Eres un experto en recursos humanos y analisis organizacional. Analiza los resultados de la siguiente encuesta de clima organizacional y genera un informe ejecutivo completo en espanol.
 
-ENCUESTA: "${data.surveyTitle}"
+ENCUESTA: "${safeSurveyTitle}"
 Tasa de respuesta: ${data.responseRate}%
 Total respuestas: ${data.totalResponses}
 Escala de puntuación: 1 a 10 (normalizada desde likert 1-5 multiplicada por 2)
@@ -55,7 +69,7 @@ RESULTADOS POR DEPARTAMENTO:
 ${deptList}
 
 RESPUESTAS ABIERTAS (anonimizadas):
-${openTexts || 'Sin respuestas abiertas.'}
+${openTexts}
 
 Genera un JSON con la siguiente estructura exacta (sin texto adicional fuera del JSON):
 
@@ -99,5 +113,7 @@ IMPORTANTE:
 - Las iniciativas deben ser concretas y accionables
 - El health score debe reflejar: >80 excelente, 60-80 bueno, 40-60 necesita mejora, <40 critico
 - Basa el analisis de sentimiento en las respuestas abiertas y los puntajes
-- Todas las respuestas en espanol`;
+- Todas las respuestas en espanol
+
+${ANTI_INJECTION_NOTICE}`;
 }
