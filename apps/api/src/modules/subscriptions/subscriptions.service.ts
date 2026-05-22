@@ -11,15 +11,15 @@ import {
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
 import { cachedFetch, invalidateCache } from '../../common/cache/cache.helper';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In } from 'typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { DataSource, EntityManager, Repository, In } from 'typeorm';
 import {
   Subscription,
   SubscriptionStatus,
   SUBSCRIPTION_STATUS_VALUES,
 } from './entities/subscription.entity';
 import { SubscriptionPlan } from './entities/subscription-plan.entity';
-import { SubscriptionRequest } from './entities/subscription-request.entity';
+import { SubscriptionRequest, SubscriptionRequestStatus } from './entities/subscription-request.entity';
 import {
   PaymentHistory,
   BillingPeriod,
@@ -76,6 +76,9 @@ export class SubscriptionsService {
     @Inject(forwardRef(() => PaymentMethodsService))
     private readonly paymentMethodsService: PaymentMethodsService,
     @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
+    // B6-11/B6-12: DataSource para wrapping atómico de escrituras
+    // financieras (setAiAddon CANCEL branch + approveRequest atomic flip).
+    @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
 
   // ─── Plans CRUD ────────────────────────────────────────────────────────
@@ -1146,11 +1149,54 @@ export class SubscriptionsService {
 
   /** Super admin approves a request — applies the change. */
   async approveRequest(requestId: string, processedBy: string): Promise<void> {
+    // B6-12: ATOMIC compare-and-set para serializar aprobaciones
+    // concurrentes. Antes 2 super_admins aprobando en paralelo pasaban
+    // ambos el check de status → ambos emitían credit note + ambos
+    // creaban suscripción nueva → doble NC + doble alta. UPDATE WHERE
+    // status='pending' garantiza que solo UN caller gana el lock;
+    // marcamos 'processing' (varchar, no enum DB) y, si algo falla
+    // downstream, restauramos 'pending' para que admin pueda reintentar.
+    const acquired = await this.requestRepo
+      .createQueryBuilder()
+      .update()
+      .set({ status: 'processing' as SubscriptionRequestStatus })
+      .where('id = :id AND status = :prev', { id: requestId, prev: 'pending' })
+      .execute();
+    if ((acquired.affected ?? 0) === 0) {
+      // Puede ser: (a) requestId inexistente, (b) ya procesada por
+      // otro caller. Hacemos un findOne para distinguir el mensaje.
+      const existing = await this.requestRepo.findOne({ where: { id: requestId } });
+      if (!existing) throw new NotFoundException('Solicitud no encontrada');
+      throw new ConflictException('La solicitud ya fue procesada o está siendo procesada por otro administrador.');
+    }
     const req = await this.requestRepo.findOne({ where: { id: requestId } });
     if (!req) throw new NotFoundException('Solicitud no encontrada');
-    if (req.status !== 'pending')
-      throw new ConflictException('La solicitud ya fue procesada');
 
+    try {
+      return await this.applyApprovedRequest(req, processedBy);
+    } catch (err) {
+      // Restaurar 'pending' para que el admin pueda reintentar tras
+      // resolver el problema. Si la restauración falla, queda en
+      // 'processing' (visible en el panel) → ops sabe que hay que
+      // intervenir manualmente.
+      await this.requestRepo
+        .update({ id: requestId, status: 'processing' as SubscriptionRequestStatus }, {
+          status: 'pending' as SubscriptionRequestStatus,
+        })
+        .catch(() => undefined);
+      throw err;
+    }
+  }
+
+  /**
+   * B6-12: el cuerpo previo de approveRequest se extrae acá para que
+   * el método público pueda envolverlo en el flujo atomic-flip + try/
+   * restore. Sin cambios de lógica funcional.
+   */
+  private async applyApprovedRequest(
+    req: SubscriptionRequest,
+    processedBy: string,
+  ): Promise<void> {
     // Calculate proration before making the change
     const { credit } = await this.calculateProration(req.tenantId);
 
@@ -1622,29 +1668,41 @@ export class SubscriptionsService {
       sub.aiAddonPrice = 0;
       sub.aiAddonUsed = 0; // Reset counter for future re-purchase
 
-      // If credits were used, register a pending charge for the full period
-      if (hadAddon && addonUsed > 0) {
-        await this.paymentRepo.save(
-          this.paymentRepo.create({
-            tenantId,
-            subscriptionId: sub.id,
-            amount: previousPrice,
-            currency,
-            billingPeriod: sub.billingPeriod || BillingPeriod.MONTHLY,
-            periodStart: billingBase,
-            periodEnd,
-            status: PaymentStatus.PENDING,
-            concept: `Add-on IA +${previousCalls}/mes (cancelado con ${addonUsed} créditos usados — cobro completo del período)`,
-            isAddon: true,
-            paidAt: null,
-          }),
-        );
+      // B6-11: el charge pendiente + la actualización de la sub deben
+      // ser atómicos. Antes, si paymentRepo.save() succeded pero
+      // subRepo.save() fallaba, quedaba un cargo fantasma sin cambio
+      // de estado del add-on. Notificación queda afuera (best-effort).
+      const shouldChargeFullPeriod = hadAddon && addonUsed > 0;
+      await this.dataSource.transaction(async (manager) => {
+        const payRepoTx = manager.getRepository(PaymentHistory);
+        const subRepoTx = manager.getRepository(Subscription);
+
+        if (shouldChargeFullPeriod) {
+          await payRepoTx.save(
+            payRepoTx.create({
+              tenantId,
+              subscriptionId: sub.id,
+              amount: previousPrice,
+              currency,
+              billingPeriod: sub.billingPeriod || BillingPeriod.MONTHLY,
+              periodStart: billingBase,
+              periodEnd,
+              status: PaymentStatus.PENDING,
+              concept: `Add-on IA +${previousCalls}/mes (cancelado con ${addonUsed} créditos usados — cobro completo del período)`,
+              isAddon: true,
+              paidAt: null,
+            }),
+          );
+        }
+        await subRepoTx.save(sub);
+      });
+
+      if (shouldChargeFullPeriod) {
         await notifySA(
           `Add-on IA cancelado: ${orgName}`,
           `${orgName} canceló add-on IA (+${previousCalls}/mes, ${previousPrice} ${currency}). Se usaron ${addonUsed} créditos — cobro completo del período registrado.`,
         );
       }
-      await this.subRepo.save(sub);
       await this.auditService
         .log(
           tenantId,

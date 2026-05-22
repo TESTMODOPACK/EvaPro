@@ -808,45 +808,55 @@ export class InvoicesService {
     if (invoice.status === InvoiceStatus.CANCELLED)
       throw new BadRequestException('No se puede pagar una factura cancelada');
 
-    invoice.status = InvoiceStatus.PAID;
-    invoice.paidAt = new Date();
-    await this.invoiceRepo.save(invoice);
-
-    // Create payment history record
+    // B6-04: las 3 escrituras (invoice→PAID, paymentHistory crear, sub
+    // billing/status update) deben ser ATÓMICAS. Antes eran 3 .save()
+    // separados — un fallo en el 2º o 3º dejaba la factura PAID sin
+    // PaymentHistory (descuadre SII) o la sub sin reactivar. La
+    // transacción garantiza all-or-nothing; el audit log queda afuera
+    // (best-effort, no afecta correctitud financiera).
     const sub = await this.subRepo.findOne({
       where: { id: invoice.subscriptionId },
     });
-    const payment = this.paymentRepo.create({
-      tenantId: invoice.tenantId,
-      subscriptionId: invoice.subscriptionId,
-      amount: Number(invoice.total),
-      currency: invoice.currency,
-      billingPeriod: sub?.billingPeriod || BillingPeriod.MONTHLY,
-      periodStart: invoice.periodStart,
-      periodEnd: invoice.periodEnd,
-      status: PaymentStatus.PAID,
-      paymentMethod: paymentData.paymentMethod || null,
-      transactionRef: paymentData.transactionRef || null,
-      notes: paymentData.notes || null,
-      concept: `Factura ${invoice.invoiceNumber}`,
-      isAddon: false,
-      invoiceId: invoice.id,
-      paidAt: new Date(),
-    });
-    await this.paymentRepo.save(payment);
+    await this.dataSource.transaction(async (manager) => {
+      const invRepoTx = manager.getRepository(Invoice);
+      const payRepoTx = manager.getRepository(PaymentHistory);
+      const subRepoTx = manager.getRepository(Subscription);
 
-    // Update subscription billing info
-    if (sub) {
-      sub.lastPaymentDate = new Date();
-      sub.lastPaymentAmount = Number(invoice.total);
-      if (
-        sub.status === SubscriptionStatus.SUSPENDED ||
-        sub.status === SubscriptionStatus.EXPIRED
-      ) {
-        sub.status = SubscriptionStatus.ACTIVE;
+      invoice.status = InvoiceStatus.PAID;
+      invoice.paidAt = new Date();
+      await invRepoTx.save(invoice);
+
+      const payment = payRepoTx.create({
+        tenantId: invoice.tenantId,
+        subscriptionId: invoice.subscriptionId,
+        amount: Number(invoice.total),
+        currency: invoice.currency,
+        billingPeriod: sub?.billingPeriod || BillingPeriod.MONTHLY,
+        periodStart: invoice.periodStart,
+        periodEnd: invoice.periodEnd,
+        status: PaymentStatus.PAID,
+        paymentMethod: paymentData.paymentMethod || null,
+        transactionRef: paymentData.transactionRef || null,
+        notes: paymentData.notes || null,
+        concept: `Factura ${invoice.invoiceNumber}`,
+        isAddon: false,
+        invoiceId: invoice.id,
+        paidAt: new Date(),
+      });
+      await payRepoTx.save(payment);
+
+      if (sub) {
+        sub.lastPaymentDate = new Date();
+        sub.lastPaymentAmount = Number(invoice.total);
+        if (
+          sub.status === SubscriptionStatus.SUSPENDED ||
+          sub.status === SubscriptionStatus.EXPIRED
+        ) {
+          sub.status = SubscriptionStatus.ACTIVE;
+        }
+        await subRepoTx.save(sub);
       }
-      await this.subRepo.save(sub);
-    }
+    });
 
     await this.auditService
       .log(invoice.tenantId, userId, 'invoice.paid', 'invoice', invoiceId, {

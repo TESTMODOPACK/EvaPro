@@ -68,6 +68,27 @@ export class WebhookLogsController {
       id,
       req.user.userId || req.user.id,
     );
+    // B6-02: rechazar replay de eventos ya procesados (status==='processed'):
+    // el evento original ya disparó sus efectos (refund/credit note/sub
+    // update) y, aunque applyWebhookEvent es idempotente por atomic
+    // UPDATE WHERE status='paid', un evento sintético reconstruido con
+    // type='payment.succeeded' (sin amount/currency reales) sobre una
+    // sesión ya en otro estado abre vectores raros (p.ej. MP `payment`
+    // re-fetched contra otro pago). Replay debe servir SOLO para
+    // eventos que NO se aplicaron (status==='failed'/'received'). El
+    // bloqueo de 'invalid_signature' ya estaba en prepareReplay.
+    if (original.status === 'processed') {
+      return {
+        replayed: false,
+        reason: 'El evento ya fue procesado exitosamente; replay no permitido para evitar efectos duplicados. Use reconciliación contra el provider si hay sospecha de inconsistencia.',
+      };
+    }
+    if (original.status === 'ignored') {
+      return {
+        replayed: false,
+        reason: 'El evento fue descartado intencionalmente (no relevante); replay no aplica.',
+      };
+    }
     // Re-extract WebhookEvent shape de la payload y reprocesar via
     // applyWebhookEvent. Si el payload no se serializo bien, fallaremos
     // graceful con un audit log de fallo.

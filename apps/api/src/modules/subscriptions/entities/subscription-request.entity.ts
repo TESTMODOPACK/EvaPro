@@ -11,7 +11,12 @@ import { User } from '../../users/entities/user.entity';
 import { Tenant } from '../../tenants/entities/tenant.entity';
 
 export type SubscriptionRequestType = 'plan_change' | 'cancel';
-export type SubscriptionRequestStatus = 'pending' | 'approved' | 'rejected';
+// 'processing' = lock transitorio introducido en B6-12 para serializar
+// approveRequest concurrente; el row queda en este estado entre el
+// atomic-flip y el commit final. Si la operación falla downstream, se
+// restaura a 'pending'. La columna es varchar(20) en DB, así que
+// añadirlo al union NO requiere migración.
+export type SubscriptionRequestStatus = 'pending' | 'processing' | 'approved' | 'rejected';
 
 @Entity('subscription_requests')
 @Index('idx_sub_req_tenant', ['tenantId'])

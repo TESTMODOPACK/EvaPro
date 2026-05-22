@@ -38,11 +38,14 @@ export class PaymentsController {
    * POST /payments/checkout — create a Checkout session and get the URL
    * to redirect the user to. Body: { invoiceId, provider }.
    *
-   * Any authenticated user in the owning tenant can initiate; we don't
-   * restrict to tenant_admin because some orgs delegate payment to a
-   * specific person who may have a different role.
+   * B6-03: antes el endpoint era abierto a cualquier rol autenticado;
+   * un employee podía iniciar checkouts/cargos para la organización.
+   * Ahora gated a admin (super_admin/tenant_admin). Si el negocio
+   * necesita delegar pago a otro rol, esa decisión va en una feature
+   * posterior con un permission token explícito — no en authz default.
    */
   @Post('checkout')
+  @Roles('super_admin', 'tenant_admin')
   @HttpCode(HttpStatus.OK)
   async createCheckout(@Req() req: any, @Body() dto: CreateCheckoutDto) {
     const userId = req.user.userId || req.user.id;
