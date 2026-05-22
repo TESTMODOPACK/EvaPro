@@ -70,9 +70,13 @@ export class UpdateCycleDto {
   @IsOptional()
   description?: string;
 
-  @IsEnum(CycleStatus)
-  @IsOptional()
-  status?: CycleStatus;
+  // B3-03: `status` REMOVIDO del DTO. Antes PATCH /:id {status:'active'}
+  // saltaba launchCycle (snapshots/assignments/notificaciones) y
+  // PATCH {status:'closed'} saltaba closeCycle (cierre formal). El
+  // status del ciclo solo cambia vía los endpoints dedicados
+  // launchCycle / closeCycle / pauseCycle / resumeCycle / cancelCycle.
+  // Con ValidationPipe global (whitelist:true) cualquier `status` en el
+  // body se descarta silenciosamente.
 
   @IsEnum(CyclePeriod)
   @IsOptional()
