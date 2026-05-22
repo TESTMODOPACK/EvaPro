@@ -55,12 +55,25 @@ export class ObjectivesController {
   @Post()
   async create(@Request() req: any, @Body() dto: CreateObjectiveDto) {
     const role = req.user.role;
-    const tenantId = resolveOperatingTenantId(req.user, (dto as any)?.tenantId);
-    // tenant_admin and manager can assign to others via dto.userId
-    // employee always creates for themselves
+    // B3-18: dto.tenantId y dto.userId ahora SÍ llegan acá (whitelisted
+    // en CreateObjectiveDto). Para super_admin, resolveOperatingTenantId
+    // exige dto.tenantId (lanza 400 si falta) y dto.userId destino;
+    // tenant_admin/manager pueden asignar a otro vía dto.userId
+    // (manager con validación de equipo); employee siempre auto-asigna.
+    const tenantId = resolveOperatingTenantId(req.user, dto.tenantId);
     let targetUserId = req.user.userId;
-    if ((role === 'tenant_admin' || role === 'manager') && (dto as any).userId) {
-      targetUserId = (dto as any).userId;
+    if (
+      (role === 'super_admin' || role === 'tenant_admin' || role === 'manager') &&
+      dto.userId
+    ) {
+      targetUserId = dto.userId;
+    }
+    // super_admin operando cross-tenant DEBE indicar a quién asignar —
+    // sin esto el objetivo iría al super_admin (sin tenant local).
+    if (role === 'super_admin' && !dto.userId) {
+      throw new BadRequestException(
+        'super_admin debe especificar dto.userId al crear un objetivo en otro tenant.',
+      );
     }
     // P10 audit manager — si el manager asigna objetivo a otro user,
     // validar que sea direct report. Antes podía asignar a cualquier
