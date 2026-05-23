@@ -504,9 +504,25 @@ export class TalentService {
     return { deleted: true };
   }
 
-  async updateEntry(entryId: string, dto: any, discussedBy: string): Promise<CalibrationEntry> {
-    const entry = await this.entryRepo.findOne({ where: { id: entryId } });
+  async updateEntry(
+    entryId: string,
+    dto: any,
+    discussedBy: string,
+    tenantId?: string,
+  ): Promise<CalibrationEntry> {
+    // B3-36: CalibrationEntry no tiene tenant_id; el tenant autoritativo
+    // vive en la sesión padre. Sin este guard cualquier manager/admin de
+    // tenant A podía ajustar (y luego persistir vía completeSession) los
+    // scores de talento de tenant B conociendo el UUID. Mismo patrón que
+    // removeEntry. super_admin (tenantId null) → cross-tenant permitido.
+    const entry = await this.entryRepo.findOne({
+      where: { id: entryId },
+      relations: ['session'],
+    });
     if (!entry) throw new NotFoundException('Entry no encontrada');
+    if (tenantId && entry.session?.tenantId !== tenantId) {
+      throw new NotFoundException('Entry no encontrada');
+    }
 
     // B1.5: Require rationale if score change exceeds 1 point
     if (dto.adjustedScore !== undefined) {
@@ -568,18 +584,33 @@ export class TalentService {
     entry.discussedBy = discussedBy;
 
     const saved = await this.entryRepo.save(entry);
-    // Get tenantId from session for audit
-    const session = await this.sessionRepo.findOne({ where: { id: entry.sessionId }, select: ['id', 'tenantId'] });
-    this.auditService.log(session?.tenantId || null, discussedBy, 'calibration.entry_adjusted', 'calibration_entry', entry.id, {
+    // tenantId desde la sesión ya cargada (relations:['session']) — sin
+    // segunda query.
+    this.auditService.log(entry.session?.tenantId || null, discussedBy, 'calibration.entry_adjusted', 'calibration_entry', entry.id, {
       originalScore: entry.originalScore, adjustedScore: entry.adjustedScore,
       rationale: dto.rationale, discussedBy,
     }).catch(() => {});
     return saved;
   }
 
-  async approveCalibrationChange(entryId: string, approvedBy: string, approved: boolean): Promise<CalibrationEntry> {
-    const entry = await this.entryRepo.findOne({ where: { id: entryId } });
+  async approveCalibrationChange(
+    entryId: string,
+    approvedBy: string,
+    approved: boolean,
+    tenantId?: string,
+  ): Promise<CalibrationEntry> {
+    // B3-37: tenant guard vía sesión padre (mismo patrón que removeEntry).
+    // Sin esto un tenant_admin de A podía aprobar/rechazar un ajuste de
+    // calibración de B, confirmando una manipulación cross-tenant que
+    // luego se persiste en sus talent_assessments.
+    const entry = await this.entryRepo.findOne({
+      where: { id: entryId },
+      relations: ['session'],
+    });
     if (!entry) throw new NotFoundException('Entry no encontrada');
+    if (tenantId && entry.session?.tenantId !== tenantId) {
+      throw new NotFoundException('Entry no encontrada');
+    }
     if (entry.approvalStatus !== 'pending_approval') {
       throw new BadRequestException('Esta entrada no requiere aprobación o ya fue procesada');
     }
@@ -678,8 +709,13 @@ export class TalentService {
 
   // ─── P2-#20: Distribution Analysis ──────────────────────────────────────
 
-  async getDistributionAnalysis(sessionId: string) {
-    const session = await this.sessionRepo.findOne({ where: { id: sessionId } });
+  async getDistributionAnalysis(sessionId: string, tenantId?: string) {
+    // B3-38: filtrar la sesión por tenant (mismo patrón que
+    // completeSession/getSessionDetail). Sin esto cualquier manager/admin
+    // leía la distribución de scores de otra organización por UUID.
+    const whereClause: any = { id: sessionId };
+    if (tenantId) whereClause.tenantId = tenantId;
+    const session = await this.sessionRepo.findOne({ where: whereClause });
     if (!session) throw new NotFoundException('Sesión no encontrada');
 
     const entries = await this.entryRepo.find({
@@ -746,9 +782,14 @@ export class TalentService {
 
   // ─── P2-#23: Calibration PDF ────────────────────────────────────────────
 
-  async generateCalibrationPdf(sessionId: string): Promise<Buffer> {
+  async generateCalibrationPdf(sessionId: string, tenantId?: string): Promise<Buffer> {
+    // B3-38: el acta PDF incluye PII + scores originales/ajustados +
+    // justificaciones + participantes. Sin filtro de tenant cualquier
+    // admin podía descargar el acta de calibración de OTRA organización.
+    const whereClause: any = { id: sessionId };
+    if (tenantId) whereClause.tenantId = tenantId;
     const session = await this.sessionRepo.findOne({
-      where: { id: sessionId },
+      where: whereClause,
       relations: ['moderator', 'cycle'],
     });
     if (!session) throw new NotFoundException('Sesión no encontrada');

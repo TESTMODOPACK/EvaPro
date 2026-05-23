@@ -30,8 +30,14 @@ export interface ReportFilters {
 /**
  * Privacy threshold: reports with fewer than this many people
  * will not return individual-level data to prevent identification.
+ *
+ * B5-01: estaba en 1 → los gates `scores.length < 1` / `deptUserCount
+ * < 1` nunca se activaban y bell-curve/heatmap exponían el puntaje
+ * individual de departamentos de 1 persona. 5 es el mínimo estándar de
+ * HR analytics / privacidad agregada (consistente con el default de
+ * k-anonymity de surveys, getKAnonymityThreshold).
  */
-const PRIVACY_MIN_PEOPLE = 1;
+const PRIVACY_MIN_PEOPLE = 5;
 
 @Injectable()
 export class ReportsService {
@@ -1046,14 +1052,22 @@ export class ReportsService {
       .getRawMany();
 
     // Team benchmarks (by manager)
-    const teamBenchmarks = await this.responseRepo
+    // B5-02: scoreDistribution y departmentComparison ya filtran por
+    // managerId; teamBenchmarks NO lo hacía → un manager exportaba el
+    // ranking de TODOS los equipos del tenant. Restringir a su propio
+    // equipo cuando hay managerId (admin sin managerId ve todos).
+    const teamBenchmarksQb = this.responseRepo
       .createQueryBuilder('r')
       .innerJoin('r.assignment', 'a', 'a.tenant_id = r.tenant_id')
       .innerJoin(User, 'u', 'u.id = a.evaluatee_id AND u.tenant_id = a.tenant_id')
       .innerJoin(User, 'm', 'm.id = u.manager_id AND m.tenant_id = u.tenant_id')
       .where('a.cycleId = :cycleId', { cycleId })
       .andWhere('r.tenantId = :tenantId', { tenantId })
-      .andWhere('r.overall_score IS NOT NULL')
+      .andWhere('r.overall_score IS NOT NULL');
+    if (managerId) {
+      teamBenchmarksQb.andWhere('m.id = :managerId', { managerId });
+    }
+    const teamBenchmarks = await teamBenchmarksQb
       .select('m.id', 'managerId')
       .addSelect("m.first_name || ' ' || m.last_name", 'managerName')
       .addSelect('m.department', 'department')

@@ -1940,31 +1940,13 @@ describe('ObjectivesService — Tarea 6 (OVERDUE state)', () => {
       expect(saved.status).toBe(ObjectiveStatus.ACTIVE);
     });
 
-    it('should NOT transition when status is being explicitly set in the same update', async () => {
-      const overdueObj = makeObj({
-        status: ObjectiveStatus.OVERDUE,
-        progress: 60,
-      });
-      const qb = objRepo.createQueryBuilder();
-      qb.getOne.mockResolvedValueOnce(overdueObj);
-      objRepo.save.mockImplementation((entity: any) => Promise.resolve(entity));
-
-      const future = new Date();
-      future.setDate(future.getDate() + 30);
-      const futureStr = future.toISOString().slice(0, 10);
-
-      // Admin explicitly sets a different status — should win over auto-transition
-      await service.update(TID, OID, {
-        targetDate: futureStr,
-        status: ObjectiveStatus.ABANDONED,
-      });
-
-      const saved = objRepo.save.mock.calls[0][0];
-      // dto.status was applied BEFORE the targetDate logic, but the
-      // targetDate handler only auto-transitions if obj.status is still
-      // OVERDUE — admin set ABANDONED so transition should NOT fire.
-      expect(saved.status).toBe(ObjectiveStatus.ABANDONED);
-    });
+    // B3-17 (Grupo 2 Fase D.2): este test encodaba el bug — el admin
+    // podía setear `status` vía PATCH /:id saltando el workflow de
+    // cancel/complete/abandon. Removido `status` del UpdateObjectiveDto
+    // y del service.update; cambios de estado terminal van por endpoints
+    // dedicados (cancelObjective, completeObjective, etc.) que validan
+    // transiciones. El auto-transition OVERDUE→ACTIVE al extender
+    // targetDate sigue cubierto por el test anterior.
 
     it('should NOT touch ACTIVE objectives when targetDate is extended', async () => {
       const activeObj = makeObj({

@@ -6,6 +6,7 @@ import archiver from 'archiver';
 import { v2 as cloudinary } from 'cloudinary';
 import { User } from '../users/entities/user.entity';
 import { Tenant } from '../tenants/entities/tenant.entity';
+import { sanitizeUser } from '../../common/utils/sanitize-user';
 
 /**
  * Maximum uncompressed payload size per export. Prevents OOM on a tenant
@@ -67,8 +68,8 @@ export class GdprExportBuilder {
     const files = new Map<string, string>();
     let truncated = false;
 
-    // profile.json — strip secrets & credentials
-    const safeProfile = this.stripUserSecrets(user);
+    // profile.json — strip secrets & credentials (fuente única: B1-10)
+    const safeProfile = sanitizeUser(user);
     files.set('profile.json', JSON.stringify(safeProfile, null, 2));
 
     // Per-domain JSONs. Each uses raw SQL so we don't have to inject 20
@@ -283,26 +284,38 @@ export class GdprExportBuilder {
   // ─── Cloudinary upload ───────────────────────────────────────────────────
 
   /**
-   * Uploads the ZIP buffer to Cloudinary and returns the secure URL. Raises
-   * a descriptive Error if Cloudinary is not configured so the caller can
-   * mark the GdprRequest as 'failed' with a readable message.
+   * Sube el ZIP a Cloudinary como recurso `authenticated` (NO público) y
+   * devuelve una URL FIRMADA con expiración server-side alineada a
+   * `expiresAt`. B1-27: antes se subía como `upload` (público permanente)
+   * y se devolvía `secure_url`, accesible para siempre por cualquiera que
+   * obtuviera el link aunque la DB lo "expirara". Ahora: (1) el asset no
+   * es accesible sin firma; (2) la URL firmada deja de funcionar pasado
+   * `expiresAt` aunque se filtre. Lanza Error legible si Cloudinary no
+   * está configurado para que el caller marque la request como 'failed'.
    */
-  async uploadZip(buffer: Buffer, scope: 'user' | 'tenant', ownerId: string): Promise<{ url: string; publicId: string }> {
+  async uploadZip(
+    buffer: Buffer,
+    scope: 'user' | 'tenant',
+    ownerId: string,
+    expiresAt: Date,
+  ): Promise<{ url: string; publicId: string }> {
     if (!process.env.CLOUDINARY_CLOUD_NAME) {
       throw new Error('Cloudinary no está configurado. Agrega CLOUDINARY_CLOUD_NAME/API_KEY/API_SECRET.');
     }
     // Folder segregates GDPR exports from other uploads so a periodic cleanup
     // (future) can target them without touching user CVs etc.
     const folder = `evapro/gdpr-exports/${scope}`;
-    // Random UUID in public_id prevents anyone from guessing URLs belonging
-    // to another user. We still track expiry in the DB as the authoritative
-    // lifetime signal.
+    // UUID en el public_id como defensa adicional, pero la protección real
+    // ahora es type:'authenticated' + URL firmada con expiración.
     const publicId = `${ownerId}_${randomUUID()}`;
+    const expiresAtEpoch = Math.floor(expiresAt.getTime() / 1000);
     return new Promise((resolve, reject) => {
       const stream = cloudinary.uploader.upload_stream(
         {
           folder,
           resource_type: 'raw', // ZIP is not an image/video
+          type: 'authenticated', // NO público: requiere URL firmada
+          format: 'zip',
           public_id: publicId,
           use_filename: false,
           unique_filename: false,
@@ -311,7 +324,24 @@ export class GdprExportBuilder {
         (err, result) => {
           if (err) return reject(new Error(`Cloudinary upload failed: ${err.message}`));
           if (!result) return reject(new Error('Cloudinary returned empty result'));
-          resolve({ url: result.secure_url, publicId: result.public_id });
+          try {
+            const signedUrl = cloudinary.utils.private_download_url(
+              result.public_id,
+              result.format || 'zip',
+              {
+                resource_type: 'raw',
+                type: 'authenticated',
+                expires_at: expiresAtEpoch,
+              },
+            );
+            resolve({ url: signedUrl, publicId: result.public_id });
+          } catch (signErr) {
+            reject(
+              new Error(
+                `Cloudinary signed URL generation failed: ${(signErr as Error).message}`,
+              ),
+            );
+          }
         },
       );
       stream.end(buffer);
@@ -319,22 +349,6 @@ export class GdprExportBuilder {
   }
 
   // ─── Helpers ─────────────────────────────────────────────────────────────
-
-  private stripUserSecrets(user: User): Partial<User> {
-    // The rest.* is fine to emit; we only drop things that should NEVER leave
-    // the database as plain text.
-    const {
-      passwordHash,
-      twoFactorSecret,
-      resetCode,
-      resetCodeExpires,
-      signatureOtp,
-      signatureOtpExpires,
-      tokenVersion,
-      ...rest
-    } = user as any;
-    return rest;
-  }
 
   private buildReadme(
     scope: 'user' | 'tenant',

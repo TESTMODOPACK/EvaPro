@@ -658,23 +658,24 @@ export class ObjectivesService {
     if (dto.title !== undefined) obj.title = dto.title;
     if (dto.description !== undefined) obj.description = dto.description;
     if (dto.type !== undefined) obj.type = dto.type;
-    if (dto.status !== undefined) obj.status = dto.status;
+    // B3-17: dto.status NO se aplica acá — los cambios de estado pasan
+    // por submitForApproval/approve/complete/cancel/carryOver (cada uno
+    // valida la transición). Defensa en profundidad: aunque el DTO ya
+    // removió el campo, dejamos esto explícito para impedir reintroducción.
     if (dto.targetDate !== undefined) {
       const newTargetDate = new Date(dto.targetDate);
       // T6.3 — Audit P1: si el objetivo está OVERDUE y se extiende la fecha
       // a hoy o futuro, vuelve a ACTIVE automáticamente. La validación
       // validateTargetDate (B7.1) ya garantiza que dto.targetDate no es
       // pasada, así que cualquier valor llegado aquí es ≥ hoy.
-      // Si dto.status también se setea explícitamente arriba, ese gana
-      // (admin override). El check `obj.status === OVERDUE` aplica al
-      // estado tras el assign de dto.status, así que solo dispara cuando
-      // el caller no forzó otro status.
       obj.targetDate = newTargetDate;
       if (obj.status === ObjectiveStatus.OVERDUE) {
         obj.status = ObjectiveStatus.ACTIVE;
       }
     }
-    if (dto.progress !== undefined) obj.progress = dto.progress;
+    // B3-17: dto.progress NO se aplica acá — el avance va por
+    // addProgressUpdate (POST /:id/progress), que valida KR/OKR/SMART,
+    // exige nota para admin override y dispara gamificación.
     if (dto.weight !== undefined) obj.weight = dto.weight;
     // T2.3 incidental fix: cycleId estaba en el DTO y se validaba, pero nunca
     // se aplicaba al obj — los cambios de ciclo no persistían. Se aplica
@@ -981,6 +982,11 @@ export class ObjectivesService {
       cancelSource?: boolean;
       sourceCancelReason?: string;
     },
+    // B3-15: rol del caller. Si es 'manager', cada item se valida contra
+    // su scope (solo objetivos propios o de reportes directos), igual que
+    // bulkApprove. Opcional para no romper callers internos/tests que no
+    // lo pasan (esos casos no aplican scope de manager).
+    callerRole?: string,
   ): Promise<{
     created: Array<{ sourceId: string; newId: string }>;
     cancelled: string[];
@@ -1012,6 +1018,19 @@ export class ObjectivesService {
         if (!source) {
           failed.push({ id: sourceId, reason: 'Objetivo no encontrado' });
           continue;
+        }
+
+        // B3-15: scope per-item para manager (mismo patrón que bulkApprove).
+        // Sin esto un manager podía llevar/cancelar objetivos de cualquier
+        // colaborador del tenant (cancelSource=true es estado terminal).
+        if (callerRole === 'manager' && source.userId !== actorUserId) {
+          await assertManagerCanAccessUser(
+            this.userRepo,
+            actorUserId,
+            callerRole,
+            source.userId,
+            source.tenantId,
+          );
         }
 
         if (

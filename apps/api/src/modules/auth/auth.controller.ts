@@ -238,6 +238,16 @@ export class AuthController {
       loginDto.tenantId,
     );
 
+    // B1-02: email ambiguo entre tenants sin selector → pedir organización.
+    // No es fallo de credenciales: no se registra intento fallido.
+    if (user && (user as any).requiresTenantSelection) {
+      return {
+        requiresTenantSelection: true,
+        message:
+          'Indica tu organización para continuar (este correo está asociado a más de una empresa).',
+      };
+    }
+
     if (!user) {
       // Record failed attempt + audit log
       recordFailedAttempt(clientIp, loginDto.email);
@@ -318,6 +328,7 @@ export class AuthController {
     const result = await this.authService.refreshToken(
       req.user.userId,
       req.user.tenantId,
+      req.user.tv,
     );
     // F3 — actualizar cookie httpOnly con el nuevo access token (el cron de
     // refresh del frontend ahora dispara cookie new + body new; cuando Fase

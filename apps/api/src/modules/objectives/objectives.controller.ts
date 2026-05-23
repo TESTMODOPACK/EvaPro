@@ -55,12 +55,25 @@ export class ObjectivesController {
   @Post()
   async create(@Request() req: any, @Body() dto: CreateObjectiveDto) {
     const role = req.user.role;
-    const tenantId = resolveOperatingTenantId(req.user, (dto as any)?.tenantId);
-    // tenant_admin and manager can assign to others via dto.userId
-    // employee always creates for themselves
+    // B3-18: dto.tenantId y dto.userId ahora SÍ llegan acá (whitelisted
+    // en CreateObjectiveDto). Para super_admin, resolveOperatingTenantId
+    // exige dto.tenantId (lanza 400 si falta) y dto.userId destino;
+    // tenant_admin/manager pueden asignar a otro vía dto.userId
+    // (manager con validación de equipo); employee siempre auto-asigna.
+    const tenantId = resolveOperatingTenantId(req.user, dto.tenantId);
     let targetUserId = req.user.userId;
-    if ((role === 'tenant_admin' || role === 'manager') && (dto as any).userId) {
-      targetUserId = (dto as any).userId;
+    if (
+      (role === 'super_admin' || role === 'tenant_admin' || role === 'manager') &&
+      dto.userId
+    ) {
+      targetUserId = dto.userId;
+    }
+    // super_admin operando cross-tenant DEBE indicar a quién asignar —
+    // sin esto el objetivo iría al super_admin (sin tenant local).
+    if (role === 'super_admin' && !dto.userId) {
+      throw new BadRequestException(
+        'super_admin debe especificar dto.userId al crear un objetivo en otro tenant.',
+      );
     }
     // P10 audit manager — si el manager asigna objetivo a otro user,
     // validar que sea direct report. Antes podía asignar a cualquier
@@ -211,12 +224,34 @@ export class ObjectivesController {
     );
   }
 
+  /**
+   * B3-14: guard de acceso para endpoints `/objectives/:id*`. Sin esto
+   * cualquier usuario del tenant podía leer/escribir el objetivo (y sus
+   * comentarios/KR/historial) de cualquier colega iterando UUIDs.
+   * assertManagerCanAccessUser ya cubre todos los roles: admin→ok,
+   * self→ok, manager→solo su equipo, employee/external→solo self.
+   * Devuelve el objetivo cargado para reutilizarlo sin doble query.
+   */
+  private async loadObjectiveWithAccess(req: any, id: string) {
+    const tenantId =
+      req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    const objective = await this.objectivesService.findById(tenantId, id);
+    await assertManagerCanAccessUser(
+      this.userRepo,
+      req.user.userId,
+      req.user.role,
+      objective.userId,
+      objective.tenantId,
+    );
+    return objective;
+  }
+
   @Get(':id')
-  findOne(
+  async findOne(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
   ) {
-    return this.objectivesService.findById(req.user.tenantId, id);
+    return this.loadObjectiveWithAccess(req, id);
   }
 
   @Patch(':id')
@@ -323,6 +358,7 @@ export class ObjectivesController {
         cancelSource: dto.cancelSource,
         sourceCancelReason: dto.sourceCancelReason,
       },
+      req.user.role,
     );
   }
 
@@ -452,6 +488,16 @@ export class ObjectivesController {
     if (role === 'tenant_admin' || role === 'manager' || role === 'super_admin') {
       const objective = await this.objectivesService.findById(tenantId, id);
       if (objective.userId !== userId) {
+        // B3-16: para `manager` validar que el owner sea su reporte
+        // directo. Antes cualquier manager podía registrar avances en
+        // objetivos de cualquier colaborador del tenant (solo se exigía
+        // una nota), manipulando KPIs ajenos. Admins (super_admin/
+        // tenant_admin) pasan sin restricción.
+        if (role === 'manager') {
+          await assertManagerCanAccessUser(
+            this.userRepo, userId, role, objective.userId, tenantId,
+          );
+        }
         if (!dto.notes || dto.notes.trim() === '') {
           throw new BadRequestException('Debes indicar el motivo al actualizar el progreso de otro colaborador');
         }
@@ -477,29 +523,32 @@ export class ObjectivesController {
    * (la columna rejection_reason solo guarda el último).
    */
   @Get(':id/rejection-history')
-  getRejectionHistory(
+  async getRejectionHistory(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
   ) {
+    await this.loadObjectiveWithAccess(req, id);
     return this.objectivesService.listRejectionHistory(req.user.tenantId, id);
   }
 
   // ─── Comments ────────────────────────────────────────────────────────────
 
   @Get(':id/comments')
-  listComments(
+  async listComments(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
   ) {
+    await this.loadObjectiveWithAccess(req, id);
     return this.objectivesService.listComments(req.user.tenantId, id);
   }
 
   @Post(':id/comments')
-  createComment(
+  async createComment(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
     @Body() data: { content: string; type?: string; attachmentUrl?: string; attachmentName?: string },
   ) {
+    await this.loadObjectiveWithAccess(req, id);
     return this.objectivesService.createComment(
       req.user.tenantId, id, req.user.userId, data,
     );
@@ -520,19 +569,21 @@ export class ObjectivesController {
   // ─── Key Results (B2.10) ──────────────────────────────────────────────
 
   @Get(':id/key-results')
-  listKeyResults(
+  async listKeyResults(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
   ) {
+    await this.loadObjectiveWithAccess(req, id);
     return this.objectivesService.listKeyResults(req.user.tenantId, id);
   }
 
   @Post(':id/key-results')
-  createKeyResult(
+  async createKeyResult(
     @Param('id', ParseUUIDPipe) id: string,
     @Request() req: any,
     @Body() data: { description: string; unit?: string; baseValue?: number; targetValue?: number },
   ) {
+    await this.loadObjectiveWithAccess(req, id);
     return this.objectivesService.createKeyResult(req.user.tenantId, id, data);
   }
 

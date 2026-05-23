@@ -18,6 +18,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { NotificationsService } from './notifications.service';
 import { EmailService } from './email.service';
+import { UpdatePreferencesDto } from './dto/update-preferences.dto';
 
 @Controller('notifications')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
@@ -64,7 +65,12 @@ export class NotificationsController {
 
   /** Update user notification preferences */
   @Patch('preferences')
-  updatePreferences(@Request() req: any, @Body() body: Record<string, boolean>) {
+  updatePreferences(@Request() req: any, @Body() body: UpdatePreferencesDto) {
+    // B2-05: DTO con whitelist explícita (8 categorías) + ValidationPipe
+    // global con whitelist:true descarta claves desconocidas. Antes
+    // entraba un Record<string,boolean> crudo y se hacía spread en
+    // user.notification_preferences (JSONB) → inyección de claves
+    // arbitrarias (p.ej. anular avisos internos de expiración).
     return this.notificationsService.updatePreferences(req.user.tenantId, req.user.userId, body);
   }
 

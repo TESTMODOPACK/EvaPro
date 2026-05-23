@@ -240,8 +240,16 @@ export default function ResponderEvaluacionPage() {
 
   useEffect(() => {
     if (detail?.response && !initialized) {
-      const existing = typeof detail.response === 'object' ? detail.response : {};
-      setAnswers(existing);
+      // B7b-01: el borrador vive en response.answers, NO en response.
+      // Antes setAnswers(response) copiaba TODO el objeto (assignmentId,
+      // overallScore, submittedAt, …) como si fueran respuestas → al
+      // reabrir la evaluación el form aparecía pre-llenado con basura
+      // y las respuestas reales se perdían. Tomar .answers ?? {}.
+      const restored =
+        detail.response && typeof detail.response === 'object' && detail.response.answers
+          ? detail.response.answers
+          : {};
+      setAnswers(restored);
       setInitialized(true);
     } else if (detail && !initialized) {
       setInitialized(true);

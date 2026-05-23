@@ -129,7 +129,12 @@ describe('TenantContextInterceptor', () => {
       );
     });
 
-    it('Caso 4: tenantId malformed (no UUID) → fail-safe a string vacio', async () => {
+    // B4-32: un usuario AUTENTICADO no-super_admin con tenantId
+    // inválido debe fallar CERRADO (nil UUID que no matchea ninguna
+    // fila), NO con '' (que la RLS policy trata como bypass).
+    const NIL_UUID = '00000000-0000-0000-0000-000000000000';
+
+    it('Caso 4: tenantId malformed (no UUID) → fail-CLOSED (nil UUID)', async () => {
       const ctx = ctxWithRequest({
         user: { role: 'tenant_admin', tenantId: 'not-a-uuid' },
       });
@@ -139,11 +144,11 @@ describe('TenantContextInterceptor', () => {
 
       expect(mockDataSource.query).toHaveBeenCalledWith(
         `SELECT set_config('app.current_tenant_id', $1, true)`,
-        [''],
+        [NIL_UUID],
       );
     });
 
-    it('Caso 4b: SQL injection attempt en tenantId → fail-safe', async () => {
+    it('Caso 4b: SQL injection attempt en tenantId → fail-CLOSED (nil UUID)', async () => {
       const ctx = ctxWithRequest({
         user: {
           role: 'tenant_admin',
@@ -158,7 +163,21 @@ describe('TenantContextInterceptor', () => {
         ([sql]) => sql.includes("'app.current_tenant_id', $1"),
       );
       expect(setQueries).toHaveLength(1);
-      expect(setQueries[0][1]).toEqual(['']);
+      expect(setQueries[0][1]).toEqual([NIL_UUID]);
+    });
+
+    it('Caso 4c: super_admin sin tenantId → SIGUE siendo bypass (no fail-closed)', async () => {
+      const ctx = ctxWithRequest({
+        user: { role: 'super_admin', userId: 'sa-1' },
+      });
+
+      const obs$ = interceptor.intercept(ctx, mockNext as unknown as CallHandler);
+      await drainObservable(obs$);
+
+      expect(mockDataSource.query).toHaveBeenCalledWith(
+        `SELECT set_config('app.current_tenant_id', $1, true)`,
+        [''],
+      );
     });
   });
 

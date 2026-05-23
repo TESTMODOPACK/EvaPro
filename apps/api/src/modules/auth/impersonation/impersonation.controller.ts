@@ -93,21 +93,12 @@ export class ImpersonationController {
     if (!req.user?.impersonatedBy) {
       throw new ForbiddenException('No estás en una sesión de impersonación.');
     }
-    // `iat` in the JWT payload is the start time in seconds; we expose it
-    // to the service for duration calculation. `req.user` only has our
-    // subset, so read from the raw token via req.headers if needed.
-    const authHeader: string = req.headers?.authorization || '';
-    let startedAtMs: number | undefined;
-    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
-    try {
-      const [, body] = token.split('.');
-      if (body) {
-        const parsed = JSON.parse(Buffer.from(body, 'base64').toString('utf8'));
-        if (typeof parsed.iat === 'number') startedAtMs = parsed.iat * 1000;
-      }
-    } catch {
-      // Don't fail the end call because we can't decode — just skip timing.
-    }
+    // `iat` (segundos epoch) lo expone jwt.strategy en req.user. B1-01:
+    // antes se leía del header Authorization, que es '' en modo cookie
+    // httpOnly → la duración quedaba sin registrar y el email de
+    // transparencia al usuario impersonado nunca se enviaba.
+    const startedAtMs =
+      typeof req.user?.iat === 'number' ? req.user.iat * 1000 : undefined;
     const result = await this.svc.end(
       req.user.impersonatedBy,
       req.user.userId,

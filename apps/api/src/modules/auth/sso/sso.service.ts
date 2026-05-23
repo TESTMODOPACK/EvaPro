@@ -177,7 +177,12 @@ export class SsoService {
       .createQueryBuilder('o')
       .innerJoin(Tenant, 't', 't.id = o.tenantId')
       .where('o.enabled = true')
-      .andWhere(`(o.allowedEmailDomains @> :domainArr OR o.allowedEmailDomains = '[]'::jsonb)`, {
+      // B1-04: antes `OR allowedEmailDomains = '[]'::jsonb` actuaba como
+      // wildcard — un único tenant con SSO habilitado y allowedEmailDomains
+      // vacío matcheaba CUALQUIER dominio de email del mundo, filtrando su
+      // loginUrl+tenantId a usuarios externos. Eliminado: solo match
+      // explícito de dominio (o tenantSlug abajo).
+      .andWhere(`o.allowedEmailDomains @> :domainArr`, {
         domainArr: JSON.stringify([domain]),
       })
       .andWhere('t.isActive = true')

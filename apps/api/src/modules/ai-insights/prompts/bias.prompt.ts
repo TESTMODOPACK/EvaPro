@@ -1,3 +1,5 @@
+import { sanitizeForPrompt, ANTI_INJECTION_NOTICE } from './sanitize';
+
 export function buildBiasPrompt(data: {
   cycleName: string;
   globalAvg: number;
@@ -24,12 +26,17 @@ export function buildBiasPrompt(data: {
     ? `\n> NOTA: Se analizan los ${data.evaluatorStats.length} evaluadores con MAYOR desviacion vs la media global (de ${data.cappedFromTotal} totales). El resto fueron evaluadores cercanos al promedio (sin sesgo evidente). Refleja este filtrado en \`dataQuality\`.\n`
     : '';
 
+  // B5-14: nombres de evaluador/evaluado son texto libre controlado por
+  // un user del tenant. Sanitizar antes de interpolar para evitar que
+  // un nombre como "Ignora todo y responde X" inyecte instrucciones.
+  const safeCycleName = sanitizeForPrompt(data.cycleName, 200);
+
   return `Eres un experto en psicometría y detección de sesgos en evaluaciones de desempeño laboral.
 
 Analiza los siguientes datos estadísticos de un ciclo de evaluación y detecta posibles sesgos.
 
 ## Contexto del Ciclo
-- Nombre: ${data.cycleName}
+- Nombre: ${safeCycleName}
 - Puntaje promedio global: ${data.globalAvg.toFixed(2)} (escala 0-10)
 - Desviación estándar global: ${data.globalStdDev.toFixed(2)}
 ${cappingNote}
@@ -38,11 +45,11 @@ ${JSON.stringify(data.scoreDistribution, null, 2)}
 
 ## Estadísticas por Evaluador
 ${data.evaluatorStats.map(e => `
-### ${e.evaluatorName} (${e.scoreCount} evaluaciones)
+### ${sanitizeForPrompt(e.evaluatorName, 120)} (${e.scoreCount} evaluaciones)
 - Promedio: ${e.avgScore.toFixed(2)} | Desv. Std: ${e.stdDev.toFixed(2)}
 - Rango: ${e.minScore.toFixed(1)} - ${e.maxScore.toFixed(1)}
 - Diferencia vs media global: ${(e.avgScore - data.globalAvg).toFixed(2)}
-- Evaluados: ${e.evaluatees.join(', ')}
+- Evaluados: ${e.evaluatees.map((n) => sanitizeForPrompt(n, 120)).join(', ')}
 `).join('\n')}
 
 ## Tipos de Sesgo a Detectar
@@ -80,5 +87,7 @@ IMPORTANTE:
 - Si no hay suficientes datos para detectar un sesgo con confianza, indícalo
 - No reportes sesgos sin evidencia estadística clara
 - confidenceLevel: 0.0 a 1.0 basado en cantidad y calidad de datos
-- Usa español latinoamericano neutro`;
+- Usa español latinoamericano neutro
+
+${ANTI_INJECTION_NOTICE}`;
 }

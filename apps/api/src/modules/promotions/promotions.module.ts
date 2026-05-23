@@ -23,6 +23,9 @@ import { PromotionWorkflowService } from './services/promotion-workflow.service'
 import { PromotionsController } from './promotions.controller';
 
 import { AuditModule } from '../audit/audit.module';
+// Fase A (B4-30): FeatureGuard inyecta SubscriptionsService; sin este
+// import Nest no resuelve el guard y la app no levanta.
+import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 
 @Module({
   imports: [
@@ -34,6 +37,7 @@ import { AuditModule } from '../audit/audit.module';
       CalibrationEntry, DevelopmentPlan, DevelopmentAction, Recognition, MoodCheckin,
     ]),
     AuditModule,
+    SubscriptionsModule,
   ],
   controllers: [PromotionsController],
   providers: [

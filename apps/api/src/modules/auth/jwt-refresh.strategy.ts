@@ -36,6 +36,13 @@ export class JwtRefreshStrategy extends PassportStrategy(Strategy, 'jwt-refresh'
       email: payload.email,
       tenantId: payload.tenantId || null,
       role: payload.role,
+      // B1-03: forward `tv` para que refreshToken pueda compararlo con
+      // user.tokenVersion. Sin esto, un JWT cuyo tv fue bumpeado por
+      // desvinculación/reset/logout-remoto seguía siendo refrescable
+      // durante los 15 min del grace period — anulaba parcialmente el
+      // mecanismo de invalidación. La validación final (rechazo) vive
+      // en auth.service.refreshToken porque es donde se consulta DB.
+      tv: (payload as any).tv,
     };
   }
 }

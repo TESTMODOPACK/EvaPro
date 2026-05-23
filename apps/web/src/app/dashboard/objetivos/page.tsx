@@ -1043,7 +1043,7 @@ function ObjetivosPageContent() {
     setExporting(format);
     try {
       const res = await fetch(`${BASE_URL}/objectives/export?format=${format}&view=${view}`, {
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include',
       });
       if (!res.ok) throw new Error('Error al exportar');
       const blob = await res.blob();

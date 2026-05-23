@@ -19,10 +19,20 @@ import { SurveysService } from './surveys.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { FeatureGuard } from '../../common/guards/feature.guard';
+import { Feature } from '../../common/decorators/feature.decorator';
+import { PlanFeature } from '../../common/constants/plan-features';
 import { resolveOperatingTenantId } from '../../common/utils/tenant-scope';
 
+// B4-17: el controller NO tenía FeatureGuard — un tenant cuyo plan no
+// incluye ENGAGEMENT_SURVEYS (o que hizo downgrade) seguía operando
+// respuestas, resultados, eNPS y exports. checkFeature solo se invocaba
+// en create()/generateAiAnalysis. Gate a nivel clase (los planes con
+// AI_INSIGHTS siempre incluyen ENGAGEMENT_SURVEYS, así que el chequeo
+// extra de AI en el service sigue siendo coherente).
 @Controller('surveys')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, FeatureGuard)
+@Feature(PlanFeature.ENGAGEMENT_SURVEYS)
 export class SurveysController {
   constructor(private readonly surveysService: SurveysService) {}
 

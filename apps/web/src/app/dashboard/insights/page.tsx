@@ -55,7 +55,7 @@ function SummarySection({ cycleId, userId, aiBlocked }: { cycleId: string; userI
     if (!token) return;
     try {
       const url = api.ai.exportSummaryPdf(token, cycleId, userId);
-      const res = await fetch(url as unknown as string, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch(url as unknown as string, { credentials: 'include' });
       if (!res.ok) throw new Error('Error');
       const blob = await res.blob();
       const a = document.createElement('a');

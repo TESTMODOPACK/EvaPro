@@ -49,6 +49,7 @@ describe('PaymentsService — applyWebhookEvent (Fase 0 / Tarea 0.4)', () => {
       update: jest.fn().mockReturnThis(),
       set: jest.fn().mockReturnThis(),
       where: jest.fn().mockReturnThis(),
+      setParameter: jest.fn().mockReturnThis(),
       execute: jest.fn().mockResolvedValue({ affected: 1 }),
     };
     sessionRepo.createQueryBuilder = jest.fn().mockReturnValue(updateQb);
@@ -230,6 +231,7 @@ describe('PaymentsService — applyWebhookEvent (Fase 0 / Tarea 0.4)', () => {
         update: jest.fn().mockReturnThis(),
         set: jest.fn().mockReturnThis(),
         where: jest.fn().mockReturnThis(),
+        setParameter: jest.fn().mockReturnThis(),
         execute: jest.fn().mockResolvedValue({ affected: 0 }),
       };
       sessionRepo.createQueryBuilder = jest.fn().mockReturnValue(updateQb);
@@ -304,6 +306,7 @@ describe('PaymentsService — applyWebhookEvent (Fase 0 / Tarea 0.4)', () => {
         update: jest.fn().mockReturnThis(),
         set: jest.fn().mockReturnThis(),
         where: jest.fn().mockReturnThis(),
+        setParameter: jest.fn().mockReturnThis(),
         execute: jest.fn().mockResolvedValue({ affected: 0 }),
       };
       sessionRepo.createQueryBuilder = jest.fn().mockReturnValue(updateQb);
@@ -520,6 +523,7 @@ describe('PaymentsService — applyWebhookEvent (Fase 0 / Tarea 0.4)', () => {
         update: jest.fn().mockReturnThis(),
         set: jest.fn().mockReturnThis(),
         where: jest.fn().mockReturnThis(),
+        setParameter: jest.fn().mockReturnThis(),
         execute: jest.fn().mockImplementation(() => {
           if (firstWinner) {
             firstWinner = false;
@@ -548,6 +552,15 @@ describe('PaymentsService — applyWebhookEvent (Fase 0 / Tarea 0.4)', () => {
       // 49 noop por concurrencia.
       const noopReasons = results.filter((r) => r.reason?.includes('already processed manually'));
       expect(noopReasons.length).toBe(49);
+
+      // B6-01: el patch jsonb va como parámetro bindeado, NO interpolado.
+      const setArg = updateQb.set.mock.calls[0][0];
+      expect(typeof setArg.metadata).toBe('function');
+      expect(setArg.metadata()).toBe('metadata || :patch::jsonb');
+      expect(updateQb.setParameter).toHaveBeenCalledWith(
+        'patch',
+        expect.stringContaining('refundedAt'),
+      );
     });
 
     it('webhook concurrente con success: 100 calls -> markAsPaid una sola vez', async () => {
@@ -557,6 +570,7 @@ describe('PaymentsService — applyWebhookEvent (Fase 0 / Tarea 0.4)', () => {
         update: jest.fn().mockReturnThis(),
         set: jest.fn().mockReturnThis(),
         where: jest.fn().mockReturnThis(),
+        setParameter: jest.fn().mockReturnThis(),
         execute: jest.fn().mockImplementation(() => {
           if (firstWinner) {
             firstWinner = false;

@@ -16,6 +16,9 @@ import { Repository } from 'typeorm';
 
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { FeatureGuard } from '../../common/guards/feature.guard';
+import { Feature } from '../../common/decorators/feature.decorator';
+import { PlanFeature } from '../../common/constants/plan-features';
 import { getClientIp } from '../../common/utils/get-client-ip';
 import { User } from '../users/entities/user.entity';
 
@@ -25,8 +28,15 @@ import { PromotionScoringEngineService } from './services/promotion-scoring-engi
 import { PromotionBiasAnalyzerService } from './services/promotion-bias-analyzer.service';
 import { PromotionWorkflowService } from './services/promotion-workflow.service';
 
+// B4-30: el módulo de promociones (datos sensibles: readiness, scores,
+// mood, evaluaciones) no estaba gateado por plan. No existe un
+// PlanFeature dedicado a promociones; se gatea con NINE_BOX — la suite
+// de talento Pro+ a la que pertenece (consume talent_assessments +
+// evaluaciones). Un PlanFeature.PROMOTIONS dedicado queda como follow-up
+// de producto/billing (requiere tocar PLAN_FEATURES + seed de planes).
 @Controller('promotions')
-@UseGuards(AuthGuard('jwt'), RolesGuard)
+@UseGuards(AuthGuard('jwt'), RolesGuard, FeatureGuard)
+@Feature(PlanFeature.NINE_BOX)
 export class PromotionsController {
   constructor(
     @InjectRepository(PromotionRecommendation) private readonly recRepo: Repository<PromotionRecommendation>,
@@ -115,7 +125,33 @@ export class PromotionsController {
     if (!rec) {
       throw new BadRequestException('No existe recomendación calculada. Espera al próximo cron.');
     }
-    return rec;
+    return this.redactSensitiveDimensions(rec);
+  }
+
+  /**
+   * B4-25 / B4-26: el breakdown que ve el manager/admin no debe exponer:
+   *  - dimensions.engagement.moodAvg → es el promedio de mood individual
+   *    del colaborador; exponerlo elude el umbral MIN_TEAM_RESPONSES de
+   *    mood-checkins (confidencialidad del estado de ánimo).
+   *  - dimensions.behavioral.raw cuando evaluatorCount < 3 → el agregado
+   *    de feedback 360/peer con 1-2 evaluadores re-identifica al par.
+   * El zScore/weight (valores normalizados que alimentan el composite)
+   * se conservan; solo se omiten los crudos individuales/de baja N.
+   */
+  private redactSensitiveDimensions<T extends { dimensions?: any }>(rec: T): T {
+    const d = rec?.dimensions;
+    if (!d) return rec;
+    const BEHAVIORAL_MIN_EVALUATORS = 3;
+    const dimensions: any = { ...d };
+    if (d.engagement) {
+      dimensions.engagement = { ...d.engagement };
+      delete dimensions.engagement.moodAvg;
+    }
+    if (d.behavioral && (d.behavioral.evaluatorCount ?? 0) < BEHAVIORAL_MIN_EVALUATORS) {
+      dimensions.behavioral = { ...d.behavioral, suppressed: true };
+      delete dimensions.behavioral.raw;
+    }
+    return { ...rec, dimensions };
   }
 
   /**

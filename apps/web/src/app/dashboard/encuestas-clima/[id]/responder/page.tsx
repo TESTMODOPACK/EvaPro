@@ -22,16 +22,23 @@ export default function ResponderEncuestaPage() {
   const user = useAuthStore((s) => s.user);
   const toast = useToastStore((s) => s.toast);
 
-  // T10 — Autosave en localStorage. Cubre el caso de encuestas anonimas
-  // (no podemos persistir server-side sin asociar un userId) y actua
-  // como respaldo adicional en no-anonimas si falla la conexion.
-  // Storage key incluye userId para no leer respuestas de otra sesion
-  // en el mismo dispositivo. Si no hay userId aun (auth cargando), no
-  // intentamos cargar/guardar.
-  const localKey = user?.userId ? `surveyAnswers:${user.userId}:${surveyId}` : null;
-
   const [survey, setSurvey] = useState<any>(null);
   const [answers, setAnswers] = useState<Record<string, any>>({});
+
+  // T10 — Autosave a localStorage SOLO para encuestas NO-anónimas.
+  // B7c-04: antes la key incluía userId incluso en encuestas anónimas
+  // → en un dispositivo compartido o por inspección del storage, las
+  // respuestas "anónimas" quedaban vinculables al userId que las
+  // generó. Para encuestas anónimas no autosaveamos localmente (server
+  // tampoco soporta partial save en anónimas — ver canPartialSave).
+  // Trade-off consciente: el usuario que recarga la pestaña en una
+  // encuesta anónima pierde su borrador; la promesa de anonimato
+  // prevalece sobre la conveniencia. Si survey aún no cargó, localKey
+  // queda null (no escribe) hasta saber si es anónima.
+  const localKey =
+    user?.userId && survey && !survey.isAnonymous
+      ? `surveyAnswers:${user.userId}:${surveyId}`
+      : null;
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   // T3 — partial save server-side (solo encuestas no anonimas con

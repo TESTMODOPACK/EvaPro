@@ -206,14 +206,14 @@ function PdiCompliancePageContent() {
     if (!token) return;
     setError(null);
     fetch(`${API}/reports/analytics/pdi-compliance`, {
-      headers: { Authorization: `Bearer ${token}` },
+      credentials: 'include',
     }).then(r => {
       if (!r.ok) throw new Error('Error al cargar los datos');
       return r.json();
     }).then(setData).catch((e) => setError(e.message)).finally(() => setLoading(false));
     // Load historical data
     fetch(`${API}/reports/analytics/pdi-historical`, {
-      headers: { Authorization: `Bearer ${token}` },
+      credentials: 'include',
     }).then(r => r.ok ? r.json() : null).then(setHistoricalData).catch(() => {});
   }, [token]);
 
@@ -222,7 +222,7 @@ function PdiCompliancePageContent() {
     setExporting(format);
     try {
       const res = await fetch(`${API}/reports/analytics/pdi-compliance/export?format=${format}`, {
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include',
       });
       if (!res.ok) throw new Error('Error al exportar');
       const blob = await res.blob();

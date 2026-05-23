@@ -10,6 +10,9 @@ import { DevelopmentPlan } from '../development/entities/development-plan.entity
 import { User } from '../users/entities/user.entity';
 import { Department } from '../tenants/entities/department.entity';
 import { NotificationsModule } from '../notifications/notifications.module';
+// Fase A (B4-24): FeatureGuard inyecta SubscriptionsService; sin este
+// import Nest no resuelve el guard y la app no levanta.
+import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 
 @Module({
   imports: [
@@ -23,6 +26,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
       Department,
     ]),
     NotificationsModule,
+    SubscriptionsModule,
   ],
   controllers: [OrgDevelopmentController],
   providers: [OrgDevelopmentService],

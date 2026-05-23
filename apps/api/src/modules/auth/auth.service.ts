@@ -40,7 +40,23 @@ export class AuthService {
     pass: string,
     tenantId?: string,
   ): Promise<any> {
-    const user = await this.usersService.findByEmail(email, tenantId);
+    let user: User | null;
+    if (tenantId) {
+      // Selector explícito (uuid/slug/RUT): único por @Unique(tenantId,email).
+      user = await this.usersService.findByEmail(email, tenantId);
+    } else {
+      // B1-02: sin selector, el email puede existir en varios tenants. NO
+      // resolver con getOne() (orden no determinístico → autenticación
+      // contra el tenant equivocado). Si hay >1 match, exigir selección de
+      // organización; no validamos password ni incrementamos lockout
+      // (no sabemos contra qué usuario). El rate-limit por IP del
+      // controller sigue aplicando.
+      const matches = await this.usersService.findAllByEmail(email);
+      if (matches.length > 1) {
+        return { requiresTenantSelection: true };
+      }
+      user = matches[0] ?? null;
+    }
     if (!user || !user.passwordHash) {
       // Don't reveal which half failed. Also don't increment lockout — we
       // can't pin a counter to a non-existent user. The controller's IP-
@@ -144,6 +160,7 @@ export class AuthService {
   async refreshToken(
     userId: string,
     tenantId: string | null,
+    tv?: number,
   ): Promise<{ access_token: string }> {
     // Scope the lookup to the tenant claimed in the token. If the user no
     // longer belongs to that tenant (moved, deleted, claim tampered), we
@@ -155,6 +172,16 @@ export class AuthService {
     });
     if (!user || !user.isActive) {
       throw new UnauthorizedException('Usuario inactivo o no encontrado');
+    }
+    // B1-03: rechazar refresh si el tv del token no coincide con el de
+    // BD (bumpeado por desvinculación / reset de password / logout
+    // remoto). Antes faltaba este check y un token revocado se podía
+    // refrescar durante el grace period (15 min) — anulaba el mecanismo
+    // de invalidación. Mismo criterio que jwt.strategy.validate().
+    const tokenTv = tv ?? 0;
+    const userTv = user.tokenVersion ?? 0;
+    if (tokenTv !== userTv) {
+      throw new UnauthorizedException('Sesión expirada — inicie sesión nuevamente');
     }
 
     const payload = {

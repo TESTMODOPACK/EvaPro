@@ -476,7 +476,7 @@ function AnalisisIntegradoContent() {
       if (selectedCycleIds.size > 0) exportParams.set('cycleIds', Array.from(selectedCycleIds).join(','));
       if (selectedSurveyId) exportParams.set('surveyId', selectedSurveyId);
       const res = await fetch(`${API}/reports/cross-analysis/export?${exportParams}`, {
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include',
       });
       if (!res.ok) throw new Error('Error al exportar');
       const blob = await res.blob();

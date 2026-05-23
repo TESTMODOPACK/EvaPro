@@ -64,6 +64,10 @@ export const SIDEBAR_ACCESS: Record<string, string[]> = {
   '/dashboard/insights':       ['tenant_admin', 'manager'],
   '/dashboard/notificaciones': ['super_admin', 'tenant_admin', 'manager', 'employee', 'external'],
   '/dashboard/mi-desempeno': ['tenant_admin', 'manager', 'employee'],
+  // Fase 7 (T-02): faltaba en el mapa → canAccessPage la negaba a TODOS
+  // (deny-by-default), lo que rompería el guard de ruta. Es la vista
+  // self del PDI del colaborador (espejo de mi-desempeno).
+  '/dashboard/mi-desarrollo': ['tenant_admin', 'manager', 'employee'],
   '/dashboard/perfil':       ['super_admin', 'tenant_admin', 'manager', 'employee', 'external'],
   '/dashboard/ajustes':      ['super_admin', 'tenant_admin'],
   '/dashboard/reconocimientos': ['tenant_admin', 'manager', 'employee'],
@@ -93,6 +97,11 @@ export const SIDEBAR_ACCESS: Record<string, string[]> = {
   '/dashboard/analisis-integrado': ['tenant_admin'],
   // Pipeline de leads pre-venta (solo super_admin de Ascenda)
   '/dashboard/leads': ['super_admin'],
+  // Fase 7 (T-02) / B7c-30: faltaba en el mapa → la página de
+  // promociones (candidatos, sesgo, decisiones) era alcanzable por URL
+  // por cualquier rol y canAccessPage la negaba a todos. Alineado con
+  // los @Roles del backend (explain: admin+manager; decisiones: admin).
+  '/dashboard/promociones': ['super_admin', 'tenant_admin', 'manager'],
 };
 
 // ─── i18n-aware hooks ─────────────────────────────────────────────────────────

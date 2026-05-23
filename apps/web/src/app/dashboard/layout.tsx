@@ -10,6 +10,7 @@ import Sidebar from '@/components/Sidebar';
 import TopBar from '@/components/TopBar';
 import Toast from '@/components/Toast';
 import { CommandPalette } from '@/components/CommandPalette';
+import { canAccessPage } from '@/lib/roles';
 import { useMySubscription } from '@/hooks/useSubscription';
 import PastDueBanner from '@/components/PastDueBanner';
 import ImpersonationBanner from '@/components/ImpersonationBanner';
@@ -105,8 +106,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     if (!isAuthenticated || !user) {
       void logout();
       router.replace('/login');
+      return;
     }
-  }, [_hasHydrated, hydrationTimeout, isAuthenticated, user, router, logout]);
+    // Fase 7 (T-02): guard de ruta por rol. Antes el control de acceso
+    // por página era solo cosmético (el Sidebar ocultaba links); con
+    // acceso por URL directa cualquier rol llegaba a páginas admin y
+    // dependía 100% del backend. canAccessPage es deny-by-default y
+    // cubre rutas dinámicas por prefijo; /dashboard es accesible para
+    // todos los roles → el redirect no genera loop.
+    if (!canAccessPage(user.role, pathname)) {
+      router.replace('/dashboard');
+    }
+  }, [_hasHydrated, hydrationTimeout, isAuthenticated, user, pathname, router, logout]);
 
   // ─── Silent token refresh based on user activity ─────────────────────
   const lastActivityRef = useRef(Date.now());
@@ -251,6 +262,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   // Still loading subscription check
   if (subStatus === 'loading') {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <span className="spinner" />
+      </div>
+    );
+  }
+
+  // Fase 7 (T-02): no montar la página si el rol no puede acceder a la
+  // ruta actual — el useEffect de arriba ya disparó el redirect a
+  // /dashboard. Esto evita el flash de la página no autorizada y que
+  // dispare sus fetches. SIDEBAR_ACCESS cubre el 100% de las rutas
+  // (incl. dinámicas por prefijo); /dashboard pasa para todos los roles.
+  if (!canAccessPage(user.role, pathname)) {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <span className="spinner" />

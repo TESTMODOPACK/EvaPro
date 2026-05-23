@@ -289,7 +289,7 @@ export class RecruitmentController {
     @Body() dto: any,
   ) {
     const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
-    return this.service.submitInterview(tenantId, req.user.userId, candidateId, dto);
+    return this.service.submitInterview(tenantId, req.user.userId, candidateId, dto, req.user.role);
   }
 
   /**

@@ -202,8 +202,8 @@ export default function UserProfilePage() {
       // Load movements & departures + timeline (S3.1)
       if (isManager) {
         Promise.all([
-          fetch(`${API}/users/${userId}/movements`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.ok ? r.json() : []),
-          fetch(`${API}/users/${userId}/departures`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.ok ? r.json() : []),
+          fetch(`${API}/users/${userId}/movements`, { credentials: 'include' }).then(r => r.ok ? r.json() : []),
+          fetch(`${API}/users/${userId}/departures`, { credentials: 'include' }).then(r => r.ok ? r.json() : []),
           api.users.timeline(token, userId).catch(() => []),
         ]).then(([movs, deps, timeline]) => {
           setMovements(movs);

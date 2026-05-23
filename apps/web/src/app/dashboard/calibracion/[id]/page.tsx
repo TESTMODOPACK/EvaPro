@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/store/auth.store';
+import { useRequireRole } from '@/hooks/useRequireRole';
 import { api } from '@/lib/api';
 import { calibrationEntryStatusLabel as STATUS_LABEL, calibrationEntryStatusBadge as STATUS_BADGE } from '@/lib/statusMaps';
 // P8-C: import dinámico de Recharts.
@@ -59,6 +60,12 @@ function ScoreDelta({ original, adjusted }: { original: number | null; adjusted:
 export default function CalibracionDetailPage({ params }: { params: { id: string } }) {
   const { t } = useTranslation();
   const token = useAuthStore((s) => s.token);
+  // B7b-23: la página de detalle de calibración (lee/muta scores de
+  // talento por sessionId de la URL) no tenía NINGÚN guard de rol —
+  // cualquier rol autenticado entraba por URL directa. El sidebar la
+  // restringe a tenant_admin pero eso solo oculta el link. El backend
+  // ya enforcea tenant+rol (Fase 4); esto es defensa en profundidad.
+  const { isReady, isAllowed } = useRequireRole(['tenant_admin', 'super_admin']);
 
   const [session, setSession] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -290,6 +297,11 @@ export default function CalibracionDetailPage({ params }: { params: { id: string
   }
 
   if (!token) return null;
+  // B7b-23: rol no autorizado → no renderizar (useRequireRole ya
+  // disparó el redirect). Mientras hidrata (isReady=false) seguimos al
+  // Spinner para no parpadear.
+  if (isReady && !isAllowed) return null;
+
   if (loading) return <Spinner />;
   if (!session) {
     return (

@@ -19,6 +19,7 @@ import {
   RecurringMetric,
 } from './entities/recurring-metric.entity';
 import { MetricMeasurement } from './entities/metric-measurement.entity';
+import { User } from '../users/entities/user.entity';
 import { AuditService } from '../audit/audit.service';
 import {
   createMockRepository,
@@ -58,10 +59,13 @@ describe('RecurringMetricsService', () => {
   let service: RecurringMetricsService;
   let metricRepo: any;
   let measurementRepo: any;
+  let userRepo: any;
 
   beforeEach(async () => {
     metricRepo = createMockRepository();
     measurementRepo = createMockRepository();
+    // B2-01: userRepo agregado para assertManagerCanAccessUser.
+    userRepo = createMockRepository();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -71,6 +75,7 @@ describe('RecurringMetricsService', () => {
           provide: getRepositoryToken(MetricMeasurement),
           useValue: measurementRepo,
         },
+        { provide: getRepositoryToken(User), useValue: userRepo },
         { provide: AuditService, useValue: createMockAuditService() },
       ],
     }).compile();
@@ -376,6 +381,69 @@ describe('RecurringMetricsService', () => {
       const state = await service.getCurrentState(TID, METRIC_ID);
 
       expect(state.isOverdue).toBe(false);
+    });
+  });
+
+  // ─── Ownership / team-scope (B2-01, integración del gate) ────────────
+  // Las tests previas usan UID === ownerUserId → el primitive
+  // assertManagerCanAccessUser short-circuita por la rama self ANTES de
+  // mirar el rol, así que NUNCA ejercitan la wiring del gate. Estas
+  // tests fuerzan actor != owner para probar que cada endpoint write
+  // efectivamente delega en el primitive y bloquea/permite por rol.
+  describe('write authorization (B2-01) — actor != owner', () => {
+    const ForbiddenException = require('@nestjs/common').ForbiddenException;
+    const otherMetric = () => makeMetric({ ownerUserId: OTHER_UID });
+
+    it('update: employee non-owner → Forbidden (gate efectivo)', async () => {
+      metricRepo.findOne.mockResolvedValue(otherMetric());
+      await expect(
+        service.update(TID, METRIC_ID, UID, { name: 'pirateado' }, 'employee'),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(metricRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('update: tenant_admin (no owner) → permite', async () => {
+      metricRepo.findOne.mockResolvedValue(otherMetric());
+      metricRepo.save.mockImplementation((m: any) => Promise.resolve(m));
+      const res = await service.update(TID, METRIC_ID, UID, { name: 'ok' }, 'tenant_admin');
+      expect(res).toBeDefined();
+    });
+
+    it('addMeasurement: manager NO-de-equipo → Forbidden', async () => {
+      metricRepo.findOne.mockResolvedValue(otherMetric());
+      // owner.managerId distinto del actor → manager out-of-team.
+      userRepo.findOne.mockResolvedValue({ id: OTHER_UID, managerId: 'someone-else' });
+      await expect(
+        service.addMeasurement(TID, METRIC_ID, UID, { value: 99 }, 'manager'),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(measurementRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('addMeasurement: manager DE-equipo (owner.managerId === actor) → permite', async () => {
+      metricRepo.findOne.mockResolvedValue(otherMetric());
+      userRepo.findOne.mockResolvedValue({ id: OTHER_UID, managerId: UID });
+      measurementRepo.create.mockImplementation((d: any) => d);
+      measurementRepo.save.mockImplementation((e: any) =>
+        Promise.resolve({ ...e, id: fakeUuid(700) }),
+      );
+      const res = await service.addMeasurement(TID, METRIC_ID, UID, { value: 50 }, 'manager');
+      expect(res).toBeDefined();
+    });
+
+    it('remove: employee non-owner → Forbidden', async () => {
+      metricRepo.findOne.mockResolvedValue(otherMetric());
+      await expect(
+        service.remove(TID, METRIC_ID, UID, 'employee'),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(metricRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('remove: super_admin → permite (short-circuit por rol)', async () => {
+      metricRepo.findOne.mockResolvedValue(otherMetric());
+      metricRepo.save.mockImplementation((m: any) => Promise.resolve(m));
+      await expect(
+        service.remove(TID, METRIC_ID, UID, 'super_admin'),
+      ).resolves.toBeUndefined();
     });
   });
 });

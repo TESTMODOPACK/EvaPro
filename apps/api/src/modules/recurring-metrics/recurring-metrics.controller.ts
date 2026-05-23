@@ -82,14 +82,14 @@ export class RecurringMetricsController {
     @Request() req: any,
     @Body() dto: UpdateRecurringMetricDto,
   ) {
-    return this.service.update(req.user.tenantId, id, req.user.userId, dto);
+    return this.service.update(req.user.tenantId, id, req.user.userId, dto, req.user.role);
   }
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   @Roles('super_admin', 'tenant_admin', 'manager')
   remove(@Param('id', ParseUUIDPipe) id: string, @Request() req: any) {
-    return this.service.remove(req.user.tenantId, id, req.user.userId);
+    return this.service.remove(req.user.tenantId, id, req.user.userId, req.user.role);
   }
 
   // ─── Mediciones ────────────────────────────────────────────────────
@@ -105,6 +105,7 @@ export class RecurringMetricsController {
       id,
       req.user.userId,
       dto,
+      req.user.role,
     );
   }
 

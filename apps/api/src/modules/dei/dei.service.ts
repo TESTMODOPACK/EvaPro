@@ -8,6 +8,13 @@ import { Tenant } from '../tenants/entities/tenant.entity';
 import { DeiCorrectiveAction } from './entities/dei-corrective-action.entity';
 
 const DEFAULT_PRIVACY_MIN = 5; // Minimum group size for DEI metrics (configurable by tenant)
+// B6-34: piso DURO de k-anonymity para DEI. Los breakdowns demográficos
+// (género × seniority × departamento × edad) son ALTAMENTE
+// re-identificables por intersección incluso con N>=2 (p.ej. "una sola
+// mujer senior en Ventas"). El tenant puede subir privacyMin, NUNCA
+// bajarlo por debajo de este piso. Coincide con el k-anonymity default
+// de surveys (Fase 6 B4-16).
+const PRIVACY_MIN_FLOOR = 5;
 const DEFAULT_MEDIUM_THRESHOLD = 1.5; // Gap >= 1.5 points = medium alert
 const DEFAULT_HIGH_THRESHOLD = 2.0; // Gap >= 2.0 points = high alert
 
@@ -33,7 +40,15 @@ export class DeiService {
     type DeiConfig = { privacyMin?: number; mediumThreshold?: number; highThreshold?: number };
     const dei: DeiConfig = (tenant?.settings?.dei as DeiConfig | undefined) || {};
     return {
-      privacyMin: typeof dei.privacyMin === 'number' && dei.privacyMin >= 2 ? dei.privacyMin : DEFAULT_PRIVACY_MIN,
+      // B6-34: aplicar el FLOOR (5) — el tenant puede pedir más estricto
+      // (>5) pero NO menos. Antes aceptaba >=2, suficiente para
+      // re-identificar grupos pequeños por intersección demográfica.
+      privacyMin: Math.max(
+        PRIVACY_MIN_FLOOR,
+        typeof dei.privacyMin === 'number' && Number.isFinite(dei.privacyMin)
+          ? Math.floor(dei.privacyMin)
+          : DEFAULT_PRIVACY_MIN,
+      ),
       mediumThreshold: typeof dei.mediumThreshold === 'number' && dei.mediumThreshold > 0 ? dei.mediumThreshold : DEFAULT_MEDIUM_THRESHOLD,
       highThreshold: typeof dei.highThreshold === 'number' && dei.highThreshold > 0 ? dei.highThreshold : DEFAULT_HIGH_THRESHOLD,
     };

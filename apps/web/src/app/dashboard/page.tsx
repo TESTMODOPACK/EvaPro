@@ -1829,7 +1829,7 @@ function AdminDashboard() {
       latestClosedId ? api.reports.executiveDashboard(token, latestClosedId).catch(() => null) : Promise.resolve(null),
       api.reports.turnover(token).catch(() => null),
       api.reports.pdiCompliance(token).catch(() => null),
-      fetch(`${process.env.NEXT_PUBLIC_API_URL || 'https://evaluacion-desempeno-api.onrender.com'}/reports/analytics/system-usage`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch(`${process.env.NEXT_PUBLIC_API_URL || 'https://evaluacion-desempeno-api.onrender.com'}/reports/analytics/system-usage`, { credentials: 'include' }).then(r => r.ok ? r.json() : null).catch(() => null),
       api.ai.getUsage(token).catch(() => null),
       api.subscriptions.mySubscription(token).catch(() => null),
       api.contracts.list(token).catch(() => []),

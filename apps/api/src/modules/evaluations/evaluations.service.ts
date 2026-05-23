@@ -31,6 +31,7 @@ import { NotificationType } from '../notifications/entities/notification.entity'
 import { PushService } from '../notifications/push.service';
 import { buildPushMessage } from '../notifications/push-messages';
 import { PlanFeature } from '../../common/constants/plan-features';
+import { assertManagerCanAccessUser } from '../../common/utils/validate-manager-scope';
 import { Objective, ObjectiveStatus } from '../objectives/entities/objective.entity';
 import { KeyResult } from '../objectives/entities/key-result.entity';
 
@@ -569,9 +570,16 @@ export class EvaluationsService {
   }
 
   private async validateStageCompletion(cycleId: string, tenantId: string, stage: CycleStage): Promise<void> {
+    // B3-02: contar también PENDING (asignaciones que nunca se
+    // abrieron). Antes solo se chequeaba IN_PROGRESS → un evaluador
+    // que nunca entró al form NO bloqueaba el avance de etapa, lo que
+    // permitía cerrar SELF/MANAGER/PEER sin todas las evaluaciones
+    // hechas y propagaba scores incompletos a 9-box/calibración.
+    const openStatuses = In([AssignmentStatus.PENDING, AssignmentStatus.IN_PROGRESS]);
+
     if (stage.type === StageType.SELF_EVALUATION) {
       const pendingSelf = await this.assignmentRepo.count({
-        where: { cycleId, tenantId, relationType: RelationType.SELF, status: AssignmentStatus.IN_PROGRESS },
+        where: { cycleId, tenantId, relationType: RelationType.SELF, status: openStatuses },
       });
       if (pendingSelf > 0) {
         throw new BadRequestException(
@@ -582,7 +590,7 @@ export class EvaluationsService {
 
     if (stage.type === StageType.MANAGER_EVALUATION) {
       const pendingManager = await this.assignmentRepo.count({
-        where: { cycleId, tenantId, relationType: RelationType.MANAGER, status: AssignmentStatus.IN_PROGRESS },
+        where: { cycleId, tenantId, relationType: RelationType.MANAGER, status: openStatuses },
       });
       if (pendingManager > 0) {
         throw new BadRequestException(
@@ -593,7 +601,7 @@ export class EvaluationsService {
 
     if (stage.type === StageType.PEER_EVALUATION) {
       const pendingPeer = await this.assignmentRepo.count({
-        where: { cycleId, tenantId, relationType: RelationType.PEER, status: AssignmentStatus.IN_PROGRESS },
+        where: { cycleId, tenantId, relationType: RelationType.PEER, status: openStatuses },
       });
       if (pendingPeer > 0) {
         throw new BadRequestException(
@@ -663,7 +671,10 @@ export class EvaluationsService {
 
     // Capture before values for audit trail
     const changes: Record<string, { before: any; after: any }> = {};
-    const trackFields = ['name', 'type', 'period', 'startDate', 'endDate', 'description', 'status', 'templateId'] as const;
+    // B3-03: 'status' removido del set trackable porque ya no entra por
+    // este DTO; los cambios de estado se auditan en launch/close/pause/
+    // resume/cancelCycle dedicados.
+    const trackFields = ['name', 'type', 'period', 'startDate', 'endDate', 'description', 'templateId'] as const;
     for (const field of trackFields) {
       if (dto[field] !== undefined) {
         const before = field === 'startDate' || field === 'endDate' ? cycle[field]?.toISOString?.()?.split('T')[0] || cycle[field] : cycle[field];
@@ -681,7 +692,9 @@ export class EvaluationsService {
       ...(dto.startDate !== undefined && { startDate: new Date(dto.startDate) }),
       ...(dto.endDate !== undefined && { endDate: new Date(dto.endDate) }),
       ...(dto.description !== undefined && { description: dto.description }),
-      ...(dto.status !== undefined && { status: dto.status }),
+      // B3-03: status removido del DTO; defensa-en-profundidad: si
+      // algún caller futuro vuelve a colarlo, este service NO lo aplica.
+      // El status solo cambia vía launch/close/pause/resume/cancelCycle.
       ...(dto.templateId !== undefined && { templateId: dto.templateId }),
       ...(dto.settings !== undefined && { settings: dto.settings }),
     });
@@ -2431,6 +2444,28 @@ export class EvaluationsService {
     });
     if (!assignment) throw new NotFoundException('Asignación no encontrada');
 
+    // B3-01: control de acceso. Antes este endpoint no validaba nada y
+    // cualquier usuario del tenant podía leer respuestas+scores de la
+    // evaluación de cualquier colega iterando UUIDs. Reglas:
+    //   - evaluador asignado → acceso completo (está llenándola)
+    //   - admin (super_admin/tenant_admin) → acceso completo
+    //   - evaluado o su manager directo → ven el resultado pero NO las
+    //     respuestas crudas (confidencialidad 360°)
+    //   - cualquier otro → 403
+    const isEvaluator =
+      !!callerUserId && assignment.evaluatorId === callerUserId;
+    const isAdmin =
+      callerRole === 'super_admin' || callerRole === 'tenant_admin';
+    if (!isEvaluator) {
+      await assertManagerCanAccessUser(
+        this.userRepo,
+        callerUserId ?? '',
+        callerRole ?? '',
+        assignment.evaluateeId,
+        assignment.tenantId,
+      );
+    }
+
     // Fetch template for the cycle
     let template = null;
     if (assignment.cycle.templateId) {
@@ -2671,10 +2706,18 @@ export class EvaluationsService {
       }
     }
 
+    // B3-01: el evaluado y el manager-de-evaluado pueden ver el resultado
+    // (score/summary) pero NO las respuestas crudas del evaluador.
+    const canSeeAnswers = isEvaluator || isAdmin;
+    const safeResponse =
+      response && !canSeeAnswers
+        ? { ...response, answers: null }
+        : response;
+
     return {
       assignment,
       template,
-      response,
+      response: safeResponse,
       evaluateeObjectives,
       evaluateeObjectivesSummary,
       // T5.4: indica al frontend si los objetivos vienen de snapshot o live,
@@ -2693,6 +2736,7 @@ export class EvaluationsService {
   ): Promise<EvaluationResponse> {
     const assignment = await this.assignmentRepo.findOne({
       where: { id: assignmentId, tenantId },
+      relations: ['cycle'],
     });
     if (!assignment) throw new NotFoundException('Asignación no encontrada');
     if (assignment.evaluatorId !== userId) {
@@ -2700,6 +2744,14 @@ export class EvaluationsService {
     }
     if (assignment.status === AssignmentStatus.COMPLETED) {
       throw new BadRequestException('Esta evaluación ya fue enviada');
+    }
+    // B3-04: solo se aceptan borradores/envíos si el ciclo está ACTIVE.
+    // Antes save/submit aceptaban respuestas en DRAFT (ciclo a medio
+    // armar), PAUSED (frozen intencional) o CLOSED/CANCELLED (cerrados).
+    if (assignment.cycle?.status !== CycleStatus.ACTIVE) {
+      throw new BadRequestException(
+        `No se puede guardar la respuesta: el ciclo está en estado "${assignment.cycle?.status}". Solo se aceptan respuestas en ciclos activos.`,
+      );
     }
 
     // Update assignment status to in_progress
@@ -2740,6 +2792,13 @@ export class EvaluationsService {
     if (assignment.status === AssignmentStatus.COMPLETED) {
       throw new BadRequestException('Esta evaluación ya fue enviada');
     }
+    // B3-04: el envío final también requiere ciclo ACTIVE; rechaza
+    // submits sobre ciclos DRAFT/PAUSED/CLOSED/CANCELLED.
+    if (assignment.cycle?.status !== CycleStatus.ACTIVE) {
+      throw new BadRequestException(
+        `No se puede enviar la evaluación: el ciclo está en estado "${assignment.cycle?.status}". Solo se aceptan envíos en ciclos activos.`,
+      );
+    }
 
     // B1.4: Manager/peer/direct_report evaluations require self-evaluation to be completed first
     if (assignment.relationType !== RelationType.SELF) {
@@ -2779,27 +2838,45 @@ export class EvaluationsService {
       assignment.relationType,
     );
 
-    // Save response
-    let response = await this.responseRepo.findOne({ where: { assignmentId } });
-    if (response) {
-      response.answers = dto.answers;
-      response.overallScore = overallScore;
-      response.submittedAt = new Date();
-    } else {
-      response = this.responseRepo.create({
-        tenantId,
-        assignmentId,
-        answers: dto.answers,
-        overallScore,
-        submittedAt: new Date(),
-      });
-    }
-    await this.responseRepo.save(response);
+    // B3-05: la persistencia de response + cambio de status del
+    // assignment + completedAt deben ser ATÓMICOS. Antes eran dos
+    // .save() separados — si el segundo fallaba (constraint, lock,
+    // pool exhaustion) quedaba la respuesta guardada pero el assignment
+    // en IN_PROGRESS → el evaluador reenviaba y duplicaba side-effects
+    // (notifs/audit/recalcs downstream). Una sola tx garantiza
+    // all-or-nothing.
+    const { savedResponse, savedAssignment } = await this.dataSource.transaction(
+      async (manager) => {
+        const responseRepoTx = manager.getRepository(EvaluationResponse);
+        const assignmentRepoTx = manager.getRepository(EvaluationAssignment);
 
-    // Mark assignment as completed
-    assignment.status = AssignmentStatus.COMPLETED;
-    assignment.completedAt = new Date();
-    await this.assignmentRepo.save(assignment);
+        let response = await responseRepoTx.findOne({ where: { assignmentId } });
+        if (response) {
+          response.answers = dto.answers;
+          response.overallScore = overallScore;
+          response.submittedAt = new Date();
+        } else {
+          response = responseRepoTx.create({
+            tenantId,
+            assignmentId,
+            answers: dto.answers,
+            overallScore,
+            submittedAt: new Date(),
+          });
+        }
+        const savedResponse = await responseRepoTx.save(response);
+
+        assignment.status = AssignmentStatus.COMPLETED;
+        assignment.completedAt = new Date();
+        const savedAssignment = await assignmentRepoTx.save(assignment);
+
+        return { savedResponse, savedAssignment };
+      },
+    );
+    // Asignar de vuelta para el resto de la función (audit + cleanup +
+    // return) — usa los valores efectivamente persistidos.
+    const response = savedResponse;
+    void savedAssignment;
 
     await this.auditService.log(
       tenantId, userId, 'evaluation.submitted', 'assignment', assignmentId,
@@ -2972,9 +3049,23 @@ export class EvaluationsService {
       }
     }
 
-    // Extraer valores numericos validos dentro del rango [1, maxScale]
+    // B3-06: solo promediar respuestas a preguntas tipo `scale`. Antes
+    // se iteraba Object.values(answers) y se incluía cualquier valor
+    // numérico — un comentario libre "3" o un multi-select cuyo value
+    // fuera 4 contaminaba el overallScore que luego propaga a 9-box,
+    // calibración y reportes.
+    const scaleQuestionIds = new Set(
+      scaleQuestions
+        .map((q: any) => q.id)
+        .filter((id: unknown): id is string => typeof id === 'string' && id.length > 0),
+    );
     const numericValues: number[] = [];
-    for (const v of Object.values(answers)) {
+    for (const [questionId, v] of Object.entries(answers)) {
+      // Si conocemos las preguntas scale del template, filtrar por id.
+      // Si no las pudimos resolver (template sin metadata / sub_template
+      // missing), fallback: aceptar cualquier valor numérico en rango
+      // (comportamiento previo) — mantiene compat con templates legacy.
+      if (scaleQuestionIds.size > 0 && !scaleQuestionIds.has(questionId)) continue;
       let n: number | null = null;
       if (typeof v === 'number' && !isNaN(v)) {
         n = v;

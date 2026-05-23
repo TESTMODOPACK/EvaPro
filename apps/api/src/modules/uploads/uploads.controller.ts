@@ -29,6 +29,8 @@ export class UploadsController {
     if (!file) {
       throw new BadRequestException('No se envi\u00f3 ning\u00fan archivo');
     }
-    return this.uploadsService.uploadFile(file, req.user.tenantId);
+    // B2-15: pasar uploaderUserId al service para que el audit log lo
+    // attribuya correctamente.
+    return this.uploadsService.uploadFile(file, req.user.tenantId, undefined, req.user.userId);
   }
 }

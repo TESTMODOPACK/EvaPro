@@ -3360,10 +3360,28 @@ export class RecruitmentService {
 
   // ─── Interviews ───────────────────────────────────────────────────────
 
-  async submitInterview(tenantId: string | undefined, evaluatorId: string, candidateId: string, dto: any): Promise<RecruitmentInterview> {
+  async submitInterview(tenantId: string | undefined, evaluatorId: string, candidateId: string, dto: any, callerRole?: string): Promise<RecruitmentInterview> {
     const where = tenantId ? { id: candidateId, tenantId } : { id: candidateId };
     const candidate = await this.candidateRepo.findOne({ where });
     if (!candidate) throw new NotFoundException('Candidato no encontrado');
+
+    // B6-20: solo los evaluadores asignados al proceso (o admins del
+    // tenant) pueden registrar/sobrescribir la entrevista y, con ella,
+    // el finalScore que decide la contratación. Antes cualquier manager
+    // del tenant podía manipular la selección de cualquier candidato
+    // (incluso autoasignándose como evaluador). Mismo criterio de
+    // participación que getScorecard/getComparative.
+    const isAdmin = callerRole === 'super_admin' || callerRole === 'tenant_admin';
+    if (!isAdmin) {
+      const isAssignedEvaluator = await this.evaluatorRepo.findOne({
+        where: { processId: candidate.processId, evaluatorId },
+      });
+      if (!isAssignedEvaluator) {
+        throw new ForbiddenException(
+          'Solo los evaluadores asignados al proceso pueden registrar la entrevista de este candidato.',
+        );
+      }
+    }
 
     let interview = await this.interviewRepo.findOne({ where: { candidateId, evaluatorId } });
     const isUpdate = !!interview;
@@ -3426,6 +3444,14 @@ export class RecruitmentService {
     const candidate = await this.candidateRepo.findOne({ where: { id: candidateId, tenantId } });
     if (!candidate) throw new NotFoundException('Candidato no encontrado');
 
+    // B6-21: RecruitmentInterview no tiene columna tenant_id (es tabla
+    // de relación). El scope de tenant se enforza pre-fetch vía el
+    // candidate.findOne({where:{id,tenantId}}) de arriba — candidate.id
+    // es un UUID v4 globalmente único, así que interviews matcheadas
+    // por candidateId pertenecen al mismo tenant por construcción. Una
+    // defensa adicional vía JOIN a candidate no agrega seguridad real
+    // (no hay vector de colisión de UUIDs) y aumentaría complejidad.
+    // Verificado: la pre-validación es la barrera correcta.
     return this.interviewRepo.find({
       where: { candidateId },
       relations: ['evaluator'],

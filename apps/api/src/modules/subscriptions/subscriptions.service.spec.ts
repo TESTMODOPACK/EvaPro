@@ -96,6 +96,28 @@ describe('SubscriptionsService', () => {
           },
         },
         { provide: CACHE_MANAGER, useValue: cacheManager },
+        // B6-11/B6-12: SubscriptionsService inyecta DataSource para
+        // wrapping atómico. Mock pass-through: la transaction ejecuta el
+        // callback con un EntityManager-like que delega los repos al
+        // injectado normal (los tests siguen usando los mocks existentes).
+        {
+          provide: 'DataSourceToken' as any,
+          useValue: {},
+        },
+        {
+          provide: require('typeorm').DataSource,
+          useValue: {
+            transaction: async (cb: any) => cb({
+              getRepository: (entity: any) => {
+                const name = entity?.name;
+                if (name === 'Subscription') return subRepo;
+                if (name === 'PaymentHistory') return createMockRepository();
+                if (name === 'SubscriptionRequest') return createMockRepository();
+                return createMockRepository();
+              },
+            }),
+          },
+        },
       ],
     }).compile();
 
@@ -620,6 +642,13 @@ describe('SubscriptionsService', () => {
       requestRepo.save.mockImplementation((entity: any) =>
         Promise.resolve({ ...req, ...entity }),
       );
+      // B6-12: approveRequest hace un atomic compare-and-set
+      // (createQueryBuilder().update().where(...).execute()) ANTES de la
+      // lógica de proration. Por default el QB mock retorna affected:0
+      // → mi guard lanza Conflict. Sobreescribir execute para simular
+      // que el caller GANÓ el lock (affected:1).
+      const qbMock = requestRepo.createQueryBuilder();
+      qbMock.execute.mockResolvedValue({ affected: 1 });
       // create() llama findById(saved.id) -> subRepo.findOne. Default null
       // rompe el flow. Mockeamos un sub minimal post-create para que
       // findById no lance NotFound.

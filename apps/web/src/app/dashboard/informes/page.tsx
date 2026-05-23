@@ -352,7 +352,7 @@ export default function InformesPage() {
     setExporting(format);
     try {
       const res = await fetch(`${BASE_URL}/reports/cycle/${selectedCycleId}/export?format=${format}&userId=${selectedUserId}`, {
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include',
       });
       if (!res.ok) throw new Error('Error al exportar');
       const blob = await res.blob();

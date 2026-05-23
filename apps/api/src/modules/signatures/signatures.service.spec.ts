@@ -121,6 +121,24 @@ describe('SignaturesService', () => {
         { provide: AuditService, useValue: auditService },
         { provide: SignatureAuthorizationService, useValue: authorizationService },
         { provide: EvaluationsService, useValue: evaluationsServiceMock },
+        // B6-26: SignaturesService inyecta DataSource para wrapping
+        // atómico de verifyAndSign. Mock pass-through: la transaction
+        // ejecuta el callback con un EntityManager que delega los repos
+        // a los mocks existentes (otp/signature/contract).
+        {
+          provide: require('typeorm').DataSource,
+          useValue: {
+            transaction: async (cb: any) => cb({
+              getRepository: (entity: any) => {
+                const name = entity?.name;
+                if (name === 'SignatureOtpToken') return otpRepo;
+                if (name === 'DocumentSignature') return signatureRepo;
+                if (name === 'Contract') return contractRepo;
+                return otpRepo;
+              },
+            }),
+          },
+        },
       ],
     }).compile();
 

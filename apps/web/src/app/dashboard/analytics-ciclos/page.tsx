@@ -41,11 +41,11 @@ function CycleComparisonPageContent() {
   useEffect(() => {
     if (!token) return;
     fetch(`${API}/reports/analytics/cycle-comparison`, {
-      headers: { Authorization: `Bearer ${token}` },
+      credentials: 'include',
     }).then(r => r.json()).then(setData).catch(() => {}).finally(() => setLoading(false));
 
     // Load AI quota
-    fetch(`${API}/ai/usage`, { headers: { Authorization: `Bearer ${token}` } })
+    fetch(`${API}/ai/usage`, { credentials: 'include' })
       .then(r => r.ok ? r.json() : null).then(setQuotaInfo).catch(() => {});
   }, [token]);
 
@@ -108,7 +108,7 @@ function CycleComparisonPageContent() {
     setExporting(format);
     try {
       const res = await fetch(`${API}/reports/analytics/cycle-comparison/export?format=${format}`, {
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include',
       });
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);

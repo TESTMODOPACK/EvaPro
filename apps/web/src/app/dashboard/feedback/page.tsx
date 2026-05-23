@@ -1108,7 +1108,20 @@ function QuickFeedbackTab() {
     return true;
   });
   const { departments: recipientDepts } = useDepartments();
-  const feedbackList = subTab === 'received' ? received : given;
+  // B7c-07: defensa-en-profundidad client-side. Si por regresión del
+  // backend (o cache obsoleto) un feedback anónimo llega CON fromUser/
+  // fromUserId poblados, el componente solo muestra "Anónimo" pero el
+  // payload sigue en el state/network/DevTools → vector de
+  // re-identificación. Scrub los campos identificadores ANTES de
+  // exponer la lista al render.
+  const rawList = subTab === 'received' ? received : given;
+  const feedbackList = Array.isArray(rawList)
+    ? rawList.map((fb: any) =>
+        fb && fb.isAnonymous
+          ? { ...fb, fromUser: undefined, fromUserId: undefined }
+          : fb,
+      )
+    : rawList;
   const isLoading = subTab === 'received' ? loadingReceived : loadingGiven;
 
   const [sendError, setSendError] = useState('');
@@ -1514,7 +1527,7 @@ function FeedbackPageContent() {
     setExporting(format);
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'https://evaluacion-desempeno-api.onrender.com'}/feedback/export?format=${format}`, {
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include',
       });
       if (!res.ok) throw new Error('Error al exportar');
       const blob = await res.blob();

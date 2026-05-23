@@ -17,7 +17,7 @@
  * suficientes para la rama bajo test.
  */
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -1162,6 +1162,71 @@ describe('RecruitmentService', () => {
         (c) => c[2] === 'recruitment.welcome_email_resend_failed',
       );
       expect(failAudit).toBeDefined();
+    });
+  });
+
+  // ─── submitInterview (B6-20) ────────────────────────────────────────
+  describe('submitInterview — solo evaluadores asignados / admin', () => {
+    const PROCESS_ID = fakeUuid(900);
+    const CAND_ID = fakeUuid(901);
+    const MGR_ID = fakeUuid(902);
+    const candidate = {
+      id: CAND_ID,
+      tenantId: TENANT_ID,
+      processId: PROCESS_ID,
+      // stage != REGISTERED/CV_REVIEW → no entra al branch de auto-advance
+      stage: CandidateStage.INTERVIEWING,
+    };
+
+    it('manager NO asignado al proceso → ForbiddenException (sin escribir)', async () => {
+      candidateRepo.findOne.mockResolvedValue(candidate);
+      evaluatorRepo.findOne.mockResolvedValue(null);
+
+      await expect(
+        service.submitInterview(TENANT_ID, MGR_ID, CAND_ID, {}, 'manager'),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+
+      expect(evaluatorRepo.findOne).toHaveBeenCalledWith({
+        where: { processId: PROCESS_ID, evaluatorId: MGR_ID },
+      });
+      expect(interviewRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('manager asignado al proceso → procede', async () => {
+      candidateRepo.findOne.mockResolvedValue(candidate);
+      evaluatorRepo.findOne.mockResolvedValue({
+        id: 'e1', processId: PROCESS_ID, evaluatorId: MGR_ID,
+      });
+      interviewRepo.findOne.mockResolvedValue(null);
+      interviewRepo.create.mockImplementation((x: any) => x);
+      interviewRepo.save.mockImplementation((x: any) =>
+        Promise.resolve({ id: fakeUuid(950), ...x }),
+      );
+      jest.spyOn(service as any, 'recalculateScore').mockResolvedValue(undefined);
+
+      const res = await service.submitInterview(
+        TENANT_ID, MGR_ID, CAND_ID, {}, 'manager',
+      );
+
+      expect(res).toBeDefined();
+      expect(interviewRepo.save).toHaveBeenCalled();
+    });
+
+    it('tenant_admin → bypass del check de evaluador asignado', async () => {
+      candidateRepo.findOne.mockResolvedValue(candidate);
+      interviewRepo.findOne.mockResolvedValue(null);
+      interviewRepo.create.mockImplementation((x: any) => x);
+      interviewRepo.save.mockImplementation((x: any) =>
+        Promise.resolve({ id: fakeUuid(951), ...x }),
+      );
+      jest.spyOn(service as any, 'recalculateScore').mockResolvedValue(undefined);
+
+      const res = await service.submitInterview(
+        TENANT_ID, ADMIN_ID, CAND_ID, {}, 'tenant_admin',
+      );
+
+      expect(res).toBeDefined();
+      expect(evaluatorRepo.findOne).not.toHaveBeenCalled();
     });
   });
 });

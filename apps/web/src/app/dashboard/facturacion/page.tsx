@@ -218,7 +218,7 @@ export default function FacturacionPage() {
                               onClick={async () => {
                                 if (!token) return;
                                 try {
-                                  const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'https://evaluacion-desempeno-api.onrender.com'}/invoices/${inv.id}/pdf`, { headers: { Authorization: `Bearer ${token}` } });
+                                  const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'https://evaluacion-desempeno-api.onrender.com'}/invoices/${inv.id}/pdf`, { credentials: 'include' });
                                   if (!res.ok) throw new Error('Error');
                                   const blob = await res.blob();
                                   const a = document.createElement('a');
