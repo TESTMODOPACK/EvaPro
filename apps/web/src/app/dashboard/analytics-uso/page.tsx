@@ -147,7 +147,7 @@ function SystemUsagePageContent() {
     if (!token) return;
     setError(null);
     fetch(`${API}/reports/analytics/system-usage`, {
-      headers: { Authorization: `Bearer ${token}` },
+      credentials: 'include',
     }).then(r => {
       if (!r.ok) throw new Error('Error al cargar los datos');
       return r.json();
@@ -159,7 +159,7 @@ function SystemUsagePageContent() {
     setExporting(format);
     try {
       const res = await fetch(`${API}/reports/analytics/system-usage/export?format=${format}`, {
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include',
       });
       if (!res.ok) throw new Error('Error al exportar');
       const blob = await res.blob();

@@ -142,7 +142,7 @@ export default function CycleDetailPage() {
     if (!token || !cycle?.id) return;
     const API = process.env.NEXT_PUBLIC_API_URL || 'https://evaluacion-desempeno-api.onrender.com';
     fetch(`${API}/evaluations/evaluation-cycles/${cycle.id}/history`, {
-      headers: { Authorization: `Bearer ${token}` },
+      credentials: 'include',
     }).then(r => r.ok ? r.json() : []).then(setCycleHistory).catch(() => {});
   }, [token, cycle?.id]);
 

@@ -396,7 +396,7 @@ export default function ContratosPage() {
                           if (!token) return;
                           try {
                             const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'https://evaluacion-desempeno-api.onrender.com'}/contracts/${c.id}/pdf`, {
-                              headers: { Authorization: `Bearer ${token}` },
+                              credentials: 'include',
                             });
                             if (!res.ok) throw new Error('Error al generar PDF');
                             const blob = await res.blob();

@@ -220,7 +220,7 @@ function AiUsageTab() {
   // Load tenants list for super_admin filter
   useEffect(() => {
     if (!token || !isSuperAdmin) return;
-    fetch(`${BASE_URL}/tenants`, { headers: { Authorization: `Bearer ${token}` } })
+    fetch(`${BASE_URL}/tenants`, { credentials: 'include' })
       .then(r => r.json()).then(setTenants).catch(() => []);
   }, [token, isSuperAdmin]);
 
@@ -230,10 +230,10 @@ function AiUsageTab() {
     const tenantParam = isSuperAdmin && selectedTenantId ? `&tenantId=${selectedTenantId}` : '';
     Promise.all([
       fetch(`${BASE_URL}/ai/usage-log?page=${page}&limit=${LIMIT}${tenantParam}`, {
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include',
       }).then(r => r.json()),
       !isSuperAdmin ? fetch(`${BASE_URL}/ai/usage`, {
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include',
       }).then(r => r.ok ? r.json() : null) : Promise.resolve(null),
     ]).then(([d, q]) => { setData(d); setQuota(q); })
       .catch(() => setData(null))

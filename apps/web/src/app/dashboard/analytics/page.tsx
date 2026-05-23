@@ -560,7 +560,7 @@ function AnalyticsPageContent() {
   // Load manager's department (only once, not per cycle)
   useEffect(() => {
     if (!isManager || !token || !userId) return;
-    fetch(`${BASE_URL}/users/${userId}`, { headers: { Authorization: `Bearer ${token}` } })
+    fetch(`${BASE_URL}/users/${userId}`, { credentials: 'include' })
       .then(r => r.ok ? r.json() : null)
       .then((u: any) => { if (u?.department) setMyDepartment(u.department); })
       .catch(() => {});
@@ -572,7 +572,7 @@ function AnalyticsPageContent() {
     setOrgAnalytics(null);
     setCompareDept('');
     fetch(`${BASE_URL}/reports/analytics?cycleId=${selectedCycleId}&scope=org`, {
-      headers: { Authorization: `Bearer ${token}` },
+      credentials: 'include',
     }).then(r => r.ok ? r.json() : null).then(setOrgAnalytics).catch(() => {});
   }, [isManager, token, selectedCycleId]);
 
@@ -585,7 +585,7 @@ function AnalyticsPageContent() {
     try {
       const url = `${BASE_URL}/reports/analytics/cycle/${selectedCycleId}/export?format=${format}`;
       const res = await fetch(url, {
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include',
       });
       if (!res.ok) throw new Error(t('analytics.exportError'));
       const blob = await res.blob();

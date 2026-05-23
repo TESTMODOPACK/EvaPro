@@ -260,7 +260,7 @@ export default function ReportesPage() {
       const params = new URLSearchParams({ cycleId: selectedCycleId, format });
       if (selectedSurveyId) params.set('surveyId', selectedSurveyId);
       const res = await fetch(`${BASE_URL}/reports/executive-dashboard/export?${params}`, {
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include',
       });
       if (!res.ok) throw new Error('Error al generar el reporte');
       const blob = await res.blob();

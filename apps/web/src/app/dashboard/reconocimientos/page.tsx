@@ -286,7 +286,7 @@ function ReconocimientosPageContent() {
     if (!token) return;
     setExporting(format);
     try {
-      const res = await fetch(`${BASE_URL}/recognition/export?format=${format}`, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch(`${BASE_URL}/recognition/export?format=${format}`, { credentials: 'include' });
       if (!res.ok) throw new Error('Error');
       const blob = await res.blob();
       const link = document.createElement('a');

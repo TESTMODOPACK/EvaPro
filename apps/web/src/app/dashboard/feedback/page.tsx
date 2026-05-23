@@ -1514,7 +1514,7 @@ function FeedbackPageContent() {
     setExporting(format);
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'https://evaluacion-desempeno-api.onrender.com'}/feedback/export?format=${format}`, {
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include',
       });
       if (!res.ok) throw new Error('Error al exportar');
       const blob = await res.blob();

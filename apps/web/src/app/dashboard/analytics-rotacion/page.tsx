@@ -75,8 +75,8 @@ function TurnoverPageContent() {
     if (!token) return;
     setError(null);
     Promise.all([
-      fetch(`${API}/reports/analytics/turnover`, { headers: { Authorization: `Bearer ${token}` } }).then(r => { if (!r.ok) throw new Error('Error al cargar rotación'); return r.json(); }),
-      fetch(`${API}/reports/analytics/movements?from=${movFrom}&to=${movTo}`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.ok ? r.json() : null),
+      fetch(`${API}/reports/analytics/turnover`, { credentials: 'include' }).then(r => { if (!r.ok) throw new Error('Error al cargar rotación'); return r.json(); }),
+      fetch(`${API}/reports/analytics/movements?from=${movFrom}&to=${movTo}`, { credentials: 'include' }).then(r => r.ok ? r.json() : null),
     ]).then(([turnover, movements]) => {
       setData(turnover);
       setMovData(movements);
@@ -98,7 +98,7 @@ function TurnoverPageContent() {
     try {
       const r = await fetch(
         `${API}/reports/analytics/movements?from=${movFrom}&to=${movTo}`,
-        { headers: { Authorization: `Bearer ${token}` } },
+        { credentials: 'include' },
       );
       if (!r.ok) throw new Error('Error al cargar movimientos');
       const data = await r.json();
@@ -116,7 +116,7 @@ function TurnoverPageContent() {
     try {
       const res = await fetch(
         `${API}/reports/analytics/turnover/export?format=${format}`,
-        { headers: { Authorization: `Bearer ${token}` } },
+        { credentials: 'include' },
       );
       if (!res.ok) throw new Error('Error al exportar');
       const blob = await res.blob();

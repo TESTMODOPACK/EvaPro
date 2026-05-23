@@ -138,7 +138,7 @@ function DesarrolloPageContent() {
     setExporting(format);
     try {
       const res = await fetch(`${BASE_URL}/development/plans/export?format=${format}`, {
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include',
       });
       if (!res.ok) throw new Error('Error');
       const blob = await res.blob();

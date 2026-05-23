@@ -73,7 +73,7 @@ export default function ResultadosEncuestaPage() {
     setExporting(format);
     try {
       const res = await fetch(`${BASE_URL}/surveys/${surveyId}/export?format=${format}`, {
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include',
       });
       if (!res.ok) throw new Error('Error al exportar');
       const blob = await res.blob();

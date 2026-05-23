@@ -1050,7 +1050,7 @@ function TalentoPageContent() {
     setExporting(format);
     try {
       const res = await fetch(`${BASE_URL}/talent/cycle/${selectedCycleId}/export?format=${format}`, {
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include',
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ message: 'Error al exportar' }));
