@@ -14,6 +14,13 @@ export enum StageType {
   SELF_EVALUATION = 'self_evaluation',
   MANAGER_EVALUATION = 'manager_evaluation',
   PEER_EVALUATION = 'peer_evaluation',
+  // Nuevo (mayo 2026, con el realineamiento taxonomía estándar): el
+  // 360° agrega una etapa dedicada para los reportes directos del
+  // evaluado. Permite que advance-stage valide la completitud de los
+  // assignments DIRECT_REPORT (mismo patrón que SELF/MANAGER/PEER).
+  // Sin esta etapa, los assignments DIRECT_REPORT del 360° quedaban
+  // "huérfanos": creados pero el flujo no los esperaba para avanzar.
+  DIRECT_REPORT_EVALUATION = 'direct_report_evaluation',
   CALIBRATION = 'calibration',
   FEEDBACK_DELIVERY = 'feedback_delivery',
   CLOSED = 'closed',

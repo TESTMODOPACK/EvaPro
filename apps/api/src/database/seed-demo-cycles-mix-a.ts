@@ -68,18 +68,22 @@ const MEJORAS = [
 // Cycle types — defaults de pesos por cycle type
 // ────────────────────────────────────────────────────────────────────────
 
+// Alineado con DEFAULT_WEIGHTS_BY_CYCLE_TYPE en
+// src/modules/templates/constants/sub-template-defaults.ts (convención
+// estándar mayo 2026). Si cambian los pesos canónicos, sincronizar acá.
 const DEFAULT_WEIGHTS: Record<string, Record<string, number>> = {
-  '90': { manager: 0.7, self: 0.3 },
-  '180': { manager: 0.45, self: 0.25, peer: 0.30 },
-  '270': { manager: 0.35, self: 0.20, peer: 0.20, direct_report: 0.25 },
-  '360': { manager: 0.30, self: 0.20, peer: 0.25, direct_report: 0.25 },
+  '90': { manager: 1.0 },
+  '180': { manager: 0.7, self: 0.3 },
+  '270': { manager: 0.5, self: 0.2, peer: 0.3 },
+  '360': { manager: 0.35, self: 0.15, peer: 0.25, direct_report: 0.25 },
 };
 
+// Alineado con ALLOWED_RELATIONS en evaluations.service.ts.
 const RELATIONS_BY_CYCLE_TYPE: Record<string, string[]> = {
-  '90': ['self', 'manager'],
-  '180': ['self', 'manager', 'peer'],
-  '270': ['self', 'manager', 'peer', 'direct_report'],
-  '360': ['self', 'manager', 'peer', 'direct_report'],
+  '90': ['manager'],
+  '180': ['manager', 'self'],
+  '270': ['manager', 'self', 'peer'],
+  '360': ['manager', 'self', 'peer', 'direct_report'],
 };
 
 // ────────────────────────────────────────────────────────────────────────

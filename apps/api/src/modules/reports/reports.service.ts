@@ -3,7 +3,7 @@ import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/commo
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 // jsPDF and autoTable loaded dynamically in export methods to avoid ESM issues
-import { EvaluationCycle } from '../evaluations/entities/evaluation-cycle.entity';
+import { EvaluationCycle, CycleStatus, CycleType } from '../evaluations/entities/evaluation-cycle.entity';
 import { EvaluationAssignment, AssignmentStatus, RelationType } from '../evaluations/entities/evaluation-assignment.entity';
 import { EvaluationResponse } from '../evaluations/entities/evaluation-response.entity';
 import { CycleOrgSnapshot } from '../evaluations/entities/cycle-org-snapshot.entity';
@@ -907,8 +907,39 @@ export class ReportsService {
 
   // ─── Performance History ────────────────────────────────────────────────
 
+  /**
+   * Mapa canónico de relationTypes válidos por tipo de ciclo. Espejo
+   * del ALLOWED_RELATIONS de EvaluationsService — debe mantenerse
+   * sincronizado. Convención estándar (alineamiento mayo 2026):
+   *
+   *   90°  — solo manager (top-down puro; sin autoevaluación).
+   *   180° — manager + self (agrega autoevaluación).
+   *   270° — manager + self + peer (agrega pares).
+   *   360° — manager + self + peer + direct_report (+ external opcional).
+   *
+   * Por qué clamp en el reporte (no sólo en la creación de assignments):
+   * ciclos CLOSED creados ANTES del alineamiento de taxonomía pueden
+   * tener assignments con relationTypes que la regla actual ya no
+   * admite (p.ej. un 180° histórico con assignments PEER). El clamp
+   * estricto oculta esos scores antiguos para que el informe sea
+   * coherente con la convención vigente — decisión de producto.
+   */
+  private static readonly ALLOWED_RELATIONS_BY_CYCLE_TYPE: Record<string, ReadonlySet<RelationType>> = {
+    [CycleType.DEGREE_90]:  new Set([RelationType.MANAGER]),
+    [CycleType.DEGREE_180]: new Set([RelationType.SELF, RelationType.MANAGER]),
+    [CycleType.DEGREE_270]: new Set([RelationType.SELF, RelationType.MANAGER, RelationType.PEER]),
+    [CycleType.DEGREE_360]: new Set([
+      RelationType.SELF, RelationType.MANAGER, RelationType.PEER,
+      RelationType.DIRECT_REPORT, RelationType.EXTERNAL,
+    ]),
+  };
+
   async getPerformanceHistory(tenantId: string, userId: string, filters?: { cycleType?: string }) {
-    const whereClause: any = { tenantId };
+    // Bugfix 1: solo ciclos CERRADOS. El informe individual debe
+    // reflejar scores firmes (snapshot post-cierre). Antes traía
+    // DRAFT/ACTIVE/PAUSED/CANCELLED por igual → mostraba el ciclo del
+    // trimestre en curso con scores provisionales junto al histórico.
+    const whereClause: any = { tenantId, status: CycleStatus.CLOSED };
     if (filters?.cycleType) {
       whereClause.type = filters.cycleType;
     }
@@ -971,11 +1002,25 @@ export class ReportsService {
       const cycleAssignments = assignmentsByCycle.get(cycle.id);
       if (!cycleAssignments || cycleAssignments.length === 0) continue;
 
+      // Clamp por cycleType — descartar relationTypes que NO aplican al
+      // tipo de ciclo bajo la convención vigente. Cubre dos casos:
+      //   (a) ciclos CLOSED anteriores al alineamiento de taxonomía con
+      //       assignments que la nueva regla ya no admite (p.ej. PEER
+      //       en un 180° histórico);
+      //   (b) defensa contra futuros datos inconsistentes si alguna
+      //       ruta de creación se desincroniza del mapa canónico.
+      // Si el cycleType es desconocido (legacy/corruption), set vacío
+      // → no se reporta ningún score (fail-safe).
+      const allowed =
+        ReportsService.ALLOWED_RELATIONS_BY_CYCLE_TYPE[String(cycle.type)] ??
+        new Set<RelationType>();
+
       const scoresByType: Record<string, number[]> = {
         self: [], manager: [], peer: [], direct_report: [],
       };
 
       for (const a of cycleAssignments) {
+        if (!allowed.has(a.relationType)) continue; // descarta datos sucios
         const resp = responseByAssignment.get(a.id);
         if (resp?.overallScore != null) {
           const key = a.relationType;

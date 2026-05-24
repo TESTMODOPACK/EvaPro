@@ -483,6 +483,10 @@ export class EvaluationsService {
         { name: 'Autoevaluación', type: StageType.SELF_EVALUATION },
         { name: 'Evaluación del Encargado', type: StageType.MANAGER_EVALUATION },
         { name: 'Evaluación de Pares', type: StageType.PEER_EVALUATION },
+        // Nueva etapa (alineamiento estándar mayo 2026): el 360° agrega
+        // direct_report como 4ª perspectiva; corresponde una etapa
+        // dedicada a esperar su completitud antes de calibrar.
+        { name: 'Evaluación de Reportes Directos', type: StageType.DIRECT_REPORT_EVALUATION },
         { name: 'Calibración', type: StageType.CALIBRATION },
         { name: 'Entrega de Feedback', type: StageType.FEEDBACK_DELIVERY },
         { name: 'Cierre', type: StageType.CLOSED },
@@ -606,6 +610,17 @@ export class EvaluationsService {
       if (pendingPeer > 0) {
         throw new BadRequestException(
           `No se puede avanzar: quedan ${pendingPeer} evaluación(es) de pares pendiente(s)`,
+        );
+      }
+    }
+
+    if (stage.type === StageType.DIRECT_REPORT_EVALUATION) {
+      const pendingDirectReport = await this.assignmentRepo.count({
+        where: { cycleId, tenantId, relationType: RelationType.DIRECT_REPORT, status: openStatuses },
+      });
+      if (pendingDirectReport > 0) {
+        throw new BadRequestException(
+          `No se puede avanzar: quedan ${pendingDirectReport} evaluación(es) de reportes directos pendiente(s)`,
         );
       }
     }
@@ -745,25 +760,33 @@ export class EvaluationsService {
 
   // ─── Allowed relation types per cycle type ──────────────────────────────
   //
-  // Definicion estandar de la industria:
-  //   90°  = Autoevaluacion + Manager
-  //   180° = Autoevaluacion + Manager + Pares
-  //   270° = Autoevaluacion + Manager + Pares + Reportes Directos
-  //   360° = Autoevaluacion + Manager + Pares + Reportes Directos + Externos
+  // Convención estándar de 360° feedback (decisión de producto, mayo 2026):
+  //   90°  = Manager (top-down puro)
+  //   180° = Manager + Autoevaluación
+  //   270° = Manager + Autoevaluación + Pares
+  //   360° = Manager + Autoevaluación + Pares + Reportes Directos
   //
-  // El mapping anterior (pre-fix Fase 1) tenia los tipos corridos un nivel —
-  // 90° solo creaba MANAGER (sin SELF), 180° no creaba PEER, etc. Los
-  // assignments generados no coincidian con la definicion del producto.
-  // Ver `docs/F4-RLS-PLAN.md` y la auditoria de evaluaciones.
+  // El mapping previo a este commit estaba "corrido una posición a la
+  // derecha" — 90° creaba SELF+MANAGER, 180° agregaba PEER, 270° agregaba
+  // DIRECT_REPORT, y 360° era idéntico al 270° (solo se diferenciaba por
+  // la etapa CALIBRATION). Producto decidió alinear los nombres a la
+  // convención estándar de la literatura (Bracken & Rose, 360° feedback).
+  // El 360° conserva la etapa CALIBRATION como característica adicional
+  // sobre el 270° (ver generateStagesForCycle).
+  //
+  // Templates customizados por tenants que tengan subplantillas para
+  // relationTypes no permitidos por la nueva regla: launchCycle los
+  // ignora silenciosamente (decisión de producto — no bloquea operaciones).
+  // validatePeerAssignment SÍ rechaza inserciones manuales que violen la
+  // regla nueva (BadRequest con mensaje claro).
   //
   // Externos (`RelationType.EXTERNAL`) NO se auto-asignan: son agregados
-  // manualmente por el admin cuando un cliente/proveedor evalua. Por eso
-  // 360° aqui solo lista los 4 roles internos auto-derivables del organigrama.
+  // manualmente por el admin cuando un cliente/proveedor externo evalúa.
   private readonly ALLOWED_RELATIONS: Record<string, RelationType[]> = {
-    [CycleType.DEGREE_90]: [RelationType.SELF, RelationType.MANAGER],
-    [CycleType.DEGREE_180]: [RelationType.SELF, RelationType.MANAGER, RelationType.PEER],
-    [CycleType.DEGREE_270]: [RelationType.SELF, RelationType.MANAGER, RelationType.PEER, RelationType.DIRECT_REPORT],
-    [CycleType.DEGREE_360]: [RelationType.SELF, RelationType.MANAGER, RelationType.PEER, RelationType.DIRECT_REPORT],
+    [CycleType.DEGREE_90]: [RelationType.MANAGER],
+    [CycleType.DEGREE_180]: [RelationType.MANAGER, RelationType.SELF],
+    [CycleType.DEGREE_270]: [RelationType.MANAGER, RelationType.SELF, RelationType.PEER],
+    [CycleType.DEGREE_360]: [RelationType.MANAGER, RelationType.SELF, RelationType.PEER, RelationType.DIRECT_REPORT],
   };
 
   private getAllowedRelations(cycleType: CycleType): RelationType[] {
