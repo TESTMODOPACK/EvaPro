@@ -22,11 +22,11 @@ describe('SafeJsonInterceptor', () => {
   let mockAudit: { logFailure: jest.Mock };
   let mockNext: { handle: jest.Mock };
 
-  const ctxWithRequest = (req: any): ExecutionContext =>
+  const ctxWithRequest = (req: any, res: any = {}): ExecutionContext =>
     ({
       switchToHttp: () => ({
         getRequest: () => req,
-        getResponse: () => ({}),
+        getResponse: () => res,
       }),
     } as ExecutionContext);
 
@@ -143,6 +143,26 @@ describe('SafeJsonInterceptor', () => {
       );
 
       expect(result).toBe(stream);
+      expect(mockAudit.logFailure).not.toHaveBeenCalled();
+    });
+
+    it('body === res (handler `@Res()` + return res.send()) → pasa intacto, NO audit', async () => {
+      // Simula Response con ciclo real (socket → parser → socket).
+      const socket: any = {};
+      const parser: any = { socket };
+      socket.parser = parser;
+      const res: any = { socket, headersSent: true, send: jest.fn() };
+      mockNext.handle.mockReturnValueOnce(of(res));
+
+      const result = await drainObservable(
+        interceptor.intercept(
+          ctxWithRequest({ method: 'GET', url: '/x' }, res),
+          mockNext as unknown as CallHandler,
+        ),
+      );
+
+      // Devolvió el res sin tocar, sin disparar audit falso-positivo.
+      expect(result).toBe(res);
       expect(mockAudit.logFailure).not.toHaveBeenCalled();
     });
   });

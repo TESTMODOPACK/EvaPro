@@ -46,11 +46,20 @@ export class SafeJsonInterceptor implements NestInterceptor {
   constructor(@Optional() private readonly auditService?: AuditService) {}
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
+    const res = context.switchToHttp().getResponse();
     return next.handle().pipe(
       map((body) => {
         if (body == null || typeof body !== 'object') return body;
         if (Buffer.isBuffer(body)) return body;
         if (typeof (body as any).pipe === 'function') return body; // Streams
+        // Handlers que usan `@Res()` (sin passthrough) + `return res.send(x)`
+        // retornan el propio `res` (Express Response). NestJS no lo
+        // serializa (porque detecta passthrough:false), pero este map
+        // todavía corre. Si lo procesáramos, el probe-stringify
+        // fallaría con cycle (socket→parser→socket) y dispararíamos
+        // un audit falso-positivo. Skipear cuando body === res es la
+        // detección más precisa (1 referencia identity, sin duck-typing).
+        if (body === res) return body;
 
         try {
           // Probe: si el body es serializable, no tocamos nada.
