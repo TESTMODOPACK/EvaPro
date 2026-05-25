@@ -17,34 +17,35 @@ import { RelationType } from '../../evaluations/entities/evaluation-assignment.e
 /**
  * Pesos por defecto por cycle type. Suma siempre = 1.000.
  *
- * Justificación de los pesos sugeridos:
- *   - 90: el manager domina (70%), self da contexto pero no decide (30%).
- *   - 180: manager sigue siendo el eje (45%), self+peer dividen el resto.
- *   - 270: aparece direct_report con peso significativo (25% — los
- *     subordinados son los principales testigos del liderazgo).
- *   - 360: balance casi simétrico (manager 30%, peer 25%, dr 25%, self 20%).
+ * Convención estándar de 360° feedback (decisión de producto mayo 2026 —
+ * alineamiento con la literatura de Bracken & Rose):
+ *   - 90°  : Manager (1.00) — top-down puro, sin autoevaluación.
+ *   - 180° : Manager (0.70) + Self (0.30) — agrega autoevaluación.
+ *   - 270° : Manager (0.50) + Self (0.20) + Peer (0.30) — agrega pares.
+ *   - 360° : Manager (0.35) + Self (0.15) + Peer (0.25) + Direct Report
+ *            (0.25) — agrega reportes directos. Además incluye una etapa
+ *            adicional de Calibración (ver generateStagesForCycle).
  *
- * Estos defaults son industria-estándar pero el admin puede sobrescribirlos.
+ * Los pesos previos a este commit asumían una taxonomía corrida una
+ * posición (90° incluía self, 180° incluía peer, etc.). El admin puede
+ * sobrescribir los defaults en el editor de subplantillas.
  */
 export const DEFAULT_WEIGHTS_BY_CYCLE_TYPE: Record<string, Partial<Record<RelationType, number>>> = {
   '90': {
+    [RelationType.MANAGER]: 1.000,
+  },
+  '180': {
     [RelationType.MANAGER]: 0.700,
     [RelationType.SELF]: 0.300,
   },
-  '180': {
-    [RelationType.MANAGER]: 0.450,
-    [RelationType.SELF]: 0.250,
+  '270': {
+    [RelationType.MANAGER]: 0.500,
+    [RelationType.SELF]: 0.200,
     [RelationType.PEER]: 0.300,
   },
-  '270': {
-    [RelationType.MANAGER]: 0.350,
-    [RelationType.SELF]: 0.200,
-    [RelationType.PEER]: 0.200,
-    [RelationType.DIRECT_REPORT]: 0.250,
-  },
   '360': {
-    [RelationType.MANAGER]: 0.300,
-    [RelationType.SELF]: 0.200,
+    [RelationType.MANAGER]: 0.350,
+    [RelationType.SELF]: 0.150,
     [RelationType.PEER]: 0.250,
     [RelationType.DIRECT_REPORT]: 0.250,
   },

@@ -45,11 +45,12 @@ if (!DATABASE_URL) {
   process.exit(1);
 }
 
-// ─── Plantilla 1: 90° (manager + self) ─────────────────────────────────
+// ─── Plantilla 1: 180° (manager + self) ────────────────────────────────
+// Convención estándar mayo 2026: manager + self = 180° (antes era "90°").
 
-const T1_NAME = 'Demo · Evaluación 90° con Subplantillas';
+const T1_NAME = 'Demo · Evaluación 180° con Subplantillas';
 const T1_DESC =
-  'Plantilla demo Fase 3 — evaluación 90° con subplantilla manager (peso 0.7) y self (peso 0.3).';
+  'Plantilla demo — evaluación 180° con subplantilla manager (peso 0.7) y self (peso 0.3).';
 
 const T1_PARENT_SECTIONS: any[] = [
   // Sections del padre quedan vacías a propósito en plantillas Fase 3:
@@ -107,11 +108,12 @@ const T1_SUB_SELF_SECTIONS = [
   },
 ];
 
-// ─── Plantilla 2: 180° (manager + self + peer) ─────────────────────────
+// ─── Plantilla 2: 270° (manager + self + peer) ─────────────────────────
+// Convención estándar mayo 2026: manager + self + peer = 270° (antes era "180°").
 
-const T2_NAME = 'Demo · Evaluación 180° con Subplantillas';
+const T2_NAME = 'Demo · Evaluación 270° con Subplantillas';
 const T2_DESC =
-  'Plantilla demo Fase 3 — evaluación 180° con subplantilla manager (0.45), self (0.25) y peer (0.30).';
+  'Plantilla demo — evaluación 270° con subplantilla manager (0.50), self (0.20) y peer (0.30).';
 
 const T2_PARENT_SECTIONS: any[] = [];
 
@@ -226,7 +228,7 @@ async function run(): Promise<void> {
         name: T1_NAME,
         description: T1_DESC,
         sections: T1_PARENT_SECTIONS,
-        defaultCycleType: '90',
+        defaultCycleType: '180',
       });
       if (t1Id.created) {
         await insertSubTemplate(client, tenantId, t1Id.id, {
@@ -250,18 +252,18 @@ async function run(): Promise<void> {
         name: T2_NAME,
         description: T2_DESC,
         sections: T2_PARENT_SECTIONS,
-        defaultCycleType: '180',
+        defaultCycleType: '270',
       });
       if (t2Id.created) {
         await insertSubTemplate(client, tenantId, t2Id.id, {
           relationType: 'manager',
-          weight: 0.450,
+          weight: 0.500,
           displayOrder: 2,
           sections: T2_SUB_MANAGER_SECTIONS,
         });
         await insertSubTemplate(client, tenantId, t2Id.id, {
           relationType: 'self',
-          weight: 0.250,
+          weight: 0.200,
           displayOrder: 1,
           sections: T2_SUB_SELF_SECTIONS,
         });

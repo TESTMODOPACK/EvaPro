@@ -34,24 +34,30 @@ describe('DEFAULT_WEIGHTS_BY_CYCLE_TYPE', () => {
     });
   });
 
-  it('90° tiene exactamente 2 roles (manager + self)', () => {
+  // Convención estándar (alineamiento mayo 2026): cada cycleType agrega
+  // UNA perspectiva sobre el anterior. 360° agrega además calibración
+  // (etapa) pero a nivel de perspectivas es 270° + direct_report.
+
+  it('90° tiene SOLO manager (top-down puro)', () => {
     const w = DEFAULT_WEIGHTS_BY_CYCLE_TYPE['90'];
     const roles = Object.keys(w);
-    expect(roles).toEqual(expect.arrayContaining([RelationType.MANAGER, RelationType.SELF]));
+    expect(roles).toEqual([RelationType.MANAGER]);
+    expect(roles).not.toContain(RelationType.SELF);
     expect(roles).not.toContain(RelationType.PEER);
     expect(roles).not.toContain(RelationType.DIRECT_REPORT);
   });
 
-  it('180° tiene 3 roles (manager + self + peer)', () => {
+  it('180° tiene 2 roles (manager + self)', () => {
     const w = DEFAULT_WEIGHTS_BY_CYCLE_TYPE['180'];
     const roles = Object.keys(w);
     expect(roles).toEqual(
-      expect.arrayContaining([RelationType.MANAGER, RelationType.SELF, RelationType.PEER]),
+      expect.arrayContaining([RelationType.MANAGER, RelationType.SELF]),
     );
+    expect(roles).not.toContain(RelationType.PEER);
     expect(roles).not.toContain(RelationType.DIRECT_REPORT);
   });
 
-  it('270° tiene 4 roles (manager + self + peer + direct_report)', () => {
+  it('270° tiene 3 roles (manager + self + peer)', () => {
     const w = DEFAULT_WEIGHTS_BY_CYCLE_TYPE['270'];
     const roles = Object.keys(w);
     expect(roles).toEqual(
@@ -59,12 +65,12 @@ describe('DEFAULT_WEIGHTS_BY_CYCLE_TYPE', () => {
         RelationType.MANAGER,
         RelationType.SELF,
         RelationType.PEER,
-        RelationType.DIRECT_REPORT,
       ]),
     );
+    expect(roles).not.toContain(RelationType.DIRECT_REPORT);
   });
 
-  it('360° tiene 4 roles (mismo que 270 + etapa de calibracion)', () => {
+  it('360° tiene 4 roles (270° + direct_report); incluye etapa de calibración', () => {
     const w = DEFAULT_WEIGHTS_BY_CYCLE_TYPE['360'];
     const roles = Object.keys(w);
     expect(roles).toEqual(
@@ -75,9 +81,13 @@ describe('DEFAULT_WEIGHTS_BY_CYCLE_TYPE', () => {
         RelationType.DIRECT_REPORT,
       ]),
     );
+    // 360° tiene MÁS roles que 270° (el direct_report es el agregado).
+    expect(roles.length).toBeGreaterThan(
+      Object.keys(DEFAULT_WEIGHTS_BY_CYCLE_TYPE['270']).length,
+    );
   });
 
-  it('manager tiene mas peso en 90 que en 360 (industria)', () => {
+  it('manager tiene mas peso en 90 que en 360 (más roles → menor concentración)', () => {
     expect(DEFAULT_WEIGHTS_BY_CYCLE_TYPE['90'][RelationType.MANAGER]!).toBeGreaterThan(
       DEFAULT_WEIGHTS_BY_CYCLE_TYPE['360'][RelationType.MANAGER]!,
     );
@@ -108,32 +118,35 @@ describe('SUB_TEMPLATE_DISPLAY_ORDER', () => {
 });
 
 describe('getRelationsForCycleType', () => {
-  it('90 retorna [self, manager] en ese orden', () => {
-    expect(getRelationsForCycleType('90')).toEqual([
+  // Orden = SUB_TEMPLATE_DISPLAY_ORDER: self(1), manager(2), peer(3),
+  // direct_report(4). Como el 90° NO incluye self, su orden empieza
+  // directo en manager.
+  it('90 retorna [manager]', () => {
+    expect(getRelationsForCycleType('90')).toEqual([RelationType.MANAGER]);
+  });
+
+  it('180 retorna [self, manager] en ese orden de visualización', () => {
+    expect(getRelationsForCycleType('180')).toEqual([
       RelationType.SELF,
       RelationType.MANAGER,
     ]);
   });
 
-  it('180 retorna [self, manager, peer] en ese orden', () => {
-    expect(getRelationsForCycleType('180')).toEqual([
+  it('270 retorna [self, manager, peer]', () => {
+    expect(getRelationsForCycleType('270')).toEqual([
       RelationType.SELF,
       RelationType.MANAGER,
       RelationType.PEER,
     ]);
   });
 
-  it('270 retorna [self, manager, peer, direct_report]', () => {
-    expect(getRelationsForCycleType('270')).toEqual([
+  it('360 agrega direct_report sobre el 270', () => {
+    expect(getRelationsForCycleType('360')).toEqual([
       RelationType.SELF,
       RelationType.MANAGER,
       RelationType.PEER,
       RelationType.DIRECT_REPORT,
     ]);
-  });
-
-  it('360 retorna los mismos 4 que 270', () => {
-    expect(getRelationsForCycleType('360')).toEqual(getRelationsForCycleType('270'));
   });
 
   it('cycle type invalido retorna []', () => {

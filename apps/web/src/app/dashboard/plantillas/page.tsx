@@ -1192,10 +1192,10 @@ export default function PlantillasPage() {
               </label>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.5rem' }}>
                 {[
-                  { type: '90', label: '90° — Jefatura + Auto', desc: '2 subplantillas (manager + self)' },
-                  { type: '180', label: '180° — + Pares', desc: '3 subplantillas (+ peer)' },
-                  { type: '270', label: '270° — + Reportes directos', desc: '4 subplantillas (+ direct_report)' },
-                  { type: '360', label: '360° — Completa', desc: '4 subplantillas + calibración' },
+                  { type: '90', label: '90° — Jefatura', desc: '1 subplantilla (solo manager — top-down puro)' },
+                  { type: '180', label: '180° — + Autoevaluación', desc: '2 subplantillas (manager + self)' },
+                  { type: '270', label: '270° — + Pares', desc: '3 subplantillas (+ peer)' },
+                  { type: '360', label: '360° — Completa', desc: '4 subplantillas (+ direct_report) + calibración' },
                 ].map((opt) => {
                   const isActive = quickCycleType === opt.type;
                   return (

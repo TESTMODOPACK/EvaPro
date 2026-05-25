@@ -803,10 +803,13 @@ export class TemplatesService {
     };
 
     const types = [
-      { type: '90', name: 'Evaluación 90° — Jefatura + Auto', desc: 'Evaluación del supervisor combinada con la autoevaluación del colaborador. Cada perspectiva ve solo sus preguntas (filtrado por rol).' },
-      { type: '180', name: 'Evaluación 180° — Jefatura + Auto + Pares', desc: 'Suma la perspectiva de pares al 90° estándar. Cada evaluador (manager / colaborador / par) responde un set de preguntas distinto adaptado a su rol.' },
-      { type: '270', name: 'Evaluación 270° — Jefatura + Auto + Pares + Reportes directos', desc: 'Incluye además a los reportes directos del evaluado, que evalúan la calidad del liderazgo recibido.' },
-      { type: '360', name: 'Evaluación 360° — Completa', desc: 'Evaluación integral: supervisor, autoevaluación, pares y reportes directos. Equivalente al 270° con etapa adicional de calibración.' },
+      // Convención estándar (alineamiento mayo 2026): cada nivel agrega
+      // UNA perspectiva sobre el anterior. El 360° agrega además etapa
+      // de calibración.
+      { type: '90', name: 'Evaluación 90° — Jefatura', desc: 'Evaluación top-down: solo el supervisor evalúa al colaborador. La perspectiva más simple y tradicional.' },
+      { type: '180', name: 'Evaluación 180° — Jefatura + Autoevaluación', desc: 'Agrega la perspectiva del propio colaborador (autoevaluación) a la mirada de jefatura.' },
+      { type: '270', name: 'Evaluación 270° — Jefatura + Autoevaluación + Pares', desc: 'Suma la perspectiva de pares (colegas del mismo nivel) al 180°. Cada evaluador responde un set de preguntas adaptado a su rol.' },
+      { type: '360', name: 'Evaluación 360° — Completa', desc: 'Evaluación integral con las cuatro perspectivas: jefatura, autoevaluación, pares y reportes directos. Incluye etapa adicional de calibración para alinear criterios entre evaluadores.' },
     ];
 
     const templates: FormTemplate[] = [];
@@ -1066,17 +1069,25 @@ export class TemplatesService {
   }
 
   /**
-   * Infiere el cycle type a partir de los roles presentes:
-   *   - {self, manager}                                  → 90
-   *   - {self, manager, peer}                            → 180
-   *   - {self, manager, peer, direct_report}             → 270 (default)
-   *   - {self, manager, peer, direct_report, external}   → 360
+   * Infiere el cycle type a partir de los roles presentes (convención
+   * estándar mayo 2026 — espejo de ALLOWED_RELATIONS en evaluations.service):
+   *   - {manager}                                  → 90   (top-down puro)
+   *   - {manager, self}                            → 180  (+ autoevaluación)
+   *   - {manager, self, peer}                      → 270  (+ pares)
+   *   - {manager, self, peer, direct_report}       → 360  (+ reportes directos)
+   *
+   * EXTERNAL no determina cycleType (se agrega manualmente al ciclo cuando
+   * un evaluador externo es invitado).
+   *
+   * El check empieza por el rol más "alto" (direct_report) y baja: un set
+   * completo se clasifica como 360°, un set parcial baja al cycleType más
+   * específico que lo contenga.
    */
   private inferCycleTypeFromRelations(rels: RelationType[]): string | null {
     const set = new Set(rels);
-    if (set.has(RelationType.EXTERNAL)) return '360';
-    if (set.has(RelationType.DIRECT_REPORT)) return '270';
-    if (set.has(RelationType.PEER)) return '180';
+    if (set.has(RelationType.DIRECT_REPORT)) return '360';
+    if (set.has(RelationType.PEER)) return '270';
+    if (set.has(RelationType.SELF)) return '180';
     if (set.has(RelationType.MANAGER)) return '90';
     return null;
   }

@@ -150,11 +150,16 @@ async function main() {
       VALUES ($1, $2, $3, $4, 'closed', $5, $6, $7, $8, $9, '{}', $10)
     `, [cycleId, tenantId, config.name, config.type, config.period, config.start, config.end, config.template.id, admin?.id, evaluatees.length]);
 
-    // Create stages
+    // Create stages — alineado con generateStagesForCycle (taxonomía mayo 2026):
+    //   90  → manager + feedback + closed              (NO self)
+    //   180 → self + manager + feedback + closed
+    //   270 → self + manager + peer + feedback + closed
+    //   360 → self + manager + peer + direct_report + calibration + feedback + closed
     const stageTypes: { name: string; type: string }[] = [];
     if (['180', '270', '360'].includes(config.type)) stageTypes.push({ name: 'Autoevaluación', type: 'self_evaluation' });
     stageTypes.push({ name: 'Evaluación Jefatura', type: 'manager_evaluation' });
     if (['270', '360'].includes(config.type)) stageTypes.push({ name: 'Evaluación de Pares', type: 'peer_evaluation' });
+    if (config.type === '360') stageTypes.push({ name: 'Evaluación de Reportes Directos', type: 'direct_report_evaluation' });
     if (config.type === '360') stageTypes.push({ name: 'Calibración', type: 'calibration' });
     stageTypes.push({ name: 'Entrega de Feedback', type: 'feedback_delivery' });
     stageTypes.push({ name: 'Cerrado', type: 'closed' });
@@ -191,14 +196,15 @@ async function main() {
     }
 
     // Determine relation types per cycle type — alineado con ALLOWED_RELATIONS
-    // de evaluations.service.ts (Fase 1 plan auditoria evaluaciones):
-    //   90  → self + manager
-    //   180 → self + manager + peer
-    //   270 → self + manager + peer + direct_report
-    //   360 → self + manager + peer + direct_report (igual que 270 + calibracion)
-    const relationTypes: string[] = ['self', 'manager'];
-    if (['180', '270', '360'].includes(config.type)) relationTypes.push('peer');
-    if (['270', '360'].includes(config.type)) relationTypes.push('direct_report');
+    // en evaluations.service.ts (convención estándar mayo 2026):
+    //   90  → manager                                       (top-down puro)
+    //   180 → manager + self                                (agrega autoeval)
+    //   270 → manager + self + peer                         (agrega pares)
+    //   360 → manager + self + peer + direct_report         (agrega reportes)
+    const relationTypes: string[] = ['manager'];
+    if (['180', '270', '360'].includes(config.type)) relationTypes.push('self');
+    if (['270', '360'].includes(config.type)) relationTypes.push('peer');
+    if (config.type === '360') relationTypes.push('direct_report');
 
     // Create assignments + responses
     let cycleAssignments = 0;
