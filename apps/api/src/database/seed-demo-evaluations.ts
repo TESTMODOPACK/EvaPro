@@ -129,10 +129,13 @@ async function main() {
   }
 
   // ── 4. Get templates ──
+  // ORDER: tenant first (NOT NULL antes que NULL) → si el tenant tiene
+  // plantillas propias (ej. "Demo · 90° Liderazgo"), el .find por keyword
+  // las elige antes que las globales genéricas (que tienen tenant_id=NULL).
   const templates = await ds.query(`
     SELECT id, name, sections FROM form_templates
     WHERE (tenant_id = $1 OR tenant_id IS NULL) AND status = 'published'
-    ORDER BY created_at ASC
+    ORDER BY (tenant_id IS NULL) ASC, created_at ASC
   `, [tenantId]);
   console.log(`\nTemplates found: ${templates.length}`);
   templates.forEach((t: any) => console.log(`  - ${t.name} (${t.id.slice(0, 8)})`));
