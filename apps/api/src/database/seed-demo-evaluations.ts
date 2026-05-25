@@ -67,6 +67,11 @@ async function main() {
     ssl: process.env.NODE_ENV === 'production' && process.env.DB_SSL !== 'false' ? { rejectUnauthorized: false } : false,
     synchronize: false,
     logging: false,
+    // Forzar pool single-connection para que el SET app.current_tenant_id
+    // persista en la misma sesión durante todo el script (RLS context).
+    // Sin esto, cada query puede tomar una conexión distinta del pool y
+    // perder el contexto seteado en la anterior.
+    extra: { max: 1 },
   });
 
   await ds.initialize();
@@ -77,6 +82,15 @@ async function main() {
   if (!tenantRow.length) { console.error('Demo Company not found'); process.exit(1); }
   const tenantId = tenantRow[0].id;
   console.log(`Tenant: ${tenantRow[0].name} (${tenantId})`);
+
+  // RLS context — necesario porque el script corre como eva360_app
+  // (no superuser) en producción. Sin esto, las RLS policies bloquean
+  // los INSERTs en evaluation_responses, evaluation_assignments, etc.
+  // con: "new row violates row-level security policy for table".
+  // Single-connection pool (extra.max=1) garantiza que este SET
+  // persista en TODAS las queries posteriores del script.
+  await ds.query(`SET app.current_tenant_id = '${tenantId}'`);
+  console.log(`RLS context set: app.current_tenant_id = ${tenantId}\n`);
 
   // ── 2. Get all users ──
   const users = await ds.query(`
