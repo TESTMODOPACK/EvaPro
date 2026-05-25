@@ -1069,17 +1069,25 @@ export class TemplatesService {
   }
 
   /**
-   * Infiere el cycle type a partir de los roles presentes:
-   *   - {self, manager}                                  → 90
-   *   - {self, manager, peer}                            → 180
-   *   - {self, manager, peer, direct_report}             → 270 (default)
-   *   - {self, manager, peer, direct_report, external}   → 360
+   * Infiere el cycle type a partir de los roles presentes (convención
+   * estándar mayo 2026 — espejo de ALLOWED_RELATIONS en evaluations.service):
+   *   - {manager}                                  → 90   (top-down puro)
+   *   - {manager, self}                            → 180  (+ autoevaluación)
+   *   - {manager, self, peer}                      → 270  (+ pares)
+   *   - {manager, self, peer, direct_report}       → 360  (+ reportes directos)
+   *
+   * EXTERNAL no determina cycleType (se agrega manualmente al ciclo cuando
+   * un evaluador externo es invitado).
+   *
+   * El check empieza por el rol más "alto" (direct_report) y baja: un set
+   * completo se clasifica como 360°, un set parcial baja al cycleType más
+   * específico que lo contenga.
    */
   private inferCycleTypeFromRelations(rels: RelationType[]): string | null {
     const set = new Set(rels);
-    if (set.has(RelationType.EXTERNAL)) return '360';
-    if (set.has(RelationType.DIRECT_REPORT)) return '270';
-    if (set.has(RelationType.PEER)) return '180';
+    if (set.has(RelationType.DIRECT_REPORT)) return '360';
+    if (set.has(RelationType.PEER)) return '270';
+    if (set.has(RelationType.SELF)) return '180';
     if (set.has(RelationType.MANAGER)) return '90';
     return null;
   }

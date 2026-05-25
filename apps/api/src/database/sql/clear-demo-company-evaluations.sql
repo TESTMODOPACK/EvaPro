@@ -173,7 +173,52 @@ BEGIN
   GET DIAGNOSTICS v_stage_count = ROW_COUNT;
   RAISE NOTICE '  ✅ cycle_stages eliminadas: %', v_stage_count;
 
-  -- 4.10 evaluation_cycles (raíz)
+  -- 4.10 cycle_evaluatee_weights — tabla agregada con auditoria integridad
+  --      (Sprint 2 BR-A.1: pesos efectivos cuando se aplicó redistribución).
+  --      Si no existe (instalaciones pre-Sprint 2), el IF EXISTS evita error.
+  IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'cycle_evaluatee_weights') THEN
+    DELETE FROM cycle_evaluatee_weights WHERE tenant_id = v_demo_tenant_id;
+    GET DIAGNOSTICS v_cycle_count = ROW_COUNT;
+    RAISE NOTICE '  ✅ cycle_evaluatee_weights eliminados: %', v_cycle_count;
+  END IF;
+
+  -- 4.11 cycle_org_snapshots — snapshot de la org al lanzar (Sprint 1 BR-C.1).
+  IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'cycle_org_snapshots') THEN
+    DELETE FROM cycle_org_snapshots WHERE tenant_id = v_demo_tenant_id;
+    GET DIAGNOSTICS v_cycle_count = ROW_COUNT;
+    RAISE NOTICE '  ✅ cycle_org_snapshots eliminados: %', v_cycle_count;
+  END IF;
+
+  -- 4.12 evaluation_objective_snapshots — snapshot de objetivos al lanzar.
+  IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'evaluation_objective_snapshots') THEN
+    DELETE FROM evaluation_objective_snapshots WHERE tenant_id = v_demo_tenant_id;
+    GET DIAGNOSTICS v_cycle_count = ROW_COUNT;
+    RAISE NOTICE '  ✅ evaluation_objective_snapshots eliminados: %', v_cycle_count;
+  END IF;
+
+  -- 4.13 development_plans / objectives — NO se borran (son entidades propias
+  --      que pueden vivir sin ciclo). Solo se desliga el cycle_id si apunta a
+  --      un ciclo del tenant DEMO (nullable, decisión de producto).
+  UPDATE development_plans SET cycle_id = NULL
+  WHERE cycle_id = ANY(v_cycle_ids);
+  GET DIAGNOSTICS v_cycle_count = ROW_COUNT;
+  RAISE NOTICE '  ✅ development_plans desligados: %', v_cycle_count;
+
+  UPDATE objectives SET cycle_id = NULL
+  WHERE cycle_id = ANY(v_cycle_ids);
+  GET DIAGNOSTICS v_cycle_count = ROW_COUNT;
+  RAISE NOTICE '  ✅ objectives desligados: %', v_cycle_count;
+
+  -- 4.14 dei_corrective_actions — desligar cycle_id (las acciones DEI
+  --      pueden persistir sin ciclo, columna nullable).
+  IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'dei_corrective_actions') THEN
+    UPDATE dei_corrective_actions SET cycle_id = NULL
+    WHERE cycle_id = ANY(v_cycle_ids);
+    GET DIAGNOSTICS v_cycle_count = ROW_COUNT;
+    RAISE NOTICE '  ✅ dei_corrective_actions desligados: %', v_cycle_count;
+  END IF;
+
+  -- 4.15 evaluation_cycles (raíz — debe ir último para que FKs estén libres)
   DELETE FROM evaluation_cycles WHERE tenant_id = v_demo_tenant_id;
   GET DIAGNOSTICS v_cycle_count = ROW_COUNT;
   RAISE NOTICE '  ✅ evaluation_cycles eliminados: %', v_cycle_count;

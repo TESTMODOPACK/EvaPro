@@ -188,11 +188,12 @@ export class EvaluationsService {
   /**
    * Generates the sequential stages for a cycle based on its type.
    *
-   * Mapping:
-   *   90°  → [Autoevaluación, Evaluación Encargado, Cierre]
+   * Mapping (convención estándar mayo 2026 — alineado con ALLOWED_RELATIONS):
+   *   90°  → [Evaluación Encargado, Cierre]                                                  (top-down puro)
    *   180° → [Autoevaluación, Evaluación Encargado, Cierre]
    *   270° → [Autoevaluación, Evaluación Encargado, Evaluación de Pares, Cierre]
-   *   360° → [Autoevaluación, Evaluación Encargado, Evaluación de Pares, Calibración, Entrega de Feedback, Cierre]
+   *   360° → [Autoevaluación, Evaluación Encargado, Evaluación de Pares,
+   *           Evaluación de Reportes Directos, Calibración, Entrega de Feedback, Cierre]
    */
   /**
    * Sprint 1 BR-C.1 — Captura snapshot del organigrama al momento del
@@ -464,7 +465,9 @@ export class EvaluationsService {
   private async generateStagesForCycle(cycle: EvaluationCycle): Promise<void> {
     const stageMap: Record<string, Array<{ name: string; type: StageType }>> = {
       [CycleType.DEGREE_90]: [
-        { name: 'Autoevaluación', type: StageType.SELF_EVALUATION },
+        // 90° es top-down puro: solo evaluación del encargado. NO incluye
+        // SELF_EVALUATION porque ALLOWED_RELATIONS[90] = [MANAGER] desde
+        // el realineamiento de mayo 2026.
         { name: 'Evaluación del Encargado', type: StageType.MANAGER_EVALUATION },
         { name: 'Cierre', type: StageType.CLOSED },
       ],

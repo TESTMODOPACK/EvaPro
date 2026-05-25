@@ -101,11 +101,13 @@ export class FormSubTemplate {
    * [0.000, 1.000]. La suma de pesos de todas las subplantillas activas
    * de un mismo padre debe ser 1.0 (validado en el service).
    *
-   * Defaults sugeridos por cycle type al auto-crear:
-   *   - 90:  manager 0.7, self 0.3
-   *   - 180: manager 0.45, self 0.25, peer 0.30
-   *   - 270: manager 0.35, self 0.20, peer 0.20, direct_report 0.25
-   *   - 360: manager 0.30, self 0.20, peer 0.25, direct_report 0.25
+   * Defaults sugeridos por cycle type al auto-crear (convención estándar
+   * mayo 2026 — single source of truth en
+   * `templates/constants/sub-template-defaults.ts` DEFAULT_WEIGHTS_BY_CYCLE_TYPE):
+   *   - 90:  manager 1.00                                              (top-down puro)
+   *   - 180: manager 0.70, self 0.30
+   *   - 270: manager 0.50, self 0.20, peer 0.30
+   *   - 360: manager 0.35, self 0.15, peer 0.25, direct_report 0.25
    */
   @Column({
     type: 'decimal',
