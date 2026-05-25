@@ -122,54 +122,70 @@ BEGIN
   RAISE NOTICE '';
 
   -- ── 4. Borrar en orden (FK dependencies) ────────────────────────────
+  --
+  -- REGLA DEFENSIVA: para tablas con FK al cycle/assignment, borrar por
+  -- cycle_id IN (...) / assignment_id IN (...) en lugar de tenant_id.
+  -- Datos legacy pueden tener tenant_id=NULL o de otro tenant aunque la
+  -- FK al cycle sea del demo (bug histórico pre-RLS). Filtrar por FK
+  -- garantiza limpieza completa y evita FK violations al borrar el cycle.
 
   -- 4.1 calibration_entries (depende de calibration_sessions)
   DELETE FROM calibration_entries
   WHERE session_id IN (
-    SELECT id FROM calibration_sessions WHERE tenant_id = v_demo_tenant_id
+    SELECT id FROM calibration_sessions
+    WHERE tenant_id = v_demo_tenant_id OR cycle_id = ANY(v_cycle_ids)
   );
   GET DIAGNOSTICS v_calibration_entry_count = ROW_COUNT;
   RAISE NOTICE '  ✅ calibration_entries eliminadas: %', v_calibration_entry_count;
 
-  -- 4.2 calibration_sessions
-  DELETE FROM calibration_sessions WHERE tenant_id = v_demo_tenant_id;
+  -- 4.2 calibration_sessions (FK a cycle)
+  DELETE FROM calibration_sessions
+  WHERE tenant_id = v_demo_tenant_id OR cycle_id = ANY(v_cycle_ids);
   GET DIAGNOSTICS v_calibration_session_count = ROW_COUNT;
   RAISE NOTICE '  ✅ calibration_sessions eliminadas: %', v_calibration_session_count;
 
-  -- 4.3 talent_assessments
-  DELETE FROM talent_assessments WHERE tenant_id = v_demo_tenant_id;
+  -- 4.3 talent_assessments (FK a cycle)
+  DELETE FROM talent_assessments
+  WHERE tenant_id = v_demo_tenant_id OR cycle_id = ANY(v_cycle_ids);
   GET DIAGNOSTICS v_talent_count = ROW_COUNT;
   RAISE NOTICE '  ✅ talent_assessments eliminados: %', v_talent_count;
 
   -- 4.4 ai_insights de ciclos (columna cycle_id directa, no metadata)
   DELETE FROM ai_insights
-  WHERE tenant_id = v_demo_tenant_id
-    AND cycle_id = ANY(v_cycle_ids);
+  WHERE tenant_id = v_demo_tenant_id OR cycle_id = ANY(v_cycle_ids);
   GET DIAGNOSTICS v_ai_insight_count = ROW_COUNT;
   RAISE NOTICE '  ✅ ai_insights de ciclos eliminados: %', v_ai_insight_count;
 
-  -- 4.5 ai_call_logs del tenant (audit trail completo del tenant DEMO)
+  -- 4.5 ai_call_logs del tenant (audit trail completo del tenant DEMO).
+  --     No tiene FK a cycle, solo tenant_id.
   DELETE FROM ai_call_logs WHERE tenant_id = v_demo_tenant_id;
   GET DIAGNOSTICS v_ai_call_log_count = ROW_COUNT;
   RAISE NOTICE '  ✅ ai_call_logs eliminados: %', v_ai_call_log_count;
 
-  -- 4.6 peer_assignments
-  DELETE FROM peer_assignments WHERE tenant_id = v_demo_tenant_id;
+  -- 4.6 peer_assignments (FK a cycle)
+  DELETE FROM peer_assignments
+  WHERE tenant_id = v_demo_tenant_id OR cycle_id = ANY(v_cycle_ids);
   GET DIAGNOSTICS v_peer_assignment_count = ROW_COUNT;
   RAISE NOTICE '  ✅ peer_assignments eliminadas: %', v_peer_assignment_count;
 
-  -- 4.7 evaluation_responses (depende de assignments)
-  DELETE FROM evaluation_responses WHERE tenant_id = v_demo_tenant_id;
+  -- 4.7 evaluation_responses (FK a assignment)
+  DELETE FROM evaluation_responses
+  WHERE assignment_id IN (
+    SELECT id FROM evaluation_assignments
+    WHERE tenant_id = v_demo_tenant_id OR cycle_id = ANY(v_cycle_ids)
+  );
   GET DIAGNOSTICS v_response_count = ROW_COUNT;
   RAISE NOTICE '  ✅ evaluation_responses eliminadas: %', v_response_count;
 
-  -- 4.8 evaluation_assignments (depende de cycles)
-  DELETE FROM evaluation_assignments WHERE tenant_id = v_demo_tenant_id;
+  -- 4.8 evaluation_assignments (FK a cycle)
+  DELETE FROM evaluation_assignments
+  WHERE tenant_id = v_demo_tenant_id OR cycle_id = ANY(v_cycle_ids);
   GET DIAGNOSTICS v_assignment_count = ROW_COUNT;
   RAISE NOTICE '  ✅ evaluation_assignments eliminadas: %', v_assignment_count;
 
-  -- 4.9 cycle_stages (depende de cycles)
-  DELETE FROM cycle_stages WHERE tenant_id = v_demo_tenant_id;
+  -- 4.9 cycle_stages (FK a cycle)
+  DELETE FROM cycle_stages
+  WHERE tenant_id = v_demo_tenant_id OR cycle_id = ANY(v_cycle_ids);
   GET DIAGNOSTICS v_stage_count = ROW_COUNT;
   RAISE NOTICE '  ✅ cycle_stages eliminadas: %', v_stage_count;
 
@@ -177,21 +193,24 @@ BEGIN
   --      (Sprint 2 BR-A.1: pesos efectivos cuando se aplicó redistribución).
   --      Si no existe (instalaciones pre-Sprint 2), el IF EXISTS evita error.
   IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'cycle_evaluatee_weights') THEN
-    DELETE FROM cycle_evaluatee_weights WHERE tenant_id = v_demo_tenant_id;
+    DELETE FROM cycle_evaluatee_weights
+    WHERE tenant_id = v_demo_tenant_id OR cycle_id = ANY(v_cycle_ids);
     GET DIAGNOSTICS v_cycle_count = ROW_COUNT;
     RAISE NOTICE '  ✅ cycle_evaluatee_weights eliminados: %', v_cycle_count;
   END IF;
 
   -- 4.11 cycle_org_snapshots — snapshot de la org al lanzar (Sprint 1 BR-C.1).
   IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'cycle_org_snapshots') THEN
-    DELETE FROM cycle_org_snapshots WHERE tenant_id = v_demo_tenant_id;
+    DELETE FROM cycle_org_snapshots
+    WHERE tenant_id = v_demo_tenant_id OR cycle_id = ANY(v_cycle_ids);
     GET DIAGNOSTICS v_cycle_count = ROW_COUNT;
     RAISE NOTICE '  ✅ cycle_org_snapshots eliminados: %', v_cycle_count;
   END IF;
 
   -- 4.12 evaluation_objective_snapshots — snapshot de objetivos al lanzar.
   IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'evaluation_objective_snapshots') THEN
-    DELETE FROM evaluation_objective_snapshots WHERE tenant_id = v_demo_tenant_id;
+    DELETE FROM evaluation_objective_snapshots
+    WHERE tenant_id = v_demo_tenant_id OR cycle_id = ANY(v_cycle_ids);
     GET DIAGNOSTICS v_cycle_count = ROW_COUNT;
     RAISE NOTICE '  ✅ evaluation_objective_snapshots eliminados: %', v_cycle_count;
   END IF;
