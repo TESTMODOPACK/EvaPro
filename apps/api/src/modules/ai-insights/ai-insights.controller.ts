@@ -219,7 +219,15 @@ export class AiInsightsController {
     @Param('userId', ParseUUIDPipe) userId: string,
     @Param('cycleId', ParseUUIDPipe) cycleId: string,
     @Request() req: any,
-    @Res({ passthrough: true }) res: Response,
+    // NO usar passthrough:true acá: el handler escribe la respuesta
+    // manualmente con res.send(buffer) y `return res.send(...)` devuelve
+    // el propio objeto `res` (Response). Con passthrough:true NestJS
+    // tomaría ese Response como body y haría response.json(res), que
+    // falla con `TypeError: Converting circular structure to JSON`
+    // (socket → parser → socket). Sin passthrough el return value se
+    // ignora y la respuesta es la enviada manualmente. Auditoría sigue
+    // funcionando porque ya se ejecuta dentro del handler.
+    @Res() res: Response,
   ) {
     // P10 audit manager — FIX BYPASS CRÍTICO: validateAccess es async
     // (requiere query a users para validar manager→team). Sin await,

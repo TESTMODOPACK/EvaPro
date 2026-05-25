@@ -49,6 +49,7 @@ import { LeadsModule } from './modules/leads/leads.module';
 import { TenantContextInterceptor } from './common/interceptors/tenant-context.interceptor';
 import { AuditInterceptor } from './common/interceptors/audit.interceptor';
 import { SystemErrorAuditInterceptor } from './common/interceptors/system-error-audit.interceptor';
+import { SafeJsonInterceptor } from './common/interceptors/safe-json.interceptor';
 import { NoImpersonationGuard } from './common/guards/no-impersonation.guard';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { CsrfGuard } from './common/guards/csrf.guard';
@@ -147,6 +148,17 @@ import { CsrfGuard } from './common/guards/csrf.guard';
     {
       provide: APP_FILTER,
       useClass: SentryGlobalFilter,
+    },
+    // SafeJsonInterceptor — DEBE ir primero (outermost): es la última
+    // línea de defensa antes de que Express serialice el body. Ve el
+    // body final tras todas las transformaciones de interceptors
+    // internos. Si detecta una estructura circular, sanitiza con
+    // '[Circular]', deja llegar la respuesta degradada al cliente
+    // (en vez de 500) y deja rastro en audit_log con endpoint+role
+    // para identificar el call-site específico.
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: SafeJsonInterceptor,
     },
     {
       provide: APP_INTERCEPTOR,

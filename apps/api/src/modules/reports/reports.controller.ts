@@ -480,7 +480,10 @@ export class ReportsController {
     @Query('format') format: string,
     @Query('cycleIds') cycleIds?: string,
     @Query('surveyId') surveyId?: string,
-    @Res({ passthrough: true }) res?: Response,
+    // Sin passthrough: handler escribe la respuesta con res.send().
+    // Con passthrough:true, NestJS tomaría el `Response` retornado por
+    // res.send(...) y haría response.json(res) → circular structure.
+    @Res() res?: Response,
   ) {
     const managerId = req.user.role === 'manager' ? req.user.userId : undefined;
     const ids = cycleIds ? cycleIds.split(',').filter(Boolean) : undefined;
@@ -532,7 +535,8 @@ export class ReportsController {
   async exportPdiCompliance(
     @Request() req: any,
     @Query('format') format: string,
-    @Res({ passthrough: true }) res: Response,
+    // Sin passthrough: ver nota en exportCrossAnalysis.
+    @Res() res: Response,
   ) {
     const managerId = req.user.role === 'manager' ? req.user.userId : undefined;
     const data = await this.analyticsService.getPdiCompliance(req.user.tenantId, managerId);
@@ -568,7 +572,8 @@ export class ReportsController {
   async exportSystemUsage(
     @Request() req: any,
     @Query('format') format: string,
-    @Res({ passthrough: true }) res: Response,
+    // Sin passthrough: ver nota en exportCrossAnalysis.
+    @Res() res: Response,
   ) {
     const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
     const data = await this.analyticsService.getSystemUsage(tenantId);
@@ -604,7 +609,8 @@ export class ReportsController {
   async exportCycleComparison(
     @Request() req: any,
     @Query('format') format: string,
-    @Res({ passthrough: true }) res: Response,
+    // Sin passthrough: ver nota en exportCrossAnalysis.
+    @Res() res: Response,
   ) {
     const managerId = req.user.role === 'manager' ? req.user.userId : undefined;
     const data = await this.analyticsService.getCycleComparison(req.user.tenantId, managerId);
@@ -638,7 +644,8 @@ export class ReportsController {
   async exportTurnover(
     @Request() req: any,
     @Query('format') format: string,
-    @Res({ passthrough: true }) res: Response,
+    // Sin passthrough: ver nota en exportCrossAnalysis.
+    @Res() res: Response,
   ) {
     const data = await this.analyticsService.getTurnoverAnalysis(req.user.tenantId);
     await this.auditService

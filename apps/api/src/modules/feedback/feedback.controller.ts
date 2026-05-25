@@ -41,7 +41,11 @@ export class FeedbackController {
   async exportFeedback(
     @Request() req: any,
     @Query('format') format: string,
-    @Res({ passthrough: true }) res: Response,
+    // Sin passthrough: el handler escribe la respuesta vía res.send().
+    // Con passthrough:true, NestJS intentaría serializar el `Response`
+    // retornado (`res` tiene ciclo socket→parser→socket) y produciría
+    // `TypeError: Converting circular structure to JSON`.
+    @Res() res: Response,
   ) {
     const managerId = req.user.role === 'manager' ? req.user.userId : undefined;
     if (format === 'xlsx') {
