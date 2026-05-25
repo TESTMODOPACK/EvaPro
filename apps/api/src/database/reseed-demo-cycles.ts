@@ -87,15 +87,26 @@ async function runSeed(): Promise<void> {
   // conexión / contexto (cada script abre su propia DataSource). Esto
   // evita race conditions con RLS context, pool exhaustion, y deja
   // el output del seed en stdout sin mezclar con el del clear.
-  const seedScript = join(__dirname, 'seed-demo-evaluations.ts');
-  const result = spawnSync(
-    process.platform === 'win32' ? 'npx.cmd' : 'npx',
-    ['ts-node', '-r', 'tsconfig-paths/register', seedScript],
-    {
-      stdio: 'inherit',
-      env: { ...process.env, DATABASE_URL },
-    },
+  //
+  // Runtime detection: en producción el container tiene `.js` compilados
+  // en /app/dist (no hay `.ts` ni ts-node disponible). En desarrollo
+  // local con ts-node se ejecuta el `.ts` directamente. Detectamos vía
+  // la extensión de __filename (ts-node deja `.ts`, node deja `.js`).
+  const isCompiledJs = __filename.endsWith('.js');
+  const seedScript = join(
+    __dirname,
+    isCompiledJs ? 'seed-demo-evaluations.js' : 'seed-demo-evaluations.ts',
   );
+  const cmd = isCompiledJs
+    ? { exe: process.execPath, args: [seedScript] } // node /path/to/seed.js
+    : {
+        exe: process.platform === 'win32' ? 'npx.cmd' : 'npx',
+        args: ['ts-node', '-r', 'tsconfig-paths/register', seedScript],
+      };
+  const result = spawnSync(cmd.exe, cmd.args, {
+    stdio: 'inherit',
+    env: { ...process.env, DATABASE_URL },
+  });
 
   if (result.status !== 0) {
     throw new Error(`seed-demo-evaluations.ts falló con código ${result.status}`);
