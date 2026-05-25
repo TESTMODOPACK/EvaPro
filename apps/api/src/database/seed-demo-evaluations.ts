@@ -188,20 +188,36 @@ async function main() {
       `, [crypto.randomUUID(), tenantId, cycleId, stageTypes[i].name, stageTypes[i].type, i + 1, config.start, config.end]);
     }
 
-    // Get scale/text question IDs per relationType. Fase 2 (plan auditoria
-    // evaluaciones): los templates ahora pueden tener preguntas con
-    // `applicableTo: ['manager']` etc. Para que la data demo sea realista,
-    // cada evaluador solo responde las preguntas que SU rol veria en el form
-    // (filtro identico al que aplica filterTemplateForRelation en runtime).
+    // Get scale/text question IDs per relationType.
+    // Soporta dos esquemas de plantilla:
+    //   (a) LEGACY: preguntas en form_templates.sections con `applicableTo: ['manager']`
+    //   (b) FASE 3: preguntas en form_sub_templates.sections (una sub_template por rol)
+    // Preferimos (b) si existe sub_template para el rol; fallback a (a).
     const sections = typeof config.template.sections === 'string' ? JSON.parse(config.template.sections) : config.template.sections;
+
+    // Cargar sub_templates del template padre (Fase 3 — Opción A).
+    const subTemplateRows = await ds.query(
+      `SELECT relation_type, sections FROM form_sub_templates WHERE parent_template_id = $1 AND is_active = true`,
+      [config.template.id],
+    );
+    const subSectionsByRole = new Map<string, any[]>();
+    for (const st of subTemplateRows) {
+      const secs = typeof st.sections === 'string' ? JSON.parse(st.sections) : st.sections;
+      subSectionsByRole.set(st.relation_type, secs || []);
+    }
+
     function applicableForRole(applicableTo: any, role: string): boolean {
       if (!Array.isArray(applicableTo) || applicableTo.length === 0) return true;
       return applicableTo.includes(role);
     }
     function getQuestionsForRole(role: string): { scaleIds: string[]; textIds: string[] } {
+      // Preferir sub_templates si existen para este rol (Fase 3 — Opción A).
+      const subSecs = subSectionsByRole.get(role);
+      const sectionsForRole = subSecs && subSecs.length > 0 ? subSecs : sections;
+
       const scaleIds: string[] = [];
       const textIds: string[] = [];
-      for (const sec of sections) {
+      for (const sec of sectionsForRole) {
         if (!applicableForRole(sec.applicableTo, role)) continue;
         for (const q of (sec.questions || [])) {
           if (!applicableForRole(q.applicableTo, role)) continue;
