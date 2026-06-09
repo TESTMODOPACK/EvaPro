@@ -386,7 +386,9 @@ export default function CompetenciasPage() {
     setLoading(true);
     setError('');
     try {
-      const res = await api.development.competencies.list(token!);
+      // includeInactive=true: la vista de mantención muestra también las
+      // competencias desactivadas (con badge "Inactiva") para reactivarlas.
+      const res = await api.development.competencies.list(token!, true);
       const comps = Array.isArray(res) ? res : [];
       setCompetencies(comps);
 
@@ -444,7 +446,7 @@ export default function CompetenciasPage() {
   async function handleDeactivate(id: string) {
     if (!token) return;
     setConfirmState({
-      message: '¿Desactivar esta competencia?',
+      message: '¿Desactivar esta competencia? Quedará visible como "Inactiva" y podrás reactivarla cuando quieras.',
       danger: true,
       onConfirm: async () => {
         setConfirmState(null);
@@ -456,6 +458,16 @@ export default function CompetenciasPage() {
         }
       },
     });
+  }
+
+  async function handleReactivate(id: string) {
+    if (!token) return;
+    try {
+      await api.development.competencies.reactivate(token, id);
+      await loadData();
+    } catch (e: any) {
+      toast.error(e.message || 'Error al reactivar competencia');
+    }
   }
 
   if (!isAdmin) {
@@ -705,10 +717,11 @@ export default function CompetenciasPage() {
                           </select>
                         </td>
                         <td style={{ padding: '0.5rem 1rem' }}>
-                          <input
+                          <textarea
                             value={editForm.description}
                             onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-                            style={{ padding: '0.35rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.82rem', width: '100%' }}
+                            rows={3}
+                            style={{ padding: '0.35rem', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.82rem', width: '100%', minWidth: '260px', resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.4 }}
                           />
                         </td>
                         <td style={{ padding: '0.5rem 1rem', textAlign: 'center' }}>
@@ -731,7 +744,7 @@ export default function CompetenciasPage() {
                             {getCategoryLabel(comp.category)}
                           </span>
                         </td>
-                        <td style={{ padding: '0.75rem 1rem', color: 'var(--text-secondary)', maxWidth: '300px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <td style={{ padding: '0.75rem 1rem', color: 'var(--text-secondary)', maxWidth: '420px', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.45 }}>
                           {comp.description || '\u2014'}
                         </td>
                         <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
@@ -756,13 +769,21 @@ export default function CompetenciasPage() {
                             >
                               Editar
                             </button>
-                            {comp.isActive !== false && (
+                            {comp.isActive !== false ? (
                               <button
                                 className="btn-ghost"
                                 style={{ fontSize: '0.75rem', padding: '0.2rem 0.4rem', color: 'var(--danger)' }}
                                 onClick={() => handleDeactivate(comp.id)}
                               >
                                 Desactivar
+                              </button>
+                            ) : (
+                              <button
+                                className="btn-ghost"
+                                style={{ fontSize: '0.75rem', padding: '0.2rem 0.4rem', color: 'var(--success, #16a34a)' }}
+                                onClick={() => handleReactivate(comp.id)}
+                              >
+                                Reactivar
                               </button>
                             )}
                           </div>

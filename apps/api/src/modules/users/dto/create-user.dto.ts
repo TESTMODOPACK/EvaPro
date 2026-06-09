@@ -31,9 +31,15 @@ export class CreateUserDto {
   @IsNotEmpty()
   lastName: string;
 
+  /**
+   * Contraseña inicial del usuario. OPCIONAL: si no se envía, el backend
+   * genera una contraseña genérica = nombre de la empresa (sanitizado) +
+   * año actual (ej. "DemoCompany2026"). En ambos casos el usuario debe
+   * cambiarla en su primer ingreso (mustChangePassword=true).
+   */
   @IsString()
-  @IsNotEmpty()
-  password: string;
+  @IsOptional()
+  password?: string;
 
   @IsString()
   @IsOptional()

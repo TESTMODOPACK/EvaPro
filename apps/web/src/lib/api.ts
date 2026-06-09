@@ -1781,10 +1781,15 @@ export const api = {
 
   development: {
     competencies: {
-      list: (token: string) => request<any[]>("/development/competencies", {}, token),
+      // includeInactive=true: la vista de mantención de competencias trae
+      // también las desactivadas (con badge "Inactiva") para reactivarlas.
+      // Solo lo honra el backend para roles admin.
+      list: (token: string, includeInactive = false) =>
+        request<any[]>(`/development/competencies${includeInactive ? '?includeInactive=true' : ''}`, {}, token),
       create: (token: string, data: any) => request<any>("/development/competencies", { method: "POST", body: JSON.stringify(data) }, token),
       update: (token: string, id: string, data: any) => request<any>(`/development/competencies/${id}`, { method: "PATCH", body: JSON.stringify(data) }, token),
       deactivate: (token: string, id: string) => request<void>(`/development/competencies/${id}`, { method: "DELETE" }, token),
+      reactivate: (token: string, id: string) => request<any>(`/development/competencies/${id}/reactivate`, { method: "POST" }, token),
       propose: (token: string, data: any) => request<any>("/development/competencies/propose", { method: "POST", body: JSON.stringify(data) }, token),
       pending: (token: string) => request<any[]>("/development/competencies/pending", {}, token),
       approve: (token: string, id: string, note?: string) => request<any>(`/development/competencies/${id}/approve`, { method: "POST", body: JSON.stringify({ note }) }, token),

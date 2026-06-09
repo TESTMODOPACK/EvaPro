@@ -455,6 +455,28 @@ export class UsersService {
     return { data, total: data.length };
   }
 
+  /**
+   * Construye la contraseña genérica inicial a partir del nombre de la
+   * empresa + el año actual. Ej: "Demo Company" → "DemoCompany2026".
+   *
+   * - Quita acentos y deja solo caracteres alfanuméricos del nombre.
+   * - Si el nombre queda demasiado corto (<3 chars), usa "Acceso" como
+   *   base para garantizar una contraseña razonable.
+   * - El año se calcula en runtime (siempre el año en curso).
+   *
+   * Siempre se combina con mustChangePassword=true, así que es solo la
+   * credencial de primer ingreso.
+   */
+  private buildDefaultPassword(tenantName?: string | null): string {
+    const base = (tenantName || '')
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '') // quitar acentos (combining marks)
+      .replace(/[^a-zA-Z0-9]/g, ''); // solo alfanumérico
+    const namePart = base.length >= 3 ? base : `${base}Acceso`;
+    const year = new Date().getFullYear();
+    return `${namePart}${year}`;
+  }
+
   async create(tenantId: string, dto: CreateUserDto): Promise<User> {
     // Check plan limits
     const sub = await this.subscriptionsService.findByTenantId(tenantId);
@@ -505,7 +527,16 @@ export class UsersService {
     // Resolve position: dual-write (ID ↔ text)
     const resolvedPos = await this.resolvePosition(tenantId, dto.positionId, dto.position);
 
-    const passwordHash = await bcrypt.hash(dto.password, 12);
+    // Password inicial: si el admin no la define, se genera una genérica
+    // = nombre de la empresa (sanitizado) + año actual (ej. "DemoCompany2026").
+    // En ambos casos mustChangePassword=true fuerza el cambio en el primer
+    // ingreso, así la genérica nunca queda como password permanente.
+    let plainPassword = dto.password;
+    if (!plainPassword || !plainPassword.trim()) {
+      const tenant = await this.tenantRepo.findOne({ where: { id: tenantId } });
+      plainPassword = this.buildDefaultPassword(tenant?.name);
+    }
+    const passwordHash = await bcrypt.hash(plainPassword, 12);
 
     const userData: any = {
       tenantId,

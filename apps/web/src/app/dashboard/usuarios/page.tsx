@@ -222,7 +222,10 @@ export default function UsuariosPage() {
   });
 
   const handleCreate = async () => {
-    if (!form.email || !form.firstName || !form.lastName || (!editingId && !form.password)) return;
+    // Password ya NO es obligatoria al crear: si se deja vacía, el backend
+    // genera una genérica (nombre de empresa + año) y fuerza su cambio en
+    // el primer ingreso.
+    if (!form.email || !form.firstName || !form.lastName) return;
     if (form.rut && !validateRut(form.rut)) {
       setErrorMsg('RUT inválido. Verifica el formato (ej: 12.345.678-9)');
       return;
@@ -280,7 +283,7 @@ export default function UsuariosPage() {
           firstName: form.firstName,
           lastName: form.lastName,
           rut: rutValue || undefined,
-          password: form.password,
+          password: form.password || undefined,
           role: form.role,
           department: form.department || null,
           departmentId: deptRecord?.id || undefined,
@@ -892,10 +895,32 @@ export default function UsuariosPage() {
 
       {/* Create/Edit form */}
       {showCreateForm && (
-        <div className="card animate-fade-up" style={{ padding: '1.5rem', marginBottom: '1.5rem' }}>
-          <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '1rem' }}>
-            {editingId ? 'Editar usuario' : 'Nuevo usuario'}
-          </h3>
+        // Modal overlay: el form de crear/editar usuario aparece como
+        // ventana centrada y fija (en vez de inline al tope de la página),
+        // así no se "pierde" al editar usuarios que están más abajo en la
+        // lista. Click en el fondo cierra; click dentro NO se propaga.
+        <div
+          onClick={() => { setShowCreateForm(false); setForm(emptyForm); setEditingId(null); }}
+          style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(15,23,42,0.55)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '3vh 1rem', overflowY: 'auto' }}
+        >
+        <div
+          className="card animate-fade-up"
+          onClick={(e) => e.stopPropagation()}
+          style={{ padding: '1.5rem', width: '100%', maxWidth: '880px', maxHeight: '94vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.35)' }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+            <h3 style={{ fontWeight: 700, fontSize: '0.95rem', margin: 0 }}>
+              {editingId ? 'Editar usuario' : 'Nuevo usuario'}
+            </h3>
+            <button
+              className="btn-ghost"
+              onClick={() => { setShowCreateForm(false); setForm(emptyForm); setEditingId(null); }}
+              style={{ fontSize: '1.1rem', lineHeight: 1, padding: '0.25rem 0.5rem' }}
+              aria-label="Cerrar"
+            >
+              ✕
+            </button>
+          </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
             <div>
               <label style={labelStyle}>Email *</label>
@@ -909,14 +934,19 @@ export default function UsuariosPage() {
               />
             </div>
             <div>
-              <label style={labelStyle}>{editingId ? 'Nueva contraseña (opcional)' : 'Contraseña *'}</label>
+              <label style={labelStyle}>{editingId ? 'Nueva contraseña (opcional)' : 'Contraseña (opcional)'}</label>
               <input
                 style={inputStyle}
-                placeholder={editingId ? 'Dejar vacío para no cambiar' : 'Mínimo 6 caracteres'}
+                placeholder={editingId ? 'Dejar vacío para no cambiar' : 'Vacío = empresa + año (ej. Empresa2026)'}
                 type="password"
                 value={form.password}
                 onChange={(e) => updateField('password', e.target.value)}
               />
+              {!editingId && (
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginTop: '0.25rem' }}>
+                  Si la dejas vacía, se asigna una contraseña inicial con el nombre de la empresa + el año actual. El usuario deberá cambiarla en su primer ingreso.
+                </span>
+              )}
             </div>
             <div>
               <label style={labelStyle}>Nombres *</label>
@@ -1110,6 +1140,7 @@ export default function UsuariosPage() {
               Cancelar
             </button>
           </div>
+        </div>
         </div>
       )}
 

@@ -76,14 +76,26 @@ export class DevelopmentService {
     return saved;
   }
 
-  async findAllCompetencies(tenantId: string, includeAll = false) {
-    const where: any = { tenantId, isActive: true };
+  /**
+   * @param includeAll      true = incluye competencias no-aprobadas
+   *                        (proposed/pending/rejected) + carga relations
+   *                        proposer/reviewer. Solo admin.
+   * @param includeInactive true = incluye competencias DESACTIVADAS
+   *                        (isActive=false). La vista admin de competencias
+   *                        las muestra con badge "Inactiva" en vez de
+   *                        ocultarlas, para poder reactivarlas. Solo admin.
+   *                        Las vistas no-admin (generadores de plantillas/
+   *                        encuestas) NUNCA reciben inactivas.
+   */
+  async findAllCompetencies(tenantId: string, includeAll = false, includeInactive = false) {
+    const where: any = { tenantId };
+    if (!includeInactive) where.isActive = true;
     if (!includeAll) {
       where.status = CompetencyStatus.APPROVED;
     }
-    // Solo cachear el caso mas comun (approved, sin relations pesadas).
-    // includeAll=true se usa solo en la vista admin de competencias, que
-    // necesita proposer/reviewer y se llama raramente.
+    // Solo cachear el caso mas comun (active + approved, sin relations
+    // pesadas). El path admin (includeAll=true) NO se cachea, asi que
+    // includeInactive funciona en vivo sin riesgo de cache stale.
     if (!includeAll) {
       return cachedFetch(this.cacheManager, `competencies:${tenantId}`, 600, () =>
         this.competencyRepo.find({ where, order: { category: 'ASC', name: 'ASC' } }),
@@ -92,8 +104,24 @@ export class DevelopmentService {
     return this.competencyRepo.find({
       where,
       relations: ['proposer', 'reviewer'],
-      order: { category: 'ASC', name: 'ASC' },
+      // Inactivas al final para que las activas aparezcan primero.
+      order: { isActive: 'DESC', category: 'ASC', name: 'ASC' },
     });
+  }
+
+  /**
+   * Reactiva una competencia previamente desactivada (isActive=false →
+   * true). Limpia deactivatedAt. Idempotente: si ya está activa, no falla.
+   */
+  async reactivateCompetency(tenantId: string | undefined, id: string) {
+    const where = tenantId ? { id, tenantId } : { id };
+    const competency = await this.competencyRepo.findOne({ where });
+    if (!competency) throw new NotFoundException('Competencia no encontrada');
+    competency.isActive = true;
+    competency.deactivatedAt = null;
+    const saved = await this.competencyRepo.save(competency);
+    await invalidateCache(this.cacheManager, `competencies:${saved.tenantId}`);
+    return saved;
   }
 
   /**

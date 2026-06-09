@@ -50,10 +50,23 @@ export class DevelopmentController {
 
   @Get('competencies')
   @Roles('super_admin', 'tenant_admin', 'manager', 'employee')
-  findAllCompetencies(@Request() req: any) {
-    // Admins see all statuses; others see only approved
-    const includeAll = req.user.role === 'super_admin' || req.user.role === 'tenant_admin';
-    return this.developmentService.findAllCompetencies(req.user.tenantId, includeAll);
+  findAllCompetencies(
+    @Request() req: any,
+    @Query('includeInactive') includeInactive?: string,
+  ) {
+    // Admins see all statuses; others see only approved.
+    const isAdmin =
+      req.user.role === 'super_admin' || req.user.role === 'tenant_admin';
+    // includeInactive solo se honra para admins (la vista de mantención de
+    // competencias muestra las desactivadas con badge para reactivarlas).
+    // Las vistas no-admin (generadores de plantillas/encuestas) jamás
+    // reciben competencias inactivas.
+    const wantInactive = isAdmin && includeInactive === 'true';
+    return this.developmentService.findAllCompetencies(
+      req.user.tenantId,
+      isAdmin,
+      wantInactive,
+    );
   }
 
   /**
@@ -135,6 +148,16 @@ export class DevelopmentController {
   ) {
     const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
     return this.developmentService.deactivateCompetency(tenantId, id);
+  }
+
+  @Post('competencies/:id/reactivate')
+  @Roles('super_admin', 'tenant_admin')
+  reactivateCompetency(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: any,
+  ) {
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.developmentService.reactivateCompetency(tenantId, id);
   }
 
   // B8.3: Competency profile — actual vs expected for a user's role
