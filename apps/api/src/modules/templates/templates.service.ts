@@ -775,30 +775,45 @@ export class TemplatesService {
     // peer / direct_report). Sin esto, un peer veria preguntas de manager
     // que no le corresponden, y viceversa.
     //
-    // Optimized: 2 supervisor questions per competency (was 5) to keep
-    // templates within 18-40 questions total.
+    // Bancos de ítems por perspectiva (jun 2026) — reescritos con foco
+    // CONDUCTUAL siguiendo el principio de BARS (Behaviorally Anchored
+    // Rating Scales): describir comportamientos OBSERVABLES, no rasgos.
+    // La redacción se adapta al ángulo de observación de cada evaluador
+    // (lo que un reporte directo ve de su jefe ≠ lo que ve un par), de
+    // acuerdo a las mejores prácticas de feedback 360° (Korn Ferry /
+    // Lominger). El nombre de la competencia se inserta como el objeto
+    // del comportamiento observable.
+    //
+    // Optimizado: 2 ítems para jefatura y autoevaluación (las dos
+    // perspectivas más usadas para el score), 1 ítem para pares y
+    // reportes directos, para mantener el total entre 18-40 preguntas.
     const supervisorQuestions = (name: string) => [
-      { text: `El colaborador demuestra dominio en ${name}`, type: 'scale', scale, required: true, applicableTo: ['manager'] },
-      { text: `Ha demostrado mejora en ${name} durante el período evaluado`, type: 'scale', scale, required: true, applicableTo: ['manager'] },
+      { text: `Demuestra ${name} de forma consistente en su trabajo, incluso ante situaciones exigentes`, type: 'scale', scale, required: true, applicableTo: ['manager'] },
+      { text: `Aplica ${name} con un impacto visible en los resultados y la calidad de su trabajo`, type: 'scale', scale, required: true, applicableTo: ['manager'] },
     ];
     const selfQuestions = (name: string) => [
-      { text: `Considero que mi desempeño en ${name} es adecuado para mi cargo`, type: 'scale', scale, required: true, applicableTo: ['self'] },
+      { text: `Aplico ${name} de forma consistente en mi trabajo, incluso ante situaciones exigentes`, type: 'scale', scale, required: true, applicableTo: ['self'] },
+      { text: `Reconozco oportunidades concretas para seguir fortaleciendo mi ${name}`, type: 'scale', scale, required: true, applicableTo: ['self'] },
     ];
     const peerQuestions = (name: string) => [
-      { text: `Este compañero demuestra ${name} en la colaboración con el equipo`, type: 'scale', scale, required: true, applicableTo: ['peer'] },
+      { text: `En nuestra colaboración, demuestra ${name} de una forma que facilita el trabajo conjunto`, type: 'scale', scale, required: true, applicableTo: ['peer'] },
     ];
     const reportQuestions = (name: string) => [
-      { text: `Mi encargado me brinda orientación efectiva en ${name}`, type: 'scale', scale, required: true, applicableTo: ['direct_report'] },
+      { text: `En su rol de liderazgo, demuestra ${name} de una forma que apoya mi trabajo y mi desarrollo`, type: 'scale', scale, required: true, applicableTo: ['direct_report'] },
     ];
 
-    // Feedback section (common) — 2 questions to keep total count lean
+    // Sección de retroalimentación abierta (común a todas las
+    // perspectivas). Reescrita para pedir SITUACIONES y COMPORTAMIENTOS
+    // concretos (formato orientado a Start/Stop/Continue) — eso es lo
+    // que produce feedback accionable, no opiniones generales.
     const feedbackSection = {
       id: `sec-feedback`,
       title: 'Retroalimentación General',
       competencyId: null,
       questions: [
-        { id: `q-fb-1`, text: '¿Cuáles son las principales fortalezas de esta persona?', type: 'text', required: true },
-        { id: `q-fb-2`, text: '¿En qué áreas podría mejorar y qué acción concreta recomendaría?', type: 'text', required: true },
+        { id: `q-fb-1`, text: '¿Cuáles son las 2 o 3 fortalezas más valiosas de esta persona? Describe una situación concreta donde las hayas observado.', type: 'text', required: true },
+        { id: `q-fb-2`, text: '¿Qué comportamiento específico, si esta persona lo desarrollara o cambiara, tendría el mayor impacto positivo en su desempeño?', type: 'text', required: true },
+        { id: `q-fb-3`, text: 'Para el próximo período: ¿qué debería seguir haciendo, qué empezar a hacer y qué dejar de hacer?', type: 'text', required: false },
       ],
     };
 

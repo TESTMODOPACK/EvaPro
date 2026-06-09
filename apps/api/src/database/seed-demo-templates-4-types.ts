@@ -78,15 +78,15 @@ const TEMPLATES: TemplateSpec[] = [
         displayOrder: 1,
         sections: [
           buildSection('s90-mgr-lead', 'Capacidad de liderazgo', 'q90mgr-lead', [
-            { text: 'Demuestra capacidad para inspirar y motivar al equipo.', type: 'scale' },
-            { text: 'Toma decisiones oportunas y bien fundamentadas.', type: 'scale' },
-            { text: 'Comunica con claridad los objetivos y prioridades.', type: 'scale' },
+            { text: 'Genera compromiso y energía en su equipo hacia las metas comunes.', type: 'scale' },
+            { text: 'Toma decisiones oportunas y bien fundamentadas, incluso ante información incompleta.', type: 'scale' },
+            { text: 'Comunica las prioridades del equipo de forma clara, asegurándose de que todos entiendan qué se espera.', type: 'scale' },
           ]),
           buildSection('s90-mgr-results', 'Resultados y objetivos', 'q90mgr-res', [
-            { text: 'Cumple consistentemente con los objetivos del período.', type: 'scale' },
-            { text: 'Calidad técnica de los entregables.', type: 'scale' },
-            { text: 'Capacidad para resolver problemas complejos.', type: 'scale' },
-            { text: 'Comentario abierto: fortalezas y áreas de desarrollo observadas.', type: 'text' },
+            { text: 'Cumple sus compromisos en los plazos acordados, manteniendo el foco ante los obstáculos.', type: 'scale' },
+            { text: 'Entrega trabajo de calidad que cumple consistentemente con los estándares esperados.', type: 'scale' },
+            { text: 'Identifica la raíz de los problemas complejos y propone soluciones efectivas.', type: 'scale' },
+            { text: '¿Cuáles son las principales fortalezas de esta persona y qué área de desarrollo recomendarías? Describe una situación concreta donde lo hayas observado.', type: 'text' },
           ]),
         ],
       },
@@ -105,10 +105,10 @@ const TEMPLATES: TemplateSpec[] = [
         displayOrder: 1,
         sections: [
           buildSection('s180-self-tech', 'Autoevaluación técnica', 'q180self-tech', [
-            { text: 'Considero que cumplí con los objetivos técnicos del período.', type: 'scale' },
-            { text: 'Mantengo actualizado mi conocimiento técnico.', type: 'scale' },
-            { text: 'Resuelvo problemas técnicos de manera autónoma.', type: 'scale' },
-            { text: 'Identifica un logro técnico relevante del período.', type: 'text' },
+            { text: 'Cumplí con los objetivos técnicos comprometidos para el período.', type: 'scale' },
+            { text: 'Mantengo actualizado mi conocimiento técnico de forma proactiva.', type: 'scale' },
+            { text: 'Resuelvo problemas técnicos de manera autónoma, recurriendo a apoyo solo cuando es necesario.', type: 'scale' },
+            { text: '¿Cuál fue tu logro técnico más relevante del período y qué aprendiste de él?', type: 'text' },
           ]),
         ],
       },
@@ -118,14 +118,14 @@ const TEMPLATES: TemplateSpec[] = [
         displayOrder: 2,
         sections: [
           buildSection('s180-mgr-tech', 'Desempeño técnico', 'q180mgr-tech', [
-            { text: 'Calidad técnica de los entregables del colaborador.', type: 'scale' },
-            { text: 'Productividad y eficiencia en tareas técnicas.', type: 'scale' },
-            { text: 'Capacidad para aprender nuevas tecnologías o herramientas.', type: 'scale' },
+            { text: 'Entrega trabajo técnico de calidad que cumple con los estándares esperados.', type: 'scale' },
+            { text: 'Resuelve sus tareas técnicas con un buen equilibrio entre rapidez y calidad.', type: 'scale' },
+            { text: 'Aprende e incorpora nuevas tecnologías o herramientas cuando el trabajo lo requiere.', type: 'scale' },
           ]),
           buildSection('s180-mgr-collab', 'Colaboración', 'q180mgr-coll', [
-            { text: 'Trabaja efectivamente con el equipo técnico.', type: 'scale' },
-            { text: 'Documenta y comparte conocimiento.', type: 'scale' },
-            { text: 'Comentario abierto sobre áreas de mejora técnica.', type: 'text' },
+            { text: 'Colabora de forma efectiva con el equipo técnico para lograr objetivos comunes.', type: 'scale' },
+            { text: 'Documenta y comparte su conocimiento en lugar de retenerlo.', type: 'scale' },
+            { text: '¿Qué comportamiento técnico específico, si lo desarrollara, tendría el mayor impacto en su desempeño?', type: 'text' },
           ]),
         ],
       },
@@ -144,10 +144,10 @@ const TEMPLATES: TemplateSpec[] = [
         displayOrder: 1,
         sections: [
           buildSection('s270-self-svc', 'Autoevaluación de servicio', 'q270self-svc', [
-            { text: 'Considero que brindé un servicio de calidad a los clientes.', type: 'scale' },
-            { text: 'Resolví consultas y problemas de manera oportuna.', type: 'scale' },
-            { text: 'Mantuve una actitud positiva en interacciones con clientes.', type: 'scale' },
-            { text: 'Caso destacado de buen servicio al cliente este período.', type: 'text' },
+            { text: 'Indago las necesidades reales del cliente antes de ofrecer una solución.', type: 'scale' },
+            { text: 'Resolví las consultas y problemas de los clientes con oportunidad.', type: 'scale' },
+            { text: 'Mantuve una actitud positiva incluso en interacciones difíciles con clientes.', type: 'scale' },
+            { text: 'Describe una situación concreta donde brindaste un servicio destacado este período.', type: 'text' },
           ]),
         ],
       },
@@ -157,10 +157,10 @@ const TEMPLATES: TemplateSpec[] = [
         displayOrder: 2,
         sections: [
           buildSection('s270-mgr-svc', 'Calidad de servicio', 'q270mgr-svc', [
-            { text: 'Brinda un servicio de calidad a los clientes asignados.', type: 'scale' },
-            { text: 'Manejo de quejas y situaciones difíciles.', type: 'scale' },
-            { text: 'Conocimiento de los productos/servicios que ofrece.', type: 'scale' },
-            { text: 'Comentario sobre desempeño en servicio al cliente.', type: 'text' },
+            { text: 'Construye soluciones que responden a lo que el cliente realmente necesita.', type: 'scale' },
+            { text: 'Maneja las quejas y situaciones difíciles de forma profesional, dejando al cliente satisfecho.', type: 'scale' },
+            { text: 'Domina los productos y servicios que ofrece, y los explica con claridad al cliente.', type: 'scale' },
+            { text: '¿Cuál es la mayor fortaleza de esta persona en servicio al cliente y qué debería mejorar? Da un ejemplo concreto.', type: 'text' },
           ]),
         ],
       },
@@ -170,10 +170,10 @@ const TEMPLATES: TemplateSpec[] = [
         displayOrder: 3,
         sections: [
           buildSection('s270-peer-coll', 'Colaboración entre pares', 'q270peer-coll', [
-            { text: 'Disponibilidad para apoyar cuando se requiere su colaboración.', type: 'scale' },
-            { text: 'Comparte conocimiento de servicio al cliente con el equipo.', type: 'scale' },
-            { text: 'Maneja de buena manera la presión en horarios pico.', type: 'scale' },
-            { text: 'Una sugerencia para mejorar el trabajo en equipo.', type: 'text' },
+            { text: 'Puedo contar con esta persona cuando necesito apoyo para avanzar.', type: 'scale' },
+            { text: 'Comparte su conocimiento de servicio al cliente con el equipo.', type: 'scale' },
+            { text: 'Mantiene la calma y la efectividad bajo presión en los horarios de mayor demanda.', type: 'scale' },
+            { text: '¿Qué podría hacer esta persona para mejorar aún más la colaboración con el equipo?', type: 'text' },
           ]),
         ],
       },
@@ -192,10 +192,10 @@ const TEMPLATES: TemplateSpec[] = [
         displayOrder: 1,
         sections: [
           buildSection('s360-self', 'Autoevaluación integral', 'q360self', [
-            { text: 'Considero que cumplí con los objetivos estratégicos del período.', type: 'scale' },
-            { text: 'Demuestro liderazgo y visión a largo plazo.', type: 'scale' },
-            { text: 'Manejo efectivamente las relaciones con stakeholders.', type: 'scale' },
-            { text: 'Logros más relevantes del período.', type: 'text' },
+            { text: 'Cumplí con los objetivos estratégicos comprometidos para el período.', type: 'scale' },
+            { text: 'Conecto mis decisiones diarias con los objetivos de largo plazo de la organización.', type: 'scale' },
+            { text: 'Construyo y mantengo relaciones de confianza con los distintos stakeholders.', type: 'scale' },
+            { text: '¿Cuáles fueron tus logros más relevantes del período y qué los hizo posibles?', type: 'text' },
           ]),
         ],
       },
@@ -205,10 +205,10 @@ const TEMPLATES: TemplateSpec[] = [
         displayOrder: 2,
         sections: [
           buildSection('s360-mgr', 'Visión del encargado', 'q360mgr', [
-            { text: 'Cumplimiento de objetivos estratégicos asignados.', type: 'scale' },
-            { text: 'Calidad de las decisiones estratégicas tomadas.', type: 'scale' },
-            { text: 'Capacidad de gestionar prioridades complejas.', type: 'scale' },
-            { text: 'Comentario sobre desempeño general del colaborador.', type: 'text' },
+            { text: 'Cumple los objetivos estratégicos asignados, manteniendo el foco ante los obstáculos.', type: 'scale' },
+            { text: 'Toma decisiones bien fundamentadas, considerando su impacto más allá de su área.', type: 'scale' },
+            { text: 'Gestiona prioridades complejas sin perder de vista lo que realmente importa.', type: 'scale' },
+            { text: '¿Cuál es la principal fortaleza de esta persona y qué comportamiento debería desarrollar? Describe una situación concreta.', type: 'text' },
           ]),
         ],
       },
@@ -218,10 +218,10 @@ const TEMPLATES: TemplateSpec[] = [
         displayOrder: 3,
         sections: [
           buildSection('s360-peer', 'Colaboración con pares', 'q360peer', [
-            { text: 'Colabora efectivamente en proyectos transversales.', type: 'scale' },
-            { text: 'Comparte recursos y conocimiento con sus pares.', type: 'scale' },
-            { text: 'Es un referente positivo en el grupo de pares.', type: 'scale' },
-            { text: 'Cómo podría mejorar la colaboración con el equipo.', type: 'text' },
+            { text: 'Colabora efectivamente en proyectos transversales, anteponiendo el objetivo común.', type: 'scale' },
+            { text: 'Comparte recursos y conocimiento con sus pares en lugar de retenerlos.', type: 'scale' },
+            { text: 'Es un referente positivo que aporta una mirada amplia al grupo de pares.', type: 'scale' },
+            { text: '¿Qué debería esta persona seguir haciendo y qué empezar a hacer para mejorar la colaboración?', type: 'text' },
           ]),
         ],
       },
@@ -231,10 +231,10 @@ const TEMPLATES: TemplateSpec[] = [
         displayOrder: 4,
         sections: [
           buildSection('s360-dr', 'Calidad del liderazgo recibido', 'q360dr', [
-            { text: 'Me da feedback oportuno y constructivo sobre mi desempeño.', type: 'scale' },
-            { text: 'Apoya mi desarrollo profesional con oportunidades de crecimiento.', type: 'scale' },
-            { text: 'Comunica de manera clara las expectativas y prioridades.', type: 'scale' },
-            { text: 'Algo que valoro de su liderazgo y algo que podría mejorar.', type: 'text' },
+            { text: 'Me da retroalimentación oportuna y concreta sobre cómo mejorar mi desempeño.', type: 'scale' },
+            { text: 'Apoya mi desarrollo profesional ofreciéndome desafíos y oportunidades de crecimiento.', type: 'scale' },
+            { text: 'Me comunica con claridad qué resultados y prioridades espera de mí.', type: 'scale' },
+            { text: '¿Qué valoras de su liderazgo y qué necesitas de esta persona como líder que hoy no estás recibiendo?', type: 'text' },
           ]),
         ],
       },

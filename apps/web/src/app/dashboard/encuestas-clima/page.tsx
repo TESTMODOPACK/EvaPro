@@ -10,46 +10,82 @@ import Link from 'next/link';
 import { useDepartments } from '@/hooks/useDepartments';
 
 // ─── Default climate survey template questions ────────────────────────
+//
+// Banco base de clima/engagement reescrito (jun 2026) con base en
+// instrumentos validados: Gallup Q12 (anclaje temporal de ítems),
+// Great Place to Work Trust Index (credibilidad/respeto/imparcialidad/
+// orgullo/camaradería), UWES (vigor/dedicación/absorción), escala de
+// Seguridad Psicológica de Amy Edmondson, eNPS y modelo Job
+// Demands-Resources. Redacción ORIGINAL (no se reproduce texto literal
+// de instrumentos propietarios) en español corporativo latinoamericano.
+//
+// Principios de calidad aplicados:
+//   1. Especificidad CONDUCTUAL: describir comportamientos observables,
+//      no rasgos abstractos. "En los últimos 3 meses mi jefatura conversó
+//      conmigo sobre mi desarrollo" en vez de "mi jefe se preocupa por mí".
+//   2. Ventanas temporales (últimos 7 días / 3 meses / 6 meses / año)
+//      para reducir sesgo de memoria y mejorar accionabilidad.
+//   3. Una sola idea por ítem (sin "double-barreled" — nunca unir dos
+//      conceptos con "y"/"o").
+//   4. TODOS los ítems en dirección POSITIVA (mayor acuerdo = mejor
+//      clima). NO se usan ítems reverse-coded porque survey_questions no
+//      tiene flag de inversión y el scoring promedia likert directo;
+//      un ítem invertido corrompería el promedio de la categoría.
+//   5. Escala Likert 1-5 de acuerdo, salvo eNPS (0-10) y abiertas.
+//
 const TEMPLATE_QUESTIONS = [
-  // Liderazgo y Jefatura (4)
-  { category: 'Liderazgo', questionText: 'Mi jefatura directa me da retroalimentación constructiva regularmente', questionType: 'likert_5', isRequired: true },
-  { category: 'Liderazgo', questionText: 'Mi jefatura se preocupa por mi desarrollo profesional', questionType: 'likert_5', isRequired: true },
-  { category: 'Liderazgo', questionText: 'Recibo reconocimiento cuando realizo un buen trabajo', questionType: 'likert_5', isRequired: true },
-  { category: 'Liderazgo', questionText: 'Confío en las decisiones que toma mi jefatura directa', questionType: 'likert_5', isRequired: true },
-  // Comunicación (3)
-  { category: 'Comunicación', questionText: 'La comunicación interna de la empresa es clara y oportuna', questionType: 'likert_5', isRequired: true },
-  { category: 'Comunicación', questionText: 'Conozco los objetivos estratégicos de la organización', questionType: 'likert_5', isRequired: true },
-  { category: 'Comunicación', questionText: 'Puedo expresar mis ideas y opiniones sin temor', questionType: 'likert_5', isRequired: true },
-  // Bienestar y Equilibrio (3)
-  { category: 'Bienestar', questionText: 'Siento que la empresa se preocupa por mi bienestar integral', questionType: 'likert_5', isRequired: true },
-  { category: 'Bienestar', questionText: 'Puedo mantener un equilibrio saludable entre mi vida laboral y personal', questionType: 'likert_5', isRequired: true },
+  // ── Liderazgo / Jefatura (GPTW Credibilidad + Gallup) ──
+  { category: 'Liderazgo', questionText: 'Mi jefatura me comunica con claridad qué resultados se esperan de mi trabajo', questionType: 'likert_5', isRequired: true },
+  { category: 'Liderazgo', questionText: 'En los últimos 3 meses, mi jefatura conversó conmigo sobre mi desarrollo profesional', questionType: 'likert_5', isRequired: true },
+  { category: 'Liderazgo', questionText: 'Cuando cometo un error, mi jefatura se enfoca en cómo resolverlo y aprender, no en buscar culpables', questionType: 'likert_5', isRequired: true },
+  { category: 'Liderazgo', questionText: 'Cuando le planteo un problema a mi jefatura, recibo una respuesta o seguimiento concreto', questionType: 'likert_5', isRequired: true },
+  // ── Comunicación (GPTW Credibilidad) ──
+  { category: 'Comunicación', questionText: 'Me entero a tiempo de las decisiones que afectan mi trabajo, no por rumores', questionType: 'likert_5', isRequired: true },
+  { category: 'Comunicación', questionText: 'En las reuniones de mi equipo se explican las razones detrás de las decisiones importantes', questionType: 'likert_5', isRequired: true },
+  { category: 'Comunicación', questionText: 'Recibo instrucciones consistentes sobre qué debo priorizar en mi trabajo', questionType: 'likert_5', isRequired: true },
+  // ── Reconocimiento (Gallup elemento 4) ──
+  { category: 'Reconocimiento', questionText: 'En las últimas 4 semanas recibí reconocimiento por un trabajo bien hecho', questionType: 'likert_5', isRequired: true },
+  { category: 'Reconocimiento', questionText: 'El reconocimiento en mi área se basa en logros concretos, no en simpatías', questionType: 'likert_5', isRequired: true },
+  // ── Desarrollo y Crecimiento (Gallup elementos 6, 11, 12) ──
+  { category: 'Desarrollo', questionText: 'En el último año tuve oportunidades concretas de aprender algo nuevo en mi trabajo', questionType: 'likert_5', isRequired: true },
+  { category: 'Desarrollo', questionText: 'Existe alguien en la organización que impulsa activamente mi crecimiento', questionType: 'likert_5', isRequired: true },
+  { category: 'Desarrollo', questionText: 'Tengo claridad sobre los pasos que debo dar para crecer dentro de la organización', questionType: 'likert_5', isRequired: true },
+  // ── Bienestar y Equilibrio (JD-R demandas) ──
+  { category: 'Bienestar', questionText: 'Logro desconectarme del trabajo fuera de mi horario sin sentir presión por responder', questionType: 'likert_5', isRequired: true },
+  { category: 'Bienestar', questionText: 'Mi jefatura respeta mis límites de horario (mensajes, reuniones, urgencias)', questionType: 'likert_5', isRequired: true },
   { category: 'Bienestar', questionText: 'El ambiente de trabajo es respetuoso y libre de acoso', questionType: 'likert_5', isRequired: true },
-  // Cultura y Pertenencia (3)
+  // ── Cultura y Valores (GPTW Orgullo) ──
+  { category: 'Cultura', questionText: 'Las decisiones que toma la organización son coherentes con los valores que declara', questionType: 'likert_5', isRequired: true },
+  { category: 'Cultura', questionText: 'Me siento cómodo/a siendo yo mismo/a en mi lugar de trabajo', questionType: 'likert_5', isRequired: true },
   { category: 'Cultura', questionText: 'Me siento orgulloso/a de trabajar en esta organización', questionType: 'likert_5', isRequired: true },
-  { category: 'Cultura', questionText: 'Los valores de la empresa se reflejan en las decisiones del día a día', questionType: 'likert_5', isRequired: true },
-  { category: 'Cultura', questionText: 'Siento que mi trabajo tiene un propósito y aporta valor', questionType: 'likert_5', isRequired: true },
-  // Desarrollo y Crecimiento (3)
-  { category: 'Desarrollo', questionText: 'Tengo oportunidades reales de crecimiento profesional aquí', questionType: 'likert_5', isRequired: true },
-  { category: 'Desarrollo', questionText: 'La organización invierte en capacitación y formación', questionType: 'likert_5', isRequired: true },
-  { category: 'Desarrollo', questionText: 'Sé qué competencias necesito desarrollar para avanzar en mi carrera', questionType: 'likert_5', isRequired: true },
-  // Gestión y Recursos (3)
-  { category: 'Gestión', questionText: 'Tengo los recursos y herramientas necesarios para hacer bien mi trabajo', questionType: 'likert_5', isRequired: true },
-  { category: 'Gestión', questionText: 'Los procesos internos facilitan (en vez de obstaculizar) mi trabajo', questionType: 'likert_5', isRequired: true },
-  { category: 'Gestión', questionText: 'La carga de trabajo es razonable y bien distribuida en mi equipo', questionType: 'likert_5', isRequired: true },
-  // Trabajo en Equipo (2)
-  { category: 'Equipo', questionText: 'Existe buena colaboración entre los miembros de mi equipo', questionType: 'likert_5', isRequired: true },
-  { category: 'Equipo', questionText: 'Las distintas áreas de la organización colaboran entre sí de forma efectiva', questionType: 'likert_5', isRequired: true },
-  // Compensación y Beneficios (2)
-  { category: 'Compensación', questionText: 'Considero que mi remuneración es justa en relación a mi rol y responsabilidades', questionType: 'likert_5', isRequired: true },
-  { category: 'Compensación', questionText: 'Los beneficios que ofrece la empresa son valorados y útiles', questionType: 'likert_5', isRequired: true },
-  // eNPS (1)
-  { category: 'NPS', questionText: 'Del 0 al 10, ¿qué tan probable es que recomiendes esta organización como lugar de trabajo?', questionType: 'nps', isRequired: true },
-  // Preguntas abiertas (2)
-  { category: 'General', questionText: '¿Qué es lo que más valoras de trabajar en esta organización?', questionType: 'open_text', isRequired: false },
-  { category: 'General', questionText: '¿Qué cambio concreto mejoraría tu experiencia laboral?', questionType: 'open_text', isRequired: false },
+  // ── Colaboración / Equipo (Gallup elemento 9 + GPTW Camaradería) ──
+  { category: 'Equipo', questionText: 'Cuando necesito ayuda, puedo contar con mis compañeros de equipo', questionType: 'likert_5', isRequired: true },
+  { category: 'Equipo', questionText: 'Mis compañeros están comprometidos con hacer un trabajo de calidad', questionType: 'likert_5', isRequired: true },
+  { category: 'Equipo', questionText: 'Las personas de otras áreas colaboran conmigo cuando lo necesito para avanzar', questionType: 'likert_5', isRequired: true },
+  // ── Seguridad Psicológica (Edmondson, adaptado positivo) ──
+  { category: 'Seguridad Psicológica', questionText: 'En mi equipo puedo plantear problemas y temas difíciles sin temor', questionType: 'likert_5', isRequired: true },
+  { category: 'Seguridad Psicológica', questionText: 'Es seguro proponer ideas distintas o tomar riesgos en mi equipo', questionType: 'likert_5', isRequired: true },
+  { category: 'Seguridad Psicológica', questionText: 'Puedo pedir ayuda a mis compañeros de equipo con confianza', questionType: 'likert_5', isRequired: true },
+  // ── Autonomía y Empoderamiento (JD-R recursos) ──
+  { category: 'Autonomía', questionText: 'Tengo libertad para decidir cómo organizar y realizar mi trabajo', questionType: 'likert_5', isRequired: true },
+  { category: 'Autonomía', questionText: 'Puedo tomar decisiones dentro de mi rol sin necesitar aprobación constante', questionType: 'likert_5', isRequired: true },
+  // ── Propósito y Significado (Gallup elemento 8 + UWES dedicación) ──
+  { category: 'Propósito', questionText: 'Entiendo cómo mi trabajo contribuye a los objetivos de la organización', questionType: 'likert_5', isRequired: true },
+  { category: 'Propósito', questionText: 'El propósito de la organización hace que mi trabajo se sienta importante', questionType: 'likert_5', isRequired: true },
+  // ── Recursos y Carga de Trabajo (JD-R) ──
+  { category: 'Recursos', questionText: 'Cuento con las herramientas y el equipo necesarios para hacer bien mi trabajo', questionType: 'likert_5', isRequired: true },
+  { category: 'Recursos', questionText: 'El ritmo de trabajo que mantengo es sostenible en el tiempo', questionType: 'likert_5', isRequired: true },
+  // ── Compensación e Imparcialidad (GPTW Imparcialidad) ──
+  { category: 'Compensación', questionText: 'Considero que mi remuneración es justa respecto a las responsabilidades de mi cargo', questionType: 'likert_5', isRequired: true },
+  { category: 'Compensación', questionText: 'Los beneficios que ofrece la organización responden a necesidades reales en mi vida', questionType: 'likert_5', isRequired: true },
+  // ── eNPS (0-10, formulación estándar — no modificar entre olas) ──
+  { category: 'NPS', questionText: 'En una escala de 0 a 10, ¿qué tan probable es que recomiendes esta organización como un buen lugar para trabajar?', questionType: 'nps', isRequired: true },
+  // ── Preguntas abiertas (accionables: piden situaciones concretas) ──
+  { category: 'General', questionText: 'Si pudieras cambiar una sola cosa para mejorar tu experiencia de trabajo, ¿cuál sería y por qué?', questionType: 'open_text', isRequired: false },
+  { category: 'General', questionText: '¿Qué es lo que más valoras de trabajar en esta organización hoy?', questionType: 'open_text', isRequired: false },
 ];
 
-const CATEGORIES = ['Liderazgo', 'Comunicación', 'Bienestar', 'Cultura', 'Desarrollo', 'Gestión', 'Equipo', 'Compensación', 'NPS', 'General'];
+const CATEGORIES = ['Liderazgo', 'Comunicación', 'Reconocimiento', 'Desarrollo', 'Bienestar', 'Cultura', 'Equipo', 'Seguridad Psicológica', 'Autonomía', 'Propósito', 'Recursos', 'Compensación', 'NPS', 'General'];
 const QUESTION_TYPES = [
   { value: 'likert_5', label: 'Escala 1-5' },
   { value: 'nps', label: 'NPS (0-10)' },
@@ -156,15 +192,20 @@ function EncuestasClimaPageContent() {
     const cat = stripAccents(comp.category || '');
 
     // Orden de keywords pensado para que las mas especificas ganen primero.
+    // Alineado con las categorias del banco base (jun 2026): incluye
+    // Reconocimiento, Seguridad Psicológica, Autonomía y Propósito.
     const KEYWORDS: Array<[string, RegExp]> = [
       ['Comunicación', /\bcomunic|escucha|oratoria|feedback|asertiv|presenta/],
+      ['Reconocimiento', /reconocim|valorac|merit|logro|recompens/],
       ['Bienestar', /bienestar|equilibrio|balance|estres|salud|autocuid|emocional/],
-      ['Compensación', /compensac|salario|remunerac|beneficio|reconocim/],
+      ['Seguridad Psicológica', /seguridad psicol|confianza|riesgo|error|verguenza|temor/],
+      ['Autonomía', /autonom|empoderam|delegac|independ|iniciativa|libertad/],
+      ['Compensación', /compensac|salario|remunerac|beneficio/],
       ['Equipo', /equipo|colaborac|cooperac|sinergi|trabajo en equipo/],
       ['Liderazgo', /liderazgo|lider|coach|mentor|inspir|motivac/],
-      ['Gestión', /gestion|planific|organiz|delegac|resultados|estrateg|decision|prioriza/],
-      ['Desarrollo', /desarrollo|aprend|adapt|innovac|creativ|crecimiento|mejora|capacit/],
-      ['Cultura', /cultur|valor|etic|integr|diversidad|inclusion|respeto|confianza/],
+      ['Propósito', /proposito|sentido|significad|mision|vision|impacto/],
+      ['Desarrollo', /desarrollo|aprend|adapt|innovac|creativ|crecimiento|mejora|capacit|gestion|planific|organiz|resultados|estrateg|decision|prioriza/],
+      ['Cultura', /cultur|valor|etic|integr|diversidad|inclusion|respeto/],
     ];
     for (const [climateCat, rx] of KEYWORDS) {
       if (rx.test(name)) return climateCat;
@@ -172,7 +213,7 @@ function EncuestasClimaPageContent() {
 
     // Fallback 2: traducir la categoria nativa de la competencia.
     if (cat.includes('liderazgo')) return 'Liderazgo';
-    if (cat.includes('gestion')) return 'Gestión';
+    if (cat.includes('gestion')) return 'Desarrollo';
     if (cat.includes('tecnica')) return 'Desarrollo';
     if (cat.includes('blanda')) return 'Cultura';
 
@@ -184,10 +225,20 @@ function EncuestasClimaPageContent() {
 
   const generateTemplateQuestions = (level: 1 | 2 | 3) => {
     const questions: any[] = [];
+    // Bancos de ítems por competencia, redactados como AFIRMACIONES de
+    // acuerdo (no preguntas) y con foco CONDUCTUAL — coherente con la
+    // escala Likert 1-5 del responder y con el banco base. Cada nivel
+    // agrega una mirada distinta sobre la misma competencia:
+    //   1 = comportamiento observable en el día a día del equipo
+    //   2 = rol de la jefatura modelando la competencia
+    //   3 = la organización habilitando/desarrollando la competencia
+    // El nombre de la competencia se inserta en minúscula inicial para
+    // que la afirmación fluya gramaticalmente.
+    const lc = (name: string) => (name ? name.charAt(0).toLowerCase() + name.slice(1) : name);
     const qBanks = [
-      (name: string) => `¿Cómo evalúas la competencia de ${name} en tu equipo/organización?`,
-      (name: string) => `¿Tu encargado demuestra ${name} en su gestión diaria?`,
-      (name: string) => `¿La organización fomenta activamente el desarrollo de ${name}?`,
+      (name: string) => `En mi equipo se observa ${lc(name)} de forma habitual en el trabajo diario`,
+      (name: string) => `Mi jefatura demuestra ${lc(name)} con su ejemplo y en su gestión`,
+      (name: string) => `La organización entrega espacios y recursos concretos para desarrollar ${lc(name)}`,
     ];
     for (const comp of competencies) {
       const climateCategory = inferSurveyClimateCategory(comp);
@@ -195,14 +246,15 @@ function EncuestasClimaPageContent() {
         questions.push({ category: climateCategory, questionText: qBanks[i](comp.name), questionType: 'likert_5', isRequired: true });
       }
     }
-    // NPS
-    questions.push({ category: 'NPS', questionText: 'Del 0 al 10, ¿qué tan probable es que recomiendes esta organización como lugar de trabajo?', questionType: 'nps', isRequired: true });
-    if (level >= 3) questions.push({ category: 'NPS', questionText: 'Del 0 al 10, ¿qué tan satisfecho/a estás con tu experiencia laboral actual?', questionType: 'nps', isRequired: true });
-    // Open text
-    questions.push({ category: 'General', questionText: '¿Qué es lo que más valoras de trabajar en esta organización?', questionType: 'open_text', isRequired: false });
-    if (level >= 2) questions.push({ category: 'General', questionText: '¿Qué cambio concreto mejoraría tu experiencia laboral?', questionType: 'open_text', isRequired: false });
+    // eNPS — formulación estándar 0-10 (no modificar para mantener
+    // comparabilidad entre olas).
+    questions.push({ category: 'NPS', questionText: 'En una escala de 0 a 10, ¿qué tan probable es que recomiendes esta organización como un buen lugar para trabajar?', questionType: 'nps', isRequired: true });
+    if (level >= 3) questions.push({ category: 'NPS', questionText: 'En una escala de 0 a 10, ¿qué tan satisfecho/a estás con tu experiencia laboral en general?', questionType: 'nps', isRequired: true });
+    // Preguntas abiertas accionables (piden situaciones/cambios concretos).
+    questions.push({ category: 'General', questionText: '¿Qué es lo que más valoras de trabajar en esta organización hoy?', questionType: 'open_text', isRequired: false });
+    if (level >= 2) questions.push({ category: 'General', questionText: 'Si pudieras cambiar una sola cosa para mejorar tu experiencia de trabajo, ¿cuál sería y por qué?', questionType: 'open_text', isRequired: false });
     if (level >= 3) {
-      questions.push({ category: 'General', questionText: '¿Qué sugerencia tienes para mejorar el clima laboral?', questionType: 'open_text', isRequired: false });
+      questions.push({ category: 'General', questionText: '¿Qué te haría querer seguir en la organización los próximos dos años?', questionType: 'open_text', isRequired: false });
     }
     return questions;
   };
