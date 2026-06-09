@@ -77,6 +77,15 @@ function EncuestasClimaPageContent() {
   const [creating, setCreating] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  // Edición de encuesta en borrador: si está seteado, el modal abre en modo
+  // "editar" (PATCH /surveys/:id) en lugar de "crear" (POST /surveys).
+  // BE permite editar TODO (título, anonimato, audiencia, fechas, settings,
+  // preguntas completas) mientras status === 'draft'. Antes de este fix,
+  // el FE solo exponía launch/delete para drafts → admin no tenía forma
+  // de corregir typos / reordenar preguntas / cambiar audiencia tras crear.
+  const [editingSurveyId, setEditingSurveyId] = useState<string | null>(null);
+  const [loadingEdit, setLoadingEdit] = useState<string | null>(null);
+  const isEditing = editingSurveyId !== null;
 
   // Create form state
   // T3 — `settings` controla flags del responder (barra progreso, shuffle,
@@ -217,7 +226,8 @@ function EncuestasClimaPageContent() {
 
   useEffect(() => { loadData(); }, [token]);
 
-  const handleCreate = async () => {
+  /** Crea (POST) o actualiza (PATCH) una encuesta. Decide según editingSurveyId. */
+  const handleSubmit = async () => {
     if (!token || !form.title.trim()) return;
     if (form.questions.length === 0) {
       toast(t('surveys.needOneQuestion'), 'error');
@@ -229,15 +239,71 @@ function EncuestasClimaPageContent() {
         ...form,
         questions: form.questions.map((q, i) => ({ ...q, sortOrder: i })),
       };
-      await api.surveys.create(token, dto);
-      toast(t('surveys.createdSuccess'), 'success');
+      if (editingSurveyId) {
+        await api.surveys.update(token, editingSurveyId, dto);
+        toast(t('surveys.updatedSuccess', 'Encuesta actualizada'), 'success');
+      } else {
+        await api.surveys.create(token, dto);
+        toast(t('surveys.createdSuccess'), 'success');
+      }
       setShowCreate(false);
+      setEditingSurveyId(null);
       resetForm();
       loadData();
     } catch (e: any) {
-      toast(e.message || t('surveys.createError'), 'error');
+      toast(e.message || (editingSurveyId ? t('surveys.updateError', 'No se pudo actualizar') : t('surveys.createError')), 'error');
     } finally {
       setCreating(false);
+    }
+  };
+
+  /** Carga una encuesta draft en el form y abre el modal en modo edición. */
+  const handleEdit = async (surveyId: string) => {
+    if (!token) return;
+    setLoadingEdit(surveyId);
+    try {
+      const survey = await api.surveys.findById(token, surveyId);
+      if (survey.status !== 'draft') {
+        toast(t('surveys.editOnlyDraft', 'Solo se pueden editar encuestas en borrador'), 'error');
+        return;
+      }
+      // Mapear entity → form shape. Las fechas vienen como ISO y el input
+      // <input type="date"> exige YYYY-MM-DD; cortamos al día.
+      const toDateInput = (d: string | Date | null | undefined): string =>
+        d ? new Date(d).toISOString().split('T')[0] : '';
+      setForm({
+        title: survey.title || '',
+        description: survey.description || '',
+        isAnonymous: !!survey.isAnonymous,
+        targetAudience: (survey.targetAudience as 'all' | 'by_department') || 'all',
+        targetDepartments: Array.isArray(survey.targetDepartments) ? survey.targetDepartments : [],
+        targetDepartmentIds: Array.isArray(survey.targetDepartmentIds) ? survey.targetDepartmentIds : [],
+        startDate: toDateInput(survey.startDate),
+        endDate: toDateInput(survey.endDate),
+        settings: {
+          showProgressBar: survey.settings?.showProgressBar ?? true,
+          randomizeQuestions: survey.settings?.randomizeQuestions ?? false,
+          allowPartialSave: survey.settings?.allowPartialSave ?? false,
+          kAnonymityThreshold: survey.settings?.kAnonymityThreshold ?? 5,
+        },
+        // Las questions vienen ordenadas por sortOrder ASC (ver findById).
+        // Mapear al shape del form: campos snake_case → camelCase no aplica
+        // porque la entity ya usa camelCase a nivel JS (TypeORM mapea).
+        questions: (Array.isArray(survey.questions) ? survey.questions : []).map((q: any) => ({
+          id: q.id,
+          category: q.category || 'General',
+          questionText: q.questionText || '',
+          questionType: q.questionType || 'likert_5',
+          options: q.options ?? null,
+          isRequired: q.isRequired !== false,
+        })),
+      });
+      setEditingSurveyId(surveyId);
+      setShowCreate(true);
+    } catch (e: any) {
+      toast(e.message || t('surveys.loadError'), 'error');
+    } finally {
+      setLoadingEdit(null);
     }
   };
 
@@ -340,7 +406,22 @@ function EncuestasClimaPageContent() {
             {showGuide ? t('common.hideGuide') : t('common.showGuide')}
           </button>
           {isAdmin && (
-            <button className="btn-primary" onClick={() => { setShowCreate(!showCreate); if (showCreate) resetForm(); }}>
+            <button className="btn-primary" onClick={() => {
+              // Si está abierto en modo edición, al cerrar limpiar el estado
+              // de edición y el form. Si está cerrado, abrir limpio en modo
+              // "crear" (asegurar que editingSurveyId queda en null).
+              const willOpen = !showCreate;
+              setShowCreate(willOpen);
+              if (!willOpen) {
+                setEditingSurveyId(null);
+                resetForm();
+              } else if (editingSurveyId) {
+                // Si por algún flow extraño se reabriera con editingSurveyId
+                // cargado, resetear para volver a modo crear.
+                setEditingSurveyId(null);
+                resetForm();
+              }
+            }}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
               </svg>
@@ -430,7 +511,9 @@ function EncuestasClimaPageContent() {
       {/* ─── CREATE FORM (inline, not modal) ─── */}
       {showCreate && isAdmin && (
         <div className="card animate-fade-up" style={{ padding: '1.75rem', marginBottom: '1.5rem', borderLeft: '4px solid var(--accent)' }}>
-          <h3 style={{ fontWeight: 700, fontSize: '1rem', margin: '0 0 1.25rem' }}>{t('surveys.newSurvey')}</h3>
+          <h3 style={{ fontWeight: 700, fontSize: '1rem', margin: '0 0 1.25rem' }}>
+            {isEditing ? t('surveys.editSurvey', 'Editar encuesta (borrador)') : t('surveys.newSurvey')}
+          </h3>
 
           {/* Basic info */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1.25rem' }}>
@@ -585,9 +668,11 @@ function EncuestasClimaPageContent() {
 
           {/* Create button — positioned after general fields for visibility */}
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', borderTop: '1px solid var(--border)', paddingTop: '1rem', marginBottom: '1rem' }}>
-            <button className="btn-ghost" style={{ fontSize: '0.82rem' }} onClick={() => { setShowCreate(false); resetForm(); }}>{t('common.cancel')}</button>
-            <button className="btn-primary" style={{ fontSize: '0.82rem' }} onClick={handleCreate} disabled={creating || !form.title.trim() || form.questions.length === 0}>
-              {creating ? t('surveys.creating') : t('surveys.createSurvey')}
+            <button className="btn-ghost" style={{ fontSize: '0.82rem' }} onClick={() => { setShowCreate(false); setEditingSurveyId(null); resetForm(); }}>{t('common.cancel')}</button>
+            <button className="btn-primary" style={{ fontSize: '0.82rem' }} onClick={handleSubmit} disabled={creating || !form.title.trim() || form.questions.length === 0}>
+              {creating
+                ? (isEditing ? t('surveys.saving', 'Guardando…') : t('surveys.creating'))
+                : (isEditing ? t('surveys.saveChanges', 'Guardar cambios') : t('surveys.createSurvey'))}
             </button>
           </div>
 
@@ -668,8 +753,10 @@ function EncuestasClimaPageContent() {
           {/* Bottom create button (duplicate for convenience after scrolling through questions) */}
           {form.questions.length > 3 && (
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', borderTop: '1px solid var(--border)', paddingTop: '1rem' }}>
-              <button className="btn-primary" style={{ fontSize: '0.82rem' }} onClick={handleCreate} disabled={creating || !form.title.trim() || form.questions.length === 0}>
-                {creating ? t('surveys.creating') : t('surveys.createSurvey')}
+              <button className="btn-primary" style={{ fontSize: '0.82rem' }} onClick={handleSubmit} disabled={creating || !form.title.trim() || form.questions.length === 0}>
+                {creating
+                  ? (isEditing ? t('surveys.saving', 'Guardando…') : t('surveys.creating'))
+                  : (isEditing ? t('surveys.saveChanges', 'Guardar cambios') : t('surveys.createSurvey'))}
               </button>
             </div>
           )}
@@ -766,6 +853,17 @@ function EncuestasClimaPageContent() {
                   <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
                     {s.status === 'draft' && (
                       <>
+                        {/* Editar: solo aplica a drafts. Carga la encuesta
+                            completa (con questions) en el form y abre el
+                            modal en modo edición (PATCH al guardar). */}
+                        <button
+                          onClick={() => handleEdit(s.id)}
+                          disabled={loadingEdit === s.id}
+                          title={t('surveys.editTooltip', 'Editar título, audiencia, fechas, preguntas y settings')}
+                          style={{ padding: '0.35rem 0.75rem', fontSize: '0.78rem', fontWeight: 600, borderRadius: 'var(--radius-sm)', border: '1px solid rgba(99,102,241,0.3)', background: 'rgba(99,102,241,0.08)', color: '#4338ca', cursor: loadingEdit === s.id ? 'wait' : 'pointer', opacity: loadingEdit === s.id ? 0.6 : 1 }}
+                        >
+                          {loadingEdit === s.id ? t('common.loading', 'Cargando…') : t('common.edit', 'Editar')}
+                        </button>
                         <button onClick={() => handleLaunch(s.id)} style={{ padding: '0.35rem 0.75rem', fontSize: '0.78rem', fontWeight: 600, borderRadius: 'var(--radius-sm)', border: '1px solid rgba(22,163,106,0.3)', background: 'rgba(22,163,106,0.08)', color: 'var(--success)', cursor: 'pointer' }}>{t('surveys.launch')}</button>
                         {/* Draft: cualquier admin puede eliminar */}
                         <button onClick={() => setConfirmDelete(s.id)} style={{ padding: '0.35rem 0.75rem', fontSize: '0.78rem', fontWeight: 600, borderRadius: 'var(--radius-sm)', border: '1px solid rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.08)', color: 'var(--danger)', cursor: 'pointer' }}>{t('common.delete')}</button>
