@@ -15,6 +15,8 @@ import { usePositions } from '@/hooks/usePositions';
 import { formatRutInput, validateRut, normalizeRut } from '@/lib/rut';
 import { TableSkeleton } from '@/components/LoadingSkeleton';
 import { FirstVisitTip } from '@/components/FirstVisitTip';
+import { usePasswordPolicy } from '@/hooks/usePasswordPolicy';
+import PasswordStrengthMeter from '@/components/PasswordStrengthMeter';
 
 function Avatar({ name }: { name: string }) {
   const initials = name.split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase();
@@ -137,6 +139,12 @@ export default function UsuariosPage() {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
+  // Mostrar/ocultar el valor del campo contraseña (ojito).
+  const [showPassword, setShowPassword] = useState(false);
+  // Política de contraseñas activa del tenant (mín. de caracteres,
+  // mayúscula/minúscula/número/símbolo requeridos). Se usa para el
+  // checklist en vivo del PasswordStrengthMeter. Cae a defaults si falla.
+  const { data: passwordPolicy } = usePasswordPolicy();
 
   // Departure modal state
   const [departureUser, setDepartureUser] = useState<{ id: string; name: string } | null>(null);
@@ -297,6 +305,7 @@ export default function UsuariosPage() {
       setForm(emptyForm);
       setShowCreateForm(false);
       setEditingId(null);
+      setShowPassword(false);
       // Invalidate positions cache in case a custom position was added
       invalidatePositions();
     } catch (err: any) {
@@ -900,7 +909,7 @@ export default function UsuariosPage() {
         // así no se "pierde" al editar usuarios que están más abajo en la
         // lista. Click en el fondo cierra; click dentro NO se propaga.
         <div
-          onClick={() => { setShowCreateForm(false); setForm(emptyForm); setEditingId(null); }}
+          onClick={() => { setShowCreateForm(false); setForm(emptyForm); setEditingId(null); setShowPassword(false); }}
           style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(15,23,42,0.55)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '3vh 1rem', overflowY: 'auto' }}
         >
         <div
@@ -914,7 +923,7 @@ export default function UsuariosPage() {
             </h3>
             <button
               className="btn-ghost"
-              onClick={() => { setShowCreateForm(false); setForm(emptyForm); setEditingId(null); }}
+              onClick={() => { setShowCreateForm(false); setForm(emptyForm); setEditingId(null); setShowPassword(false); }}
               style={{ fontSize: '1.1rem', lineHeight: 1, padding: '0.25rem 0.5rem' }}
               aria-label="Cerrar"
             >
@@ -935,16 +944,50 @@ export default function UsuariosPage() {
             </div>
             <div>
               <label style={labelStyle}>{editingId ? 'Nueva contraseña (opcional)' : 'Contraseña (opcional)'}</label>
-              <input
-                style={inputStyle}
-                placeholder={editingId ? 'Dejar vacío para no cambiar' : 'Vacío = empresa + año (ej. Empresa2026)'}
-                type="password"
-                value={form.password}
-                onChange={(e) => updateField('password', e.target.value)}
+              <div style={{ position: 'relative' }}>
+                <input
+                  style={{ ...inputStyle, paddingRight: '2.5rem' }}
+                  placeholder={editingId ? 'Dejar vacío para no cambiar' : 'Vacío = empresa + año (ej. Empresa2026)'}
+                  type={showPassword ? 'text' : 'password'}
+                  value={form.password}
+                  onChange={(e) => updateField('password', e.target.value)}
+                  autoComplete="new-password"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((s) => !s)}
+                  tabIndex={-1}
+                  aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                  title={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                  style={{ position: 'absolute', right: '0.6rem', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '0.25rem', display: 'flex', alignItems: 'center' }}
+                >
+                  {showPassword ? (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
+                      <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
+                      <line x1="1" y1="1" x2="23" y2="23" />
+                    </svg>
+                  ) : (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" />
+                    </svg>
+                  )}
+                </button>
+              </div>
+              {/* Checklist de requisitos en vivo (solo aparece al escribir). */}
+              <PasswordStrengthMeter
+                password={form.password}
+                policy={passwordPolicy ?? { minLength: 8, requireUppercase: true, requireLowercase: true, requireNumber: true, requireSymbol: false, expiryDays: null, historyCount: 0, lockoutThreshold: 5, lockoutDurationMinutes: 15 }}
               />
-              {!editingId && (
-                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginTop: '0.25rem' }}>
-                  Si la dejas vacía, se asigna una contraseña inicial con el nombre de la empresa + el año actual. El usuario deberá cambiarla en su primer ingreso.
+              {/* Requisitos estáticos + nota de la genérica (cuando el campo está vacío). */}
+              {!form.password && (
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginTop: '0.35rem', lineHeight: 1.5 }}>
+                  Requisitos: mínimo {(passwordPolicy?.minLength ?? 8)} caracteres
+                  {(passwordPolicy?.requireUppercase ?? true) ? ', una mayúscula' : ''}
+                  {(passwordPolicy?.requireLowercase ?? true) ? ', una minúscula' : ''}
+                  {(passwordPolicy?.requireNumber ?? true) ? ', un número' : ''}
+                  {(passwordPolicy?.requireSymbol ?? false) ? ', un símbolo' : ''}.
+                  {!editingId && ' Si la dejas vacía, se asigna una inicial con el nombre de la empresa + el año actual y el usuario deberá cambiarla en su primer ingreso.'}
                 </span>
               )}
             </div>
@@ -1136,7 +1179,7 @@ export default function UsuariosPage() {
             <button className="btn-primary" onClick={handleCreate} disabled={creating}>
               {creating ? 'Guardando...' : editingId ? 'Guardar cambios' : 'Crear usuario'}
             </button>
-            <button className="btn-ghost" onClick={() => { setShowCreateForm(false); setForm(emptyForm); setEditingId(null); }}>
+            <button className="btn-ghost" onClick={() => { setShowCreateForm(false); setForm(emptyForm); setEditingId(null); setShowPassword(false); }}>
               Cancelar
             </button>
           </div>
