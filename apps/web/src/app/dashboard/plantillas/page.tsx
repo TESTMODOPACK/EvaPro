@@ -420,8 +420,14 @@ export default function PlantillasPage() {
     if (!token) return;
     setGeneratingSamples(true);
     try {
-      await api.templates.generateSamples(token);
-      toast.success('Plantillas de muestra generadas exitosamente');
+      // Idempotente en backend: solo crea las plantillas base que falten.
+      const created = await api.templates.generateSamples(token);
+      const n = Array.isArray(created) ? created.length : 0;
+      if (n === 0) {
+        toast.success('Las 4 plantillas base ya existen. No se creó ninguna nueva.');
+      } else {
+        toast.success(`${n} plantilla(s) base generada(s) exitosamente.`);
+      }
       reloadTemplates();
     } catch (err: any) {
       toast.error(err.message || 'Error al generar plantillas');
@@ -1086,6 +1092,21 @@ export default function PlantillasPage() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
+          {/* Generar plantillas base \u2014 disponible SIEMPRE (no solo en el
+              estado vac\u00EDo). Crea las 4 plantillas est\u00E1ndar (90/180/270/360)
+              a partir del cat\u00E1logo de competencias. Idempotente en backend:
+              omite las que ya existen por nombre. */}
+          <button
+            className="btn-ghost"
+            onClick={handleGenerateSamples}
+            disabled={generatingSamples || competencies.length < 3}
+            title={competencies.length < 3
+              ? 'Se requieren al menos 3 competencias activas para generar las plantillas base.'
+              : 'Crea las 4 plantillas base (90\u00B0/180\u00B0/270\u00B0/360\u00B0) desde tu cat\u00E1logo de competencias. Omite las que ya existan.'}
+            style={{ fontSize: '0.82rem' }}
+          >
+            {generatingSamples ? 'Generando...' : '\u2728 Generar plantillas base'}
+          </button>
           <button className="btn-ghost" onClick={() => setShowImport(!showImport)} style={{ fontSize: '0.82rem' }}>
             {'\u2B06 Importar CSV'}
           </button>

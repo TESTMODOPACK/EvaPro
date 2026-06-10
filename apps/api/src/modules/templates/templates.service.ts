@@ -829,6 +829,16 @@ export class TemplatesService {
 
     const templates: FormTemplate[] = [];
 
+    // Idempotencia: esta acción puede invocarse aunque el tenant ya tenga
+    // plantillas (el botón "Generar plantillas base" está siempre disponible).
+    // Para no crear duplicados, omitimos los tipos cuya plantilla base ya
+    // existe por nombre exacto. Así clic repetido solo crea las faltantes.
+    const existing = await this.templateRepo.find({
+      where: { tenantId },
+      select: ['id', 'name'],
+    });
+    const existingNames = new Set(existing.map((t) => t.name));
+
     // ─── Fase 3 (Opción A): el seed crea template padre VACIO + auto-crea
     // las subplantillas (form_sub_templates) con weights default + LLENA
     // cada subplantilla con preguntas espec­ficas para ese rol. Asi cada
@@ -837,6 +847,9 @@ export class TemplatesService {
     // La feedback section va a TODAS las subplantillas (todos los
     // evaluadores dan feedback abierto sobre fortalezas/mejoras).
     for (const evalType of types) {
+      // Skip si la plantilla base de este tipo ya existe (idempotente).
+      if (existingNames.has(evalType.name)) continue;
+
       // 1. Crear template padre con defaultCycleType (sin sections legacy).
       const template = this.templateRepo.create({
         tenantId,
