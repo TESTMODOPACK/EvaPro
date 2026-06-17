@@ -2541,7 +2541,19 @@ export class UsersService {
       const email = rawEmail.trim().toLowerCase();
       if (!email || !email.includes('@')) { skipped.push(email); continue; }
 
-      const existing = await this.userRepository.findOne({ where: { email, tenantId } });
+      // Detección de usuario existente CASE-INSENSITIVE. Antes se consultaba
+      // `where: { email, tenantId }` con el email ya en minúsculas, pero los
+      // emails se guardan tal cual se ingresaron (mixed-case) en create()/
+      // bulkOnboard(). Si el email almacenado tenía mayúsculas, la igualdad
+      // case-sensitive de Postgres NO lo encontraba → el usuario (típicamente
+      // el tenant_admin, que ya tiene cuenta y contraseña) NO se saltaba y
+      // recibía una invitación "Te han invitado a Eva360" con contraseña
+      // temporal que no le corresponde. LOWER() en ambos lados lo evita.
+      const existing = await this.userRepository
+        .createQueryBuilder('u')
+        .where('LOWER(u.email) = :email', { email })
+        .andWhere('u.tenant_id = :tenantId', { tenantId })
+        .getOne();
       if (existing) { skipped.push(email); continue; }
 
       const tempPassword = Math.random().toString(36).slice(2, 10) + 'A1!';
