@@ -133,6 +133,27 @@ export class EvaluationsController {
     return this.evaluationsService.resumeCycle(id, tenantId, req.user.userId);
   }
 
+  /**
+   * Activa/desactiva la excepción "jefatura-tardía": permite que las
+   * evaluaciones de jefatura (relationType MANAGER) pendientes se
+   * completen aunque el ciclo esté CLOSED. Solo admin.
+   */
+  @Post('evaluation-cycles/:id/manager-late-submission')
+  @Roles('super_admin', 'tenant_admin')
+  setManagerLateSubmission(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: { enabled: boolean },
+    @Request() req: any,
+  ) {
+    const tenantId = req.user.role === 'super_admin' ? null : req.user.tenantId;
+    return this.evaluationsService.setManagerLateSubmission(
+      id,
+      tenantId,
+      req.user.userId,
+      !!body?.enabled,
+    );
+  }
+
   // ─── Cycle Stages (B3.14) ──────────────────────────────────────────────
 
   @Get('evaluation-cycles/:cycleId/stages')

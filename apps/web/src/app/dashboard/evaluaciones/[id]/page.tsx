@@ -212,6 +212,27 @@ export default function CycleDetailPage() {
     });
   };
 
+  // ── Excepción jefatura-tardía (completar evaluaciones de jefatura tras
+  //    el cierre del ciclo) ──────────────────────────────────────────────
+  const [togglingLate, setTogglingLate] = useState(false);
+  const handleToggleManagerLate = async (enabled: boolean) => {
+    if (!token) return;
+    setTogglingLate(true);
+    try {
+      await api.cycles.setManagerLateSubmission(token, id, enabled);
+      toast.success(
+        enabled
+          ? 'Habilitado: las jefaturas pueden completar evaluaciones pendientes.'
+          : 'Deshabilitado: las jefaturas ya no pueden enviar tras el cierre.',
+      );
+      window.location.reload();
+    } catch (e: any) {
+      toast.error(e?.message || 'No se pudo actualizar la opción.');
+    } finally {
+      setTogglingLate(false);
+    }
+  };
+
   const openEdit = () => {
     if (!cycle) return;
     setEditForm({
@@ -426,6 +447,44 @@ export default function CycleDetailPage() {
             )}
           </div>
         </div>
+
+        {/* Excepción jefatura-tardía: solo admin, solo en ciclos cerrados.
+            Permite que las jefaturas completen evaluaciones pendientes
+            aunque el ciclo esté cerrado. */}
+        {cycle.status === 'closed' &&
+          (user?.role === 'tenant_admin' || user?.role === 'super_admin') && (
+          <div style={{
+            marginBottom: '1rem', padding: '1rem 1.25rem',
+            background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)',
+            border: '1px solid var(--border)',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            gap: '1rem', flexWrap: 'wrap',
+          }}>
+            <div style={{ maxWidth: '640px' }}>
+              <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '0.2rem' }}>
+                Permitir que las jefaturas completen evaluaciones tras el cierre
+              </div>
+              <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                Excepción: con el ciclo cerrado, las evaluaciones de <strong>jefatura</strong> que
+                quedaron pendientes podrán enviarse igual. El resto de evaluadores (autoevaluación,
+                pares, reportes directos) permanece bloqueado. El puntaje del colaborador evaluado
+                se recalcula automáticamente al incorporar la respuesta tardía.
+              </div>
+            </div>
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', cursor: togglingLate ? 'wait' : 'pointer', whiteSpace: 'nowrap' }}>
+              <input
+                type="checkbox"
+                checked={!!(cycle as any).settings?.allowManagerLateSubmission}
+                disabled={togglingLate}
+                onChange={(e) => handleToggleManagerLate(e.target.checked)}
+                style={{ width: '1.1rem', height: '1.1rem', cursor: 'inherit' }}
+              />
+              <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>
+                {(cycle as any).settings?.allowManagerLateSubmission ? 'Habilitado' : 'Deshabilitado'}
+              </span>
+            </label>
+          </div>
+        )}
 
         {/* Inline edit form */}
         {editing && (

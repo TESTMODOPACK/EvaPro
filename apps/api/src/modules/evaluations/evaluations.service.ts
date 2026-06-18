@@ -2004,6 +2004,39 @@ export class EvaluationsService {
     return saved;
   }
 
+  /**
+   * Activa/desactiva la excepción "jefatura-tardía": permite que las
+   * evaluaciones de JEFATURA (relationType MANAGER) pendientes se
+   * completen aunque el ciclo esté CLOSED. Decisión de producto jun 2026.
+   *
+   * Hace MERGE en cycle.settings (no reemplaza) para no pisar otros
+   * settings (minPeerCount, weights, etc.). Se puede activar sobre un
+   * ciclo CLOSED — ese es justamente el caso de uso (habilitar la
+   * excepción después de cerrar). No cambia el status del ciclo.
+   */
+  async setManagerLateSubmission(
+    id: string,
+    tenantId: string | null,
+    userId: string,
+    enabled: boolean,
+  ): Promise<EvaluationCycle> {
+    const cycle = await this.findCycleById(id, tenantId);
+    cycle.settings = {
+      ...(cycle.settings || {}),
+      allowManagerLateSubmission: enabled,
+    };
+    const saved = await this.cycleRepo.save(cycle);
+    await this.auditService.log(
+      saved.tenantId,
+      userId,
+      enabled ? 'cycle.manager_late_enabled' : 'cycle.manager_late_disabled',
+      'cycle',
+      id,
+      { cycleName: saved.name },
+    );
+    return saved;
+  }
+
   // ─── Assignments ──────────────────────────────────────────────────────────
 
   /**
@@ -2754,6 +2787,41 @@ export class EvaluationsService {
 
   // ─── Responses ────────────────────────────────────────────────────────────
 
+  /**
+   * Determina si un assignment puede aceptar respuestas (borrador o envío
+   * final) según el estado del ciclo.
+   *
+   * Regla normal (B3-04): solo se aceptan respuestas en ciclos ACTIVE.
+   *
+   * Excepción de producto (jun 2026): si el admin activó el toggle del
+   * ciclo `settings.allowManagerLateSubmission`, las evaluaciones de
+   * JEFATURA (relationType MANAGER) que quedaron PENDIENTES pueden
+   * completarse aunque el ciclo ya esté CLOSED. Pensado para cuando una
+   * jefatura no alcanzó a evaluar antes del cierre y el admin quiere
+   * permitirle terminar como excepción. Los reportes recalculan el score
+   * del evaluado on-demand (AVG sobre evaluation_responses), así que la
+   * respuesta tardía se refleja automáticamente al recargar.
+   *
+   * Solo aplica a MANAGER: pares, autoevaluación y reportes directos NO
+   * se reabren tras el cierre.
+   */
+  private isLateManagerSubmissionAllowed(assignment: EvaluationAssignment): boolean {
+    return (
+      assignment.cycle?.status === CycleStatus.CLOSED &&
+      assignment.relationType === RelationType.MANAGER &&
+      !!(assignment.cycle?.settings as any)?.allowManagerLateSubmission
+    );
+  }
+
+  /** Estado del ciclo OK para recibir respuestas: ACTIVE, o la excepción
+   *  de jefatura-tardía habilitada por el admin. */
+  private canAcceptResponse(assignment: EvaluationAssignment): boolean {
+    return (
+      assignment.cycle?.status === CycleStatus.ACTIVE ||
+      this.isLateManagerSubmissionAllowed(assignment)
+    );
+  }
+
   async saveResponse(
     assignmentId: string,
     tenantId: string,
@@ -2774,7 +2842,9 @@ export class EvaluationsService {
     // B3-04: solo se aceptan borradores/envíos si el ciclo está ACTIVE.
     // Antes save/submit aceptaban respuestas en DRAFT (ciclo a medio
     // armar), PAUSED (frozen intencional) o CLOSED/CANCELLED (cerrados).
-    if (assignment.cycle?.status !== CycleStatus.ACTIVE) {
+    // Excepción jun 2026: jefatura-tardía habilitada por el admin (ver
+    // canAcceptResponse / isLateManagerSubmissionAllowed).
+    if (!this.canAcceptResponse(assignment)) {
       throw new BadRequestException(
         `No se puede guardar la respuesta: el ciclo está en estado "${assignment.cycle?.status}". Solo se aceptan respuestas en ciclos activos.`,
       );
@@ -2820,14 +2890,22 @@ export class EvaluationsService {
     }
     // B3-04: el envío final también requiere ciclo ACTIVE; rechaza
     // submits sobre ciclos DRAFT/PAUSED/CLOSED/CANCELLED.
-    if (assignment.cycle?.status !== CycleStatus.ACTIVE) {
+    // Excepción jun 2026: jefatura-tardía (ver canAcceptResponse).
+    if (!this.canAcceptResponse(assignment)) {
       throw new BadRequestException(
         `No se puede enviar la evaluación: el ciclo está en estado "${assignment.cycle?.status}". Solo se aceptan envíos en ciclos activos.`,
       );
     }
 
-    // B1.4: Manager/peer/direct_report evaluations require self-evaluation to be completed first
-    if (assignment.relationType !== RelationType.SELF) {
+    // B1.4: Manager/peer/direct_report evaluations require self-evaluation
+    // to be completed first. Esta regla de ORDEN solo aplica mientras el
+    // ciclo está ACTIVE — en la excepción de jefatura-tardía (ciclo ya
+    // CLOSED) la autoevaluación ya no va a completarse, así que exigirla
+    // bloquearía la excepción. Post-cierre el orden es irrelevante.
+    if (
+      assignment.cycle?.status === CycleStatus.ACTIVE &&
+      assignment.relationType !== RelationType.SELF
+    ) {
       const selfAssignment = await this.assignmentRepo.findOne({
         where: {
           cycleId: assignment.cycleId,

@@ -1006,6 +1006,14 @@ export const api = {
       ),
     close: (token: string, id: string) =>
       request<CycleData>(`/evaluation-cycles/${id}/close`, { method: "POST" }, token),
+    // Excepción jefatura-tardía: permite que las evaluaciones de jefatura
+    // pendientes se completen aunque el ciclo esté cerrado.
+    setManagerLateSubmission: (token: string, id: string, enabled: boolean) =>
+      request<CycleData>(
+        `/evaluation-cycles/${id}/manager-late-submission`,
+        { method: "POST", body: JSON.stringify({ enabled }) },
+        token,
+      ),
     getAssignments: (token: string, cycleId: string) =>
       request<AssignmentData[]>(`/evaluation-cycles/${cycleId}/assignments`, {}, token),
   },
