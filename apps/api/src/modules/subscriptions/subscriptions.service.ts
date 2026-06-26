@@ -984,6 +984,10 @@ export class SubscriptionsService {
         savings: Math.round(monthly * 12 * 0.2 * 100) / 100,
         period: 12,
       },
+      // Servicio gestionado: cobro por proyecto fuera de este preview de
+      // pricing recurrente (price=0, period=0). No es seleccionable en el
+      // flujo self-service; el admin asigna el plan 'managed' aparte.
+      one_time: { price: 0, discount: 0, savings: 0, period: 0 },
     };
 
     return {

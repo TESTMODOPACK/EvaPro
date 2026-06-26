@@ -1820,6 +1820,9 @@ export class RemindersService {
           statuses: [SubscriptionStatus.TRIAL, SubscriptionStatus.EXPIRED],
         })
         .andWhere('s.updated_at >= :cutoff', { cutoff: cutoffExpired })
+        // Servicio gestionado (cobro por proyecto): excluir de los correos
+        // de nurture recurrentes — no son clientes self-service en trial.
+        .andWhere('s.billing_period != :oneTime', { oneTime: 'one_time' })
         .leftJoinAndSelect('s.tenant', 'tenant')
         .leftJoinAndSelect('s.plan', 'plan')
         .getMany();

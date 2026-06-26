@@ -1009,7 +1009,12 @@ export class TenantsService {
 
     // 3. Create subscription (optional — defaults to starter if not specified)
     const planCode = data.org.plan || 'starter';
-    const billingPeriod = data.org.billingPeriod || 'monthly';
+    // Servicio gestionado: cobro POR PROYECTO. El plan 'managed' fuerza
+    // billingPeriod=one_time y autoRenew=false → no entra a la facturación
+    // recurrente (auto-renew/nurture/dunning). También respetamos un
+    // billingPeriod=one_time explícito para cualquier plan.
+    const isManaged = planCode === 'managed';
+    const billingPeriod = isManaged ? 'one_time' : (data.org.billingPeriod || 'monthly');
     const planRepo = this.subscriptionRepo.manager.getRepository('subscription_plans');
     const plan = await planRepo.findOne({ where: { code: planCode, isActive: true } });
     if (plan) {
@@ -1019,7 +1024,8 @@ export class TenantsService {
         status: SubscriptionStatus.ACTIVE,
         startDate: data.org.startDate ? new Date(data.org.startDate) : new Date(),
         billingPeriod: billingPeriod as any,
-        autoRenew: true,
+        // one_time NO se auto-renueva (evita cobro recurrente accidental).
+        autoRenew: billingPeriod !== 'one_time',
       });
       await this.subscriptionRepo.save(sub);
       summary.push(`Suscripción plan "${(plan as any).name}" (${billingPeriod}) activada`);

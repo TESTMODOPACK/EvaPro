@@ -308,6 +308,7 @@ export class InvoicesService {
                 quarterly: 'Trimestral',
                 semiannual: 'Semestral',
                 annual: 'Anual',
+                one_time: 'Pago único',
               }[billingPeriod] || 'Mensual';
             lines.push({
               concept: `Plan ${sub.plan?.name || 'Base'} — ${periodLabel}`,

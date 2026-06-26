@@ -412,6 +412,16 @@ async function seed() {
         features: ['EVAL_90_180', 'EVAL_270', 'EVAL_360', 'BASIC_REPORTS', 'ADVANCED_REPORTS', 'ANALYTICS_REPORTS', 'OKR', 'FEEDBACK', 'CHECKINS', 'TEMPLATES_CUSTOM', 'PDI', 'NINE_BOX', 'CALIBRATION', 'POSTULANTS', 'RECOGNITION', 'ORG_DEVELOPMENT', 'SIGNATURES', 'ENGAGEMENT_SURVEYS', 'AUDIT_LOG', 'DEI', 'AI_INSIGHTS', 'PUBLIC_API'],
         maxAiCallsPerMonth: 400,
       },
+      {
+        // Servicio gestionado (done-for-you): Ascenda opera el ciclo y
+        // entrega informes; el cliente solo responde. Cobro POR PROYECTO
+        // (monthlyPrice=0 — el precio del servicio se factura aparte como
+        // pago único, no como suscripción recurrente).
+        code: 'managed', name: 'Servicio Gestionado', displayOrder: 5,
+        description: 'Servicio gestionado por Ascenda — setup, ciclo e informes. El cliente solo responde. Cobro por proyecto.',
+        maxEmployees: 9999, monthlyPrice: 0,
+        features: ['EVAL_90_180', 'EVAL_270', 'EVAL_360', 'BASIC_REPORTS', 'ENGAGEMENT_SURVEYS'],
+      },
     ];
 
     let starterPlan: any = null;

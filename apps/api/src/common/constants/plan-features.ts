@@ -8,6 +8,12 @@
  *   Pro     : all Growth + EVAL_360, ADVANCED_REPORTS, PDI, NINE_BOX, CALIBRATION, POSTULANTS,
  *             ORG_DEVELOPMENT, SIGNATURES, ANALYTICS_REPORTS, AUDIT_LOG, DEI, MAGIC_MEETINGS
  *   Enterprise: all Pro + AI_INSIGHTS, PUBLIC_API
+ *   Managed (servicio gestionado / done-for-you): SOLO lo que el cliente
+ *             usa por su cuenta — responder evaluaciones (90/180/270/360),
+ *             encuestas de clima y ver reportes BÁSICOS. El resto (reportes
+ *             avanzados, plantillas custom, calibración, 9-box, analytics,
+ *             etc.) lo opera Ascenda; el cliente NO tiene control admin.
+ *             Se cobra por proyecto (billingPeriod=one_time).
  */
 export const PlanFeature = {
   // Evaluaciones
@@ -138,5 +144,17 @@ export const PLAN_FEATURES = {
     PlanFeature.LEADER_STREAKS,
     PlanFeature.AI_INSIGHTS,
     PlanFeature.PUBLIC_API,
+  ],
+  // Servicio gestionado: features mínimas que el cliente usa por su cuenta.
+  // Permite responder cualquier tipo de evaluación (90/180/270/360) y
+  // encuestas de clima, y ver reportes básicos. NO incluye plantillas
+  // custom, reportes avanzados/analytics, calibración, 9-box, PDI, etc.
+  // (eso lo opera Ascenda y se entrega como informe).
+  managed: [
+    PlanFeature.EVAL_90_180,
+    PlanFeature.EVAL_270,
+    PlanFeature.EVAL_360,
+    PlanFeature.BASIC_REPORTS,
+    PlanFeature.ENGAGEMENT_SURVEYS,
   ],
 };

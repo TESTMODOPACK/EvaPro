@@ -15,6 +15,10 @@ export enum BillingPeriod {
   QUARTERLY = 'quarterly',
   SEMIANNUAL = 'semiannual',
   ANNUAL = 'annual',
+  // Servicio gestionado (done-for-you): cobro POR PROYECTO, una sola vez.
+  // No genera facturación recurrente; las subscripciones con este período
+  // se excluyen de los crons de nurture/dunning recurrentes.
+  ONE_TIME = 'one_time',
 }
 
 export enum PaymentStatus {
