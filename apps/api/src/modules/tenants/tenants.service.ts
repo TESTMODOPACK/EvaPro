@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, MoreThanOrEqual, Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
@@ -102,6 +102,8 @@ const VALID_CUSTOM_KEYS = Object.keys(CUSTOM_SETTINGS_DEFAULTS);
 
 @Injectable()
 export class TenantsService {
+  private readonly logger = new Logger(TenantsService.name);
+
   constructor(
     @InjectRepository(Tenant)
     private readonly tenantRepository: Repository<Tenant>,
@@ -194,11 +196,24 @@ export class TenantsService {
     });
     const saved = await this.tenantRepository.save(tenant);
 
-    // Auto-create department and position records from settings
+    // Auto-create department and position records from settings.
+    //
+    // CRÍTICO — savepoint obligatorio: cada request corre dentro de una
+    // transacción (TenantContextInterceptor). Si una query falla, Postgres
+    // ABORTA la transacción completa y un `catch` NO la recupera: el
+    // request responde 200 pero al cerrar hace ROLLBACK y se pierde TODO
+    // (incluido el tenant recién insertado). `manager.transaction()` anidado
+    // crea un SAVEPOINT, así un fallo aquí revierte solo este bloque.
     try {
-      await this.ensureDepartmentRecords(saved.id);
-      await this.ensurePositionRecords(saved.id);
-    } catch { /* non-critical */ }
+      await this.tenantRepository.manager.transaction(async () => {
+        await this.ensureDepartmentRecords(saved.id);
+        await this.ensurePositionRecords(saved.id);
+      });
+    } catch (err) {
+      this.logger.warn(
+        `create: no se pudieron crear departamentos/cargos base para ${saved.id}: ${(err as Error).message}`,
+      );
+    }
 
     // Optionally create admin user for this tenant
     let adminUser = null;
@@ -232,22 +247,39 @@ export class TenantsService {
       }
     }
 
-    // Auto-create base contracts (draft)
-    try {
-      const contractRepo = this.tenantRepository.manager.getRepository('contracts');
-      const createdBy = adminUser?.id || null;
-      for (const ct of [
-        { type: 'service_agreement', title: 'Contrato de Prestación de Servicios' },
-        { type: 'dpa', title: 'Acuerdo de Procesamiento de Datos (DPA)' },
-        { type: 'terms_conditions', title: 'Términos y Condiciones de Uso' },
-        { type: 'privacy_policy', title: 'Política de Privacidad' },
-      ]) {
-        await contractRepo.save(contractRepo.create({
-          tenantId: saved.id, type: ct.type, title: ct.title,
-          status: 'draft', effectiveDate: new Date(), createdBy,
-        }));
+    // Auto-create base contracts (draft).
+    //
+    // `contracts.created_by` es NOT NULL. Si el tenant se crea SIN usuario
+    // admin (el flujo normal desde el panel de super_admin no envía
+    // adminEmail/adminPassword), createdBy queda null y el INSERT viola la
+    // constraint → aborta la transacción del request → ROLLBACK silencioso
+    // que borraba el tenant recién creado (respondía 200 igual). Por eso:
+    //   1. Solo se crean los contratos si hay un usuario que los cree.
+    //   2. El bloque va en un SAVEPOINT (transaction anidada) para que
+    //      cualquier otro fallo revierta solo esto y no el tenant.
+    const contractsCreatedBy = adminUser?.id || null;
+    if (contractsCreatedBy) {
+      try {
+        await this.tenantRepository.manager.transaction(async (m) => {
+          const contractRepo = m.getRepository('contracts');
+          for (const ct of [
+            { type: 'service_agreement', title: 'Contrato de Prestación de Servicios' },
+            { type: 'dpa', title: 'Acuerdo de Procesamiento de Datos (DPA)' },
+            { type: 'terms_conditions', title: 'Términos y Condiciones de Uso' },
+            { type: 'privacy_policy', title: 'Política de Privacidad' },
+          ]) {
+            await contractRepo.save(contractRepo.create({
+              tenantId: saved.id, type: ct.type, title: ct.title,
+              status: 'draft', effectiveDate: new Date(), createdBy: contractsCreatedBy,
+            }));
+          }
+        });
+      } catch (err) {
+        this.logger.warn(
+          `create: no se pudieron crear los contratos base para ${saved.id}: ${(err as Error).message}`,
+        );
       }
-    } catch { /* contracts table may not exist yet */ }
+    }
 
     return { tenant: saved, adminUser: adminUser ? { id: adminUser.id, email: adminUser.email } : null };
   }
@@ -1003,6 +1035,13 @@ export class TenantsService {
     if (data.positions?.length) {
       settings.positions = data.positions.sort((a, b) => a.level - b.level);
       summary.push(`${data.positions.length} cargos configurados`);
+    }
+    // Servicio gestionado (done-for-you): marca el tenant para recortar la
+    // visibilidad del manager (sin listado de usuarios ni reportes de
+    // equipo). El flag se baja al JWT en el login (auth.service).
+    if ((data.org.plan || '') === 'managed') {
+      settings.managedService = true;
+      summary.push('Modo servicio gestionado activado (operado por Ascenda)');
     }
     tenant.settings = settings;
     await this.tenantRepository.save(tenant);

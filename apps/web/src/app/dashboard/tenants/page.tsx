@@ -154,6 +154,7 @@ export default function TenantsPage() {
 
       // Create subscription for the new tenant
       const tenantId = result?.tenant?.id;
+      let subscriptionOk = true;
       if (tenantId && form.planId) {
         try {
           await api.subscriptions.create(token, {
@@ -164,15 +165,28 @@ export default function TenantsPage() {
             startDate: new Date().toISOString().slice(0, 10),
           });
         } catch {
-          // Subscription creation failed but org was created
-          setError('Organizacion creada, pero hubo un error asignando la suscripcion. Asignela manualmente desde Suscripciones.');
+          // La suscripción falló. Antes se seteaba el error PERO igual se
+          // mostraba el mensaje de éxito abajo, ocultando el problema (fue
+          // lo que enmascaró el rollback silencioso del tenant). Ahora el
+          // éxito solo se muestra si todo el flujo salió bien.
+          subscriptionOk = false;
+          setError('Organizacion creada, pero hubo un error asignando la suscripcion. Verifique en Suscripciones antes de continuar.');
         }
       }
 
-      setSuccess('Organizacion creada correctamente con suscripcion asignada');
-      resetForm();
+      // resetForm() limpia el error, así que solo se usa en el camino feliz.
+      // Si la suscripción falló, cerramos el formulario manualmente para
+      // que el mensaje de error siga visible.
+      if (subscriptionOk) {
+        resetForm();
+        setSuccess('Organizacion creada correctamente con suscripcion asignada');
+        setTimeout(() => setSuccess(''), 4000);
+      } else {
+        setForm({ ...emptyForm });
+        setShowForm(false);
+        setEditingId(null);
+      }
       fetchTenants();
-      setTimeout(() => setSuccess(''), 4000);
     } catch (e: any) {
       setError(e.message);
     } finally {
