@@ -567,38 +567,62 @@ export class TenantsService {
           count += userDeptCount;
         }
 
-        // Check active recruitment processes (safe — ignore if table doesn't exist)
-        try {
-          const recruitCount = await this.userRepository.manager.query(
-            `SELECT COUNT(*) as cnt FROM recruitment_processes WHERE tenant_id = $1 AND department = $2 AND status NOT IN ('closed', 'cancelled')`,
-            [tenantId, value],
-          );
-          const rc = Number(recruitCount?.[0]?.cnt || 0);
-          if (rc > 0) { usageParts.push(`${rc} proceso(s) de reclutamiento`); count += rc; }
-        } catch { /* table may not exist */ }
+        // Chequeos "best-effort" sobre tablas opcionales.
+        //
+        // CRÍTICO — cada query va en su propio SAVEPOINT: el request corre
+        // dentro de una transacción (TenantContextInterceptor) y en Postgres
+        // una query fallida ABORTA la transacción completa. Un `try/catch`
+        // atrapa el error en JS pero NO recupera la transacción: todo lo que
+        // siga (incluido el UPDATE del soft-delete) revienta con
+        // "current transaction is aborted" → 500. `manager.transaction()`
+        // anidado crea un SAVEPOINT, así el fallo revierte solo esa query.
+        const safeCount = async (sql: string, params: any[]): Promise<number> => {
+          try {
+            return await this.userRepository.manager.transaction(async (m) => {
+              const rows = await m.query(sql, params);
+              return Number(rows?.[0]?.cnt || 0);
+            });
+          } catch (err) {
+            this.logger.warn(
+              `checkSettingUsage: chequeo opcional omitido (${(err as Error).message})`,
+            );
+            return 0;
+          }
+        };
 
-        // Check active calibration sessions (safe)
-        try {
-          const calibCount = await this.userRepository.manager.query(
-            `SELECT COUNT(*) as cnt FROM calibration_sessions WHERE tenant_id = $1 AND department = $2 AND status != 'completed'`,
-            [tenantId, value],
-          );
-          const cc = Number(calibCount?.[0]?.cnt || 0);
-          if (cc > 0) { usageParts.push(`${cc} calibraci\ón(es)`); count += cc; }
-        } catch { /* table may not exist */ }
+        const rc = await safeCount(
+          `SELECT COUNT(*) as cnt FROM recruitment_processes WHERE tenant_id = $1 AND department = $2 AND status NOT IN ('closed', 'cancelled')`,
+          [tenantId, value],
+        );
+        if (rc > 0) { usageParts.push(`${rc} proceso(s) de reclutamiento`); count += rc; }
+
+        const cc = await safeCount(
+          `SELECT COUNT(*) as cnt FROM calibration_sessions WHERE tenant_id = $1 AND department = $2 AND status != 'completed'`,
+          [tenantId, value],
+        );
+        if (cc > 0) { usageParts.push(`${cc} calibración(es)`); count += cc; }
 
         entity = usageParts.length > 0 ? usageParts.join(', ') : 'usuarios';
         break;
       }
       // competencyCategories removed — categories managed via Competencias page
       case 'evaluationPeriods': {
+        // Mismo blindaje: SAVEPOINT para que un fallo no aborte la
+        // transacción del request (ver comentario en 'departments').
         try {
-          const result = await this.userRepository.manager.query(
-            `SELECT COUNT(*) as cnt FROM evaluation_cycles WHERE tenant_id = $1 AND LOWER(period) = $2`,
-            [tenantId, value.toLowerCase()],
+          count = await this.userRepository.manager.transaction(async (m) => {
+            const result = await m.query(
+              `SELECT COUNT(*) as cnt FROM evaluation_cycles WHERE tenant_id = $1 AND LOWER(period) = $2`,
+              [tenantId, value.toLowerCase()],
+            );
+            return Number(result?.[0]?.cnt || 0);
+          });
+        } catch (err) {
+          this.logger.warn(
+            `checkSettingUsage(evaluationPeriods): chequeo omitido (${(err as Error).message})`,
           );
-          count = Number(result?.[0]?.cnt || 0);
-        } catch { count = 0; }
+          count = 0;
+        }
         entity = 'ciclos de evaluación';
         break;
       }
