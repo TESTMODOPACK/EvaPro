@@ -1174,6 +1174,31 @@ export const api = {
         { method: "PATCH", body: JSON.stringify(data) }, token),
     deleteSubTemplate: (token: string, subId: string) =>
       request<void>(`/templates/sub-templates/${subId}`, { method: "DELETE" }, token),
+
+    /**
+     * Replica las preguntas de una perspectiva hacia otras, adaptando la
+     * redacción (IA con fallback automático a reglas). Nunca sobrescribe
+     * perspectivas que ya tienen preguntas — vienen en `skipped`.
+     */
+    mirrorSubTemplate: (
+      token: string,
+      parentId: string,
+      data: {
+        sourceRelationType: string;
+        targetRelationTypes: string[];
+        useAi?: boolean;
+      },
+    ) =>
+      request<{
+        mode: 'ai' | 'rules';
+        created: Array<{ relationType: string; questionCount: number }>;
+        skipped: Array<{ relationType: string; reason: string }>;
+        aiError?: string;
+      }>(
+        `/templates/${parentId}/sub-templates/mirror`,
+        { method: "POST", body: JSON.stringify(data) },
+        token,
+      ),
     /** Update batch de pesos. Body: { weights: { manager: 0.4, ... } } */
     updateWeights: (token: string, parentId: string, weights: Record<string, number>) =>
       request<any[]>(`/templates/${parentId}/sub-templates/weights`,

@@ -17,6 +17,7 @@ import {
   UpdateSubTemplateDto,
   UpdateWeightsDto,
   SaveAllSubTemplatesDto,
+  MirrorSubTemplateDto,
 } from './dto/sub-template.dto';
 import {
   DEFAULT_WEIGHTS_BY_CYCLE_TYPE,
@@ -24,6 +25,16 @@ import {
   WEIGHT_SUM_TOLERANCE,
   getRelationsForCycleType,
 } from './constants/sub-template-defaults';
+import {
+  PERSPECTIVE_PROFILES,
+  perspectiveLabel,
+  transformQuestionByRules,
+} from './constants/perspective-mirror';
+import {
+  sanitizeForPrompt,
+  wrapAsUserData,
+  ANTI_INJECTION_NOTICE,
+} from '../ai-insights/prompts/sanitize';
 
 @Injectable()
 export class TemplatesService {
@@ -1233,6 +1244,401 @@ export class TemplatesService {
 
       await txSubRepo.remove(sub);
     });
+  }
+
+  // ─── Replicación "espejo" entre perspectivas ────────────────────────────
+
+  /**
+   * Replica las preguntas de una subplantilla hacia otras perspectivas,
+   * adaptando la redacción a lo que cada evaluador observa.
+   *
+   * Ejemplo: el admin arma JEFATURA ("Demuestra liderazgo de forma
+   * consistente") y replica a AUTOEVALUACIÓN → "Demuestro liderazgo de
+   * forma consistente".
+   *
+   * Reglas de seguridad del contenido:
+   *   - NUNCA sobrescribe una perspectiva que ya tiene preguntas; esas se
+   *     devuelven en `skipped` (decisión de producto: cero riesgo de
+   *     perder trabajo del admin).
+   *   - Las subplantillas creadas nacen con weight 0 — el admin debe
+   *     rebalancear para que la suma llegue a 1.0 (mismo criterio que
+   *     `handleAddSubTemplate` del editor).
+   *
+   * Motor: IA (Claude) por defecto, con fallback AUTOMÁTICO a reglas
+   * determinísticas si no hay cuota, la API falla o el JSON viene mal.
+   * El modo efectivamente usado se informa en el resultado para que la UI
+   * avise al admin si conviene revisar la redacción.
+   *
+   * Solo se transforma el TEXTO DE LAS PREGUNTAS. Los títulos de sección
+   * (normalmente nombres de competencia) se copian tal cual.
+   */
+  async mirrorSubTemplate(
+    parentId: string,
+    tenantId: string | undefined,
+    userId: string,
+    dto: MirrorSubTemplateDto,
+  ): Promise<{
+    mode: 'ai' | 'rules';
+    created: Array<{ relationType: string; questionCount: number }>;
+    skipped: Array<{ relationType: string; reason: string }>;
+    aiError?: string;
+  }> {
+    const parent = await this.findById(parentId, tenantId);
+    if (parent.tenantId === null) {
+      throw new BadRequestException(
+        'No se pueden replicar subplantillas de plantillas globales',
+      );
+    }
+
+    // ── 1. Origen ────────────────────────────────────────────────────────
+    const source = await this.subTemplateRepo.findOne({
+      where: { parentTemplateId: parentId, relationType: dto.sourceRelationType },
+    });
+    if (!source) {
+      throw new NotFoundException(
+        `No existe una subplantilla de origen para "${perspectiveLabel(dto.sourceRelationType)}".`,
+      );
+    }
+    const sourceSections = Array.isArray(source.sections) ? source.sections : [];
+    const sourceQuestionCount = sourceSections.reduce(
+      (acc: number, s: any) => acc + (s?.questions?.length || 0),
+      0,
+    );
+    if (sourceQuestionCount === 0) {
+      throw new BadRequestException(
+        `La subplantilla de "${perspectiveLabel(dto.sourceRelationType)}" no tiene preguntas para replicar.`,
+      );
+    }
+
+    // ── 2. Resolver destinos válidos ─────────────────────────────────────
+    const existingSubs = await this.subTemplateRepo.find({
+      where: { parentTemplateId: parentId },
+    });
+    const skipped: Array<{ relationType: string; reason: string }> = [];
+    const targets: string[] = [];
+
+    const VALID_RELATIONS = new Set<string>(Object.values(RelationType));
+    for (const target of [...new Set(dto.targetRelationTypes)]) {
+      // Defensa en profundidad: `relation_type` es varchar(20) en BD, así
+      // que un valor fuera del enum se insertaría como subplantilla
+      // fantasma. El DTO ya valida con @IsIn({each:true}); esto cubre
+      // llamadas internas (seeds/scripts) que no pasan por el pipe.
+      if (!VALID_RELATIONS.has(target)) {
+        throw new BadRequestException(
+          `Perspectiva destino inválida: "${target}".`,
+        );
+      }
+      if (target === dto.sourceRelationType) {
+        skipped.push({ relationType: target, reason: 'Es la perspectiva de origen' });
+        continue;
+      }
+      const existing = existingSubs.find((s) => s.relationType === target);
+      const existingCount = Array.isArray(existing?.sections)
+        ? (existing!.sections as any[]).reduce(
+            (acc: number, s: any) => acc + (s?.questions?.length || 0),
+            0,
+          )
+        : 0;
+      if (existingCount > 0) {
+        skipped.push({
+          relationType: target,
+          reason: `Ya tiene ${existingCount} pregunta(s)`,
+        });
+        continue;
+      }
+      targets.push(target);
+    }
+
+    if (targets.length === 0) {
+      return { mode: 'rules', created: [], skipped };
+    }
+
+    // ── 3. Transformar (IA con fallback a reglas) ────────────────────────
+    let mode: 'ai' | 'rules' = 'rules';
+    let aiError: string | undefined;
+    /** Mapa: relationType destino → (id pregunta origen → texto nuevo). */
+    let aiTexts: Record<string, Record<string, string>> | null = null;
+
+    if (dto.useAi !== false) {
+      try {
+        aiTexts = await this.rewriteQuestionsWithAi(
+          parent.tenantId,
+          userId,
+          parentId,
+          dto.sourceRelationType,
+          targets,
+          sourceSections,
+        );
+        mode = 'ai';
+      } catch (err: any) {
+        // Fallback silencioso a reglas: la replicación NO debe fallar por
+        // falta de cuota IA o un error transitorio de la API.
+        aiError = err?.message || 'Error desconocido de IA';
+        this.logger.warn(
+          `mirrorSubTemplate: IA no disponible (${aiError}). Fallback a reglas determinísticas.`,
+        );
+      }
+    }
+
+    // ── 4. Construir y persistir las subplantillas destino ───────────────
+    const created: Array<{ relationType: string; questionCount: number }> = [];
+
+    await this.dataSource.transaction(async (manager) => {
+      const txSubRepo = manager.getRepository(FormSubTemplate);
+
+      for (const target of targets) {
+        /**
+         * Los ids de preguntas se reescriben con sufijo `__target`, así que
+         * la lógica condicional (`condition.questionId`, tanto de sección
+         * como de pregunta) debe remapearse al MISMO id nuevo. Sin esto la
+         * condición apuntaría a un id inexistente en la subplantilla destino
+         * y la pregunta/sección NUNCA se le mostraría al evaluador — un
+         * fallo silencioso, sin error visible.
+         */
+        const remapCondition = (cond: any) =>
+          cond && cond.questionId
+            ? { ...cond, questionId: `${cond.questionId}__${target}` }
+            : cond;
+
+        const newSections = sourceSections.map((section: any) => ({
+          ...section,
+          // Id de sección único por perspectiva (evita choques si en el
+          // futuro se comparan/mergean secciones entre subplantillas).
+          id: `${section.id || 'sec'}__${target}`,
+          ...(section.condition !== undefined
+            ? { condition: remapCondition(section.condition) }
+            : {}),
+          questions: (section.questions || []).map((q: any) => {
+            const original = String(q.text ?? '');
+            const fromAi = aiTexts?.[target]?.[String(q.id)];
+            return {
+              ...q,
+              id: `${q.id || 'q'}__${target}`,
+              ...(q.condition !== undefined
+                ? { condition: remapCondition(q.condition) }
+                : {}),
+              text:
+                fromAi ||
+                transformQuestionByRules(original, dto.sourceRelationType, target),
+            };
+          }),
+        }));
+
+        const questionCount = newSections.reduce(
+          (acc: number, s: any) => acc + (s.questions?.length || 0),
+          0,
+        );
+
+        // Re-leer DENTRO de la transacción: `existingSubs` se cargó antes de
+        // abrirla, así que otro admin editando la misma plantilla pudo haber
+        // llenado esta perspectiva en el intervalo. Sin esta relectura la
+        // sobrescribiríamos, rompiendo la garantía de "nunca pisar trabajo
+        // existente". La ventana es corta pero la garantía debe ser firme.
+        const existing = await txSubRepo.findOne({
+          where: { parentTemplateId: parentId, relationType: target as RelationType },
+        });
+        const existingNow = Array.isArray(existing?.sections)
+          ? (existing!.sections as any[]).reduce(
+              (acc: number, s: any) => acc + (s?.questions?.length || 0),
+              0,
+            )
+          : 0;
+        if (existingNow > 0) {
+          skipped.push({
+            relationType: target,
+            reason: `Ya tiene ${existingNow} pregunta(s)`,
+          });
+          continue;
+        }
+
+        if (existing) {
+          // Existía pero vacía → la llenamos (weight se respeta tal cual).
+          existing.sections = newSections;
+          existing.isActive = true;
+          await txSubRepo.save(existing);
+        } else {
+          await txSubRepo.save(
+            txSubRepo.create({
+              tenantId: parent.tenantId,
+              parentTemplateId: parentId,
+              relationType: target as RelationType,
+              sections: newSections,
+              // weight 0: el admin rebalancea después (igual que al agregar
+              // una subplantilla nueva desde el editor).
+              weight: 0,
+              displayOrder:
+                SUB_TEMPLATE_DISPLAY_ORDER[target as RelationType] ?? 99,
+              isActive: true,
+            }),
+          );
+        }
+        created.push({ relationType: target, questionCount });
+      }
+    });
+
+    return { mode, created, skipped, ...(aiError ? { aiError } : {}) };
+  }
+
+  /**
+   * Reescribe con Claude las preguntas de una perspectiva hacia N
+   * perspectivas destino, en UNA sola llamada.
+   *
+   * Devuelve: { [relationType]: { [questionId]: textoReescrito } }.
+   * Lanza si no hay cuota, la API falla o el JSON es inválido — el caller
+   * hace fallback a reglas.
+   *
+   * Sigue el mismo patrón de cuota/logging/tracking que
+   * `suggestCompetencyDistribution` (assertAiQuota → call → aiCallLog →
+   * trackAddonUsage).
+   */
+  private async rewriteQuestionsWithAi(
+    tenantId: string,
+    userId: string,
+    templateId: string,
+    sourceRelationType: string,
+    targets: string[],
+    sourceSections: any[],
+  ): Promise<Record<string, Record<string, string>>> {
+    // Lanza BadRequest si el tenant no tiene cuota/plan con IA.
+    await this.aiInsightsService.assertAiQuota(tenantId);
+
+    // Preguntas de origen, saneadas contra prompt-injection (el texto lo
+    // escribe un admin del tenant → es input no confiable para el modelo).
+    const questions = sourceSections.flatMap((s: any) =>
+      (s.questions || []).map((q: any) => ({
+        id: String(q.id),
+        type: q.type === 'text' ? 'abierta' : 'escala',
+        text: sanitizeForPrompt(q.text, 400),
+      })),
+    );
+
+    const sourceProfile = PERSPECTIVE_PROFILES[sourceRelationType];
+    const targetSpec = targets
+      .map((t) => {
+        const p = PERSPECTIVE_PROFILES[t];
+        return `- "${t}" (${p?.label ?? t}): ${p?.aiInstruction ?? ''}`;
+      })
+      .join('\n');
+
+    const prompt = `Eres un experto en diseño de instrumentos de evaluación de desempeño 360° en español corporativo latinoamericano.
+
+${ANTI_INJECTION_NOTICE}
+
+Tengo un set de preguntas redactadas para la perspectiva "${sourceRelationType}" (${sourceProfile?.label ?? sourceRelationType}): ${sourceProfile?.aiInstruction ?? ''}
+
+Debo adaptar ESAS MISMAS preguntas a estas perspectivas destino:
+${targetSpec}
+
+${wrapAsUserData('PREGUNTAS ORIGEN', JSON.stringify(questions, null, 2))}
+
+Reglas de reescritura:
+1. Conserva el CONCEPTO y la competencia evaluada de cada pregunta. No inventes preguntas nuevas ni elimines ninguna.
+2. Ajusta la voz gramatical: la autoevaluación va en PRIMERA persona; las demás perspectivas en tercera persona sobre la persona evaluada.
+3. Reencuadra hacia lo que ese evaluador realmente observa (ver la descripción de cada perspectiva). Si una pregunta no aplica del todo a esa perspectiva, adáptala al ángulo más cercano que esa persona sí pueda responder.
+4. Mantén la especificidad conductual (comportamientos observables, no rasgos).
+5. Una sola idea por pregunta. Sin "y"/"o" uniendo dos conceptos distintos.
+6. Las preguntas de tipo "abierta" siguen siendo abiertas; las de "escala" siguen siendo afirmaciones evaluables en escala de acuerdo.
+
+Responde SOLO con JSON válido, sin markdown ni explicaciones, con esta forma exacta:
+{
+${targets.map((t) => `  "${t}": { "<id de la pregunta>": "<texto reescrito>" }`).join(',\n')}
+}
+
+Incluye TODOS los ids de las preguntas origen en CADA perspectiva destino.`;
+
+    const client = this.ensureAnthropicClient();
+    const model = 'claude-haiku-4-5';
+    let parsed: any = null;
+    let parseError: string | null = null;
+    let tokensUsed = 0;
+    let inputTokens = 0;
+    let outputTokens = 0;
+
+    try {
+      const response = await client.messages.create({
+        model,
+        max_tokens: 8000,
+        messages: [{ role: 'user', content: prompt }],
+      });
+      const textBlock = response.content.find((b) => b.type === 'text');
+      const text = textBlock && textBlock.type === 'text' ? textBlock.text : '';
+      inputTokens = response.usage?.input_tokens || 0;
+      outputTokens = response.usage?.output_tokens || 0;
+      tokensUsed = inputTokens + outputTokens;
+      try {
+        const cleaned = text
+          .replace(/^```(?:json)?\s*/i, '')
+          .replace(/\s*```\s*$/, '')
+          .trim();
+        parsed = JSON.parse(cleaned);
+      } catch (e: any) {
+        parseError = `JSON parse error: ${e.message}`;
+      }
+    } catch (err: any) {
+      await this.aiCallLogRepo
+        .save(
+          this.aiCallLogRepo.create({
+            tenantId,
+            type: InsightType.SUMMARY,
+            tokensUsed: 0,
+            inputTokens: 0,
+            outputTokens: 0,
+            model,
+            generatedBy: userId,
+            parseSuccess: false,
+            errorMessage: `Anthropic API error (mirror): ${err.message}`,
+            insightId: null,
+          }),
+        )
+        .catch(() => {});
+      throw new BadRequestException(`Error al comunicarse con la IA: ${err.message}`);
+    }
+
+    // Audit log del call (éxito o fallo de parseo).
+    await this.aiCallLogRepo
+      .save(
+        this.aiCallLogRepo.create({
+          tenantId,
+          type: InsightType.SUMMARY,
+          tokensUsed,
+          inputTokens,
+          outputTokens,
+          model,
+          generatedBy: userId,
+          parseSuccess: parseError === null,
+          errorMessage: parseError,
+          insightId: null,
+        }),
+      )
+      .catch(() => {});
+
+    if (parseError !== null || !parsed || typeof parsed !== 'object') {
+      throw new BadRequestException(
+        `La IA respondió con formato inválido: ${parseError || 'respuesta vacía'}`,
+      );
+    }
+
+    // Descuenta crédito addon si el plan ya está agotado (mismo criterio
+    // que el resto de features IA).
+    await this.aiInsightsService.trackAddonUsage(tenantId).catch(() => {});
+
+    // Normalizar: solo strings no vacíos. Lo que falte cae a reglas por
+    // pregunta (el caller usa `fromAi || transformQuestionByRules(...)`).
+    const out: Record<string, Record<string, string>> = {};
+    for (const target of targets) {
+      const raw = parsed[target];
+      if (!raw || typeof raw !== 'object') continue;
+      const clean: Record<string, string> = {};
+      for (const [qid, val] of Object.entries(raw)) {
+        if (typeof val === 'string' && val.trim()) clean[qid] = val.trim();
+      }
+      out[target] = clean;
+    }
+    // Si la IA no devolvió NADA usable, tratarlo como fallo → fallback.
+    if (Object.values(out).every((m) => Object.keys(m).length === 0)) {
+      throw new BadRequestException('La IA no devolvió textos utilizables');
+    }
+    return out;
   }
 
   /**

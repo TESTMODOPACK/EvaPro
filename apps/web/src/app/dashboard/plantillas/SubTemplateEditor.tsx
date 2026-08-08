@@ -76,6 +76,18 @@ const RELATION_LABELS: Record<string, { label: string; emoji: string; hint: stri
   external: { label: 'Externo', emoji: '🌐', hint: 'Cliente, proveedor, stakeholder' },
 };
 
+/**
+ * Perspectivas que corresponden a cada tipo de ciclo (convención estándar
+ * mayo 2026 — espejo de ALLOWED_RELATIONS en el backend). Se usa para
+ * proponer los destinos por defecto al replicar una subplantilla.
+ */
+const RELATIONS_BY_CYCLE_TYPE: Record<string, string[]> = {
+  '90': ['manager'],
+  '180': ['manager', 'self'],
+  '270': ['manager', 'self', 'peer'],
+  '360': ['manager', 'self', 'peer', 'direct_report'],
+};
+
 const genId = () => Math.random().toString(36).slice(2, 10);
 
 const defaultScaleLabels: Record<string, string> = {
@@ -412,6 +424,91 @@ export function SubTemplateEditor({
     }
   };
 
+  // ─── Replicar como espejo a otras perspectivas ────────────────────────
+  // El admin arma (p.ej.) la subplantilla de jefatura y replica esas mismas
+  // preguntas a autoevaluación/pares/reportes, con la redacción adaptada a
+  // lo que cada evaluador observa. Nunca se sobrescribe una perspectiva que
+  // ya tiene preguntas (el backend las devuelve en `skipped`).
+  const [mirrorOpen, setMirrorOpen] = useState(false);
+  const [mirrorTargets, setMirrorTargets] = useState<string[]>([]);
+  const [mirrorUseAi, setMirrorUseAi] = useState(true);
+  const [mirroring, setMirroring] = useState(false);
+
+  /** Cantidad de preguntas ya cargadas en una perspectiva (0 = vacía). */
+  const questionCountOf = (relationType: string): number => {
+    const sub = subs.find((s) => s.relationType === relationType);
+    if (!sub) return 0;
+    return sub.sections.reduce((acc, s) => acc + s.questions.length, 0);
+  };
+
+  /**
+   * Perspectivas que corresponden al tipo de ciclo de la plantilla,
+   * excluyendo la de origen. Si la plantilla no declara cycleType, se
+   * ofrecen todas las perspectivas conocidas.
+   */
+  const mirrorCandidates = (sourceRelation: string): string[] => {
+    const cycleType = (data?.template as any)?.defaultCycleType;
+    const pool = RELATIONS_BY_CYCLE_TYPE[cycleType] || Object.keys(RELATION_LABELS);
+    return pool.filter((r) => r !== sourceRelation);
+  };
+
+  const openMirrorDialog = () => {
+    if (!activeSub) return;
+    const candidates = mirrorCandidates(activeSub.relationType);
+    // Preseleccionar solo las que están vacías — las que ya tienen
+    // preguntas se muestran deshabilitadas (no se pisa trabajo existente).
+    setMirrorTargets(candidates.filter((r) => questionCountOf(r) === 0));
+    setMirrorOpen(true);
+  };
+
+  const handleMirror = async () => {
+    if (!token || !activeSub || mirrorTargets.length === 0) return;
+    setMirroring(true);
+    try {
+      const result = await api.templates.mirrorSubTemplate(token, templateId, {
+        sourceRelationType: activeSub.relationType,
+        targetRelationTypes: mirrorTargets,
+        useAi: mirrorUseAi,
+      });
+
+      const createdLabels = result.created
+        .map((c) => RELATION_LABELS[c.relationType]?.label || c.relationType)
+        .join(', ');
+
+      if (result.created.length > 0) {
+        toast.success(
+          `Preguntas replicadas a: ${createdLabels}. ` +
+            (result.mode === 'ai'
+              ? 'Redacción adaptada con IA.'
+              : 'Redacción adaptada con reglas automáticas — revisá los textos antes de publicar.') +
+            ' Recordá ajustar los pesos para que sumen 100%.',
+        );
+      }
+      // Avisar de las perspectivas omitidas (ya tenían contenido).
+      if (result.skipped.length > 0) {
+        const skippedLabels = result.skipped
+          .map(
+            (s) =>
+              `${RELATION_LABELS[s.relationType]?.label || s.relationType} (${s.reason})`,
+          )
+          .join(' · ');
+        toast.warning(`No se modificaron: ${skippedLabels}`);
+      }
+      // La IA falló y se usó el fallback: informarlo explícitamente para
+      // que el admin sepa por qué la redacción puede necesitar ajustes.
+      if (result.aiError) {
+        toast.warning(`IA no disponible (${result.aiError}). Se usaron reglas automáticas.`);
+      }
+
+      setMirrorOpen(false);
+      await refetch();
+    } catch (err: any) {
+      toast.error(err?.message || 'Error al replicar la subplantilla');
+    } finally {
+      setMirroring(false);
+    }
+  };
+
   const handleDeleteSubTemplate = async () => {
     if (!activeSub) return;
     const meta = RELATION_LABELS[activeSub.relationType];
@@ -590,6 +687,23 @@ export function SubTemplateEditor({
       toast.success('Plantilla guardada exitosamente');
       setChangeNote(''); // limpiar despues del save exitoso
       await refetch();
+
+      // Tras guardar: si la perspectiva activa tiene preguntas y quedan
+      // perspectivas del ciclo vacías, ofrecer replicarlas como espejo.
+      // Evita que el admin tenga que reescribir la misma batería a mano.
+      if (activeSub) {
+        const activeQuestions = activeSub.sections.reduce(
+          (a, s) => a + s.questions.length,
+          0,
+        );
+        const emptyTargets = mirrorCandidates(activeSub.relationType).filter(
+          (r) => questionCountOf(r) === 0,
+        );
+        if (activeQuestions > 0 && emptyTargets.length > 0) {
+          setMirrorTargets(emptyTargets);
+          setMirrorOpen(true);
+        }
+      }
     } catch (err: any) {
       toast.error(err?.message || 'Error al guardar');
     } finally {
@@ -1173,6 +1287,30 @@ export function SubTemplateEditor({
               />
               Subplantilla activa
             </label>
+            {/* Replicar como espejo a otras perspectivas del ciclo. Solo
+                tiene sentido si esta subplantilla ya tiene preguntas. */}
+            <button
+              type="button"
+              onClick={openMirrorDialog}
+              disabled={
+                mirroring ||
+                activeSub.sections.reduce((a, s) => a + s.questions.length, 0) === 0
+              }
+              title="Copia estas preguntas a otras perspectivas del ciclo, adaptando la redacción a cada evaluador"
+              style={{
+                marginLeft: '0.75rem',
+                padding: '0.3rem 0.6rem',
+                background: 'transparent',
+                border: '1px solid rgba(99,102,241,0.35)',
+                borderRadius: 'var(--radius-sm)',
+                color: 'var(--accent)',
+                fontSize: '0.78rem',
+                cursor: mirroring ? 'wait' : 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              🪞 Replicar a otras perspectivas
+            </button>
             {/* Lote 3 (Pregunta 2B): hard delete de subplantilla con confirmacion */}
             <button
               type="button"
@@ -1663,6 +1801,134 @@ export function SubTemplateEditor({
           Cancelar
         </button>
       </div>
+
+      {/* ─── Modal: replicar como espejo a otras perspectivas ───────────── */}
+      {mirrorOpen && activeSub && (
+        <div
+          onClick={() => !mirroring && setMirrorOpen(false)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 1200,
+            background: 'rgba(15,23,42,0.55)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: '1rem',
+          }}
+        >
+          <div
+            className="card"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: '100%', maxWidth: '560px', padding: '1.5rem',
+              maxHeight: '90vh', overflowY: 'auto',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.35)',
+            }}
+          >
+            <h3 style={{ fontWeight: 800, fontSize: '1rem', marginBottom: '0.4rem' }}>
+              🪞 Replicar a otras perspectivas
+            </h3>
+            <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: '1rem' }}>
+              Se copiarán las{' '}
+              <strong>
+                {activeSub.sections.reduce((a, s) => a + s.questions.length, 0)} preguntas
+              </strong>{' '}
+              de{' '}
+              <strong>
+                {RELATION_LABELS[activeSub.relationType]?.label || activeSub.relationType}
+              </strong>{' '}
+              a las perspectivas que elijas, adaptando la redacción a lo que cada
+              evaluador observa (por ejemplo, la autoevaluación pasa a primera
+              persona).
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1rem' }}>
+              {mirrorCandidates(activeSub.relationType).map((rel) => {
+                const existing = questionCountOf(rel);
+                const blocked = existing > 0;
+                const meta = RELATION_LABELS[rel];
+                return (
+                  <label
+                    key={rel}
+                    style={{
+                      display: 'flex', alignItems: 'flex-start', gap: '0.6rem',
+                      padding: '0.6rem 0.75rem',
+                      border: '1px solid var(--border)',
+                      borderRadius: 'var(--radius-sm)',
+                      opacity: blocked ? 0.55 : 1,
+                      cursor: blocked ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      disabled={blocked || mirroring}
+                      checked={mirrorTargets.includes(rel)}
+                      onChange={(e) =>
+                        setMirrorTargets((prev) =>
+                          e.target.checked ? [...prev, rel] : prev.filter((r) => r !== rel),
+                        )
+                      }
+                      style={{ marginTop: '0.15rem', accentColor: 'var(--accent)' }}
+                    />
+                    <div>
+                      <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>
+                        {meta?.emoji || '📋'} {meta?.label || rel}
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                        {blocked
+                          ? `Ya tiene ${existing} pregunta(s) — no se modificará`
+                          : meta?.hint || 'Sin preguntas todavía'}
+                      </div>
+                    </div>
+                  </label>
+                );
+              })}
+              {mirrorCandidates(activeSub.relationType).length === 0 && (
+                <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+                  No hay otras perspectivas para este tipo de ciclo.
+                </p>
+              )}
+            </div>
+
+            <label
+              style={{
+                display: 'flex', alignItems: 'flex-start', gap: '0.5rem',
+                fontSize: '0.8rem', marginBottom: '1rem', cursor: 'pointer',
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={mirrorUseAi}
+                disabled={mirroring}
+                onChange={(e) => setMirrorUseAi(e.target.checked)}
+                style={{ marginTop: '0.15rem', accentColor: 'var(--accent)' }}
+              />
+              <span>
+                <strong>Adaptar la redacción con IA</strong> (recomendado). Reescribe
+                cada pregunta según lo que esa perspectiva puede observar. Consume
+                créditos de IA del plan; si no hay disponibles, se usan reglas
+                automáticas.
+              </span>
+            </label>
+
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+              <button
+                className="btn-ghost"
+                onClick={() => setMirrorOpen(false)}
+                disabled={mirroring}
+              >
+                Cancelar
+              </button>
+              <button
+                className="btn-primary"
+                onClick={handleMirror}
+                disabled={mirroring || mirrorTargets.length === 0}
+              >
+                {mirroring
+                  ? 'Replicando...'
+                  : `Replicar a ${mirrorTargets.length} perspectiva(s)`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

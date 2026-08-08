@@ -23,6 +23,7 @@ import {
   UpdateSubTemplateDto,
   UpdateWeightsDto,
   SaveAllSubTemplatesDto,
+  MirrorSubTemplateDto,
 } from './dto/sub-template.dto';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -217,6 +218,27 @@ export class TemplatesController {
   ) {
     const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
     return this.templatesService.createSubTemplate(parentId, tenantId, dto);
+  }
+
+  /**
+   * Replica las preguntas de una subplantilla hacia otras perspectivas,
+   * adaptando la redacción (IA con fallback a reglas determinísticas).
+   * Nunca sobrescribe perspectivas que ya tienen preguntas.
+   */
+  @Post(':id/sub-templates/mirror')
+  @Roles('super_admin', 'tenant_admin')
+  mirrorSubTemplate(
+    @Param('id', ParseUUIDPipe) parentId: string,
+    @Body() dto: MirrorSubTemplateDto,
+    @Request() req: any,
+  ) {
+    const tenantId = req.user.role === 'super_admin' ? undefined : req.user.tenantId;
+    return this.templatesService.mirrorSubTemplate(
+      parentId,
+      tenantId,
+      req.user.userId,
+      dto,
+    );
   }
 
   /** Actualiza una subplantilla específica (sections/weight/displayOrder/isActive). */

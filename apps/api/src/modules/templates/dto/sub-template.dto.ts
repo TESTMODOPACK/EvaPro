@@ -78,6 +78,43 @@ export class UpdateWeightsDto {
 }
 
 /**
+ * Replicación "espejo" de una subplantilla hacia otras perspectivas.
+ *
+ * El admin arma (por ejemplo) la subplantilla de jefatura y replica esas
+ * mismas preguntas a autoevaluación / pares / reportes directos, con la
+ * redacción adaptada a lo que cada evaluador observa.
+ */
+export class MirrorSubTemplateDto {
+  /** Perspectiva de la que se copian las preguntas. */
+  @IsString()
+  @IsIn(RELATION_TYPE_VALUES)
+  @IsNotEmpty()
+  sourceRelationType: RelationType;
+
+  /**
+   * Perspectivas destino. Las que ya tengan preguntas se omiten
+   * (nunca se sobrescribe trabajo existente) y se reportan en `skipped`.
+   *
+   * `{ each: true }` valida CADA elemento: `relation_type` es varchar(20)
+   * en BD (no un enum de Postgres), así que sin esto un valor arbitrario
+   * se insertaría como subplantilla fantasma — ensucia los tabs del editor
+   * y distorsiona la validación de suma de pesos.
+   */
+  @IsArray()
+  @IsNotEmpty()
+  @IsIn(RELATION_TYPE_VALUES, { each: true })
+  targetRelationTypes: RelationType[];
+
+  /**
+   * true (default) = reescritura con IA, con fallback automático a reglas
+   * si no hay cuota o la API falla. false = solo reglas determinísticas.
+   */
+  @IsBoolean()
+  @IsOptional()
+  useAi?: boolean;
+}
+
+/**
  * Save-all batch: actualiza TODAS las subs + pesos en una sola
  * transaccion atomica. Hace snapshot del estado actual ANTES de
  * modificar (versionHistory). Mejor que N llamadas separadas por:
