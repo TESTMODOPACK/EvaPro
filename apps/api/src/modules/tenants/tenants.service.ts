@@ -7,6 +7,7 @@ import { Department } from './entities/department.entity';
 import { Position } from './entities/position.entity';
 import { User } from '../users/entities/user.entity';
 import { normalizeRut, validateRut } from '../../common/utils/rut-validator';
+import { inSavepoint } from '../../common/db/savepoint';
 import { AuditLog } from '../audit/entities/audit-log.entity';
 import { AuditService } from '../audit/audit.service';
 import { Subscription, SubscriptionStatus } from '../subscriptions/entities/subscription.entity';
@@ -1177,27 +1178,38 @@ export class TenantsService {
       summary.push(`${usersCreated} colaboradores creados`);
     }
 
-    // 7. Auto-create base contracts (draft)
-    try {
-      const contractRepo = this.tenantRepository.manager.getRepository('contracts');
-      const contractTypes = [
-        { type: 'service_agreement', title: 'Contrato de Prestación de Servicios' },
-        { type: 'dpa', title: 'Acuerdo de Procesamiento de Datos (DPA)' },
-        { type: 'terms_conditions', title: 'Términos y Condiciones de Uso' },
-        { type: 'privacy_policy', title: 'Política de Privacidad' },
-      ];
-      for (const ct of contractTypes) {
-        await contractRepo.save(contractRepo.create({
-          tenantId: tenant.id,
-          type: ct.type,
-          title: ct.title,
-          status: 'draft',
-          effectiveDate: data.org.startDate ? new Date(data.org.startDate) : new Date(),
-          createdBy: savedAdmin.id,
-        }));
-      }
-      summary.push(`4 contratos base creados (borrador)`);
-    } catch { /* contracts table may not exist yet */ }
+    // 7. Auto-create base contracts (draft).
+    //    SAVEPOINT: un fallo aquí (p.ej. constraint de contracts) abortaría
+    //    la transacción del request y se perdería TODO el onboarding —
+    //    tenant, admin, competencias y usuarios ya insertados.
+    const contractsOk = await inSavepoint(
+      this.tenantRepository.manager,
+      async (m) => {
+        const contractRepo = m.getRepository('contracts');
+        for (const ct of [
+          { type: 'service_agreement', title: 'Contrato de Prestación de Servicios' },
+          { type: 'dpa', title: 'Acuerdo de Procesamiento de Datos (DPA)' },
+          { type: 'terms_conditions', title: 'Términos y Condiciones de Uso' },
+          { type: 'privacy_policy', title: 'Política de Privacidad' },
+        ]) {
+          await contractRepo.save(contractRepo.create({
+            tenantId: tenant.id,
+            type: ct.type,
+            title: ct.title,
+            status: 'draft',
+            effectiveDate: data.org.startDate ? new Date(data.org.startDate) : new Date(),
+            createdBy: savedAdmin.id,
+          }));
+        }
+        return true;
+      },
+      { fallback: false, logger: this.logger, context: 'contratos base (bulkOnboard)' },
+    );
+    summary.push(
+      contractsOk
+        ? '4 contratos base creados (borrador)'
+        : 'ADVERTENCIA: no se pudieron crear los contratos base — créalos manualmente',
+    );
 
     // 8. Audit
     await this.auditLogRepo.save(this.auditLogRepo.create({
@@ -1239,43 +1251,55 @@ export class TenantsService {
       recentTenantsWithUsers.push({ ...t, userCount });
     }
 
-    // Subscription breakdown by plan (may fail if tables don't exist yet)
-    let subscriptionsByPlan: any[] = [];
-    try {
-      subscriptionsByPlan = await this.subscriptionRepo
-        .createQueryBuilder('s')
-        .leftJoin('s.plan', 'p')
-        .select('p.name', 'plan')
-        .addSelect('s.status', 'status')
-        .addSelect('COUNT(s.id)', 'count')
-        .groupBy('p.name, s.status')
-        .getRawMany();
-    } catch { /* table may not exist yet */ }
+    // Subscription breakdown by plan (may fail if tables don't exist yet).
+    // SAVEPOINT: son métricas opcionales; sin aislarlas, un fallo abortaba
+    // la transacción y TODO el endpoint de stats devolvía 500.
+    const subscriptionsByPlan: any[] = await inSavepoint(
+      this.subscriptionRepo.manager,
+      async (m) =>
+        m
+          .createQueryBuilder(Subscription, 's')
+          .leftJoin('s.plan', 'p')
+          .select('p.name', 'plan')
+          .addSelect('s.status', 'status')
+          .addSelect('COUNT(s.id)', 'count')
+          .groupBy('p.name, s.status')
+          .getRawMany(),
+      { fallback: [], logger: this.logger, context: 'stats: suscripciones por plan' },
+    );
 
     // Daily accesses (login events from audit log, last 7 days)
-    let dailyAccesses: any[] = [];
-    let recentFailures: any[] = [];
-    try {
-      dailyAccesses = await this.auditLogRepo
-        .createQueryBuilder('l')
-        .select("TO_CHAR(l.created_at, 'YYYY-MM-DD')", 'date')
-        .addSelect('COUNT(l.id)', 'count')
-        .where("l.action ILIKE '%login%'")
-        .andWhere("l.created_at > NOW() - INTERVAL '7 days'")
-        .groupBy("TO_CHAR(l.created_at, 'YYYY-MM-DD')")
-        .orderBy("TO_CHAR(l.created_at, 'YYYY-MM-DD')", 'DESC')
-        .getRawMany();
+    const { dailyAccesses, recentFailures } = await inSavepoint(
+      this.auditLogRepo.manager,
+      async (m) => {
+        const daily = await m
+          .createQueryBuilder(AuditLog, 'l')
+          .select("TO_CHAR(l.created_at, 'YYYY-MM-DD')", 'date')
+          .addSelect('COUNT(l.id)', 'count')
+          .where("l.action ILIKE '%login%'")
+          .andWhere("l.created_at > NOW() - INTERVAL '7 days'")
+          .groupBy("TO_CHAR(l.created_at, 'YYYY-MM-DD')")
+          .orderBy("TO_CHAR(l.created_at, 'YYYY-MM-DD')", 'DESC')
+          .getRawMany();
 
-      recentFailures = await this.auditLogRepo
-        .createQueryBuilder('l')
-        .select("TO_CHAR(l.created_at, 'YYYY-MM-DD')", 'date')
-        .addSelect('COUNT(l.id)', 'count')
-        .where("l.action ILIKE '%error%' OR l.action ILIKE '%fail%'")
-        .andWhere("l.created_at > NOW() - INTERVAL '7 days'")
-        .groupBy("TO_CHAR(l.created_at, 'YYYY-MM-DD')")
-        .orderBy("TO_CHAR(l.created_at, 'YYYY-MM-DD')", 'DESC')
-        .getRawMany();
-    } catch { /* table may not exist yet */ }
+        const failures = await m
+          .createQueryBuilder(AuditLog, 'l')
+          .select("TO_CHAR(l.created_at, 'YYYY-MM-DD')", 'date')
+          .addSelect('COUNT(l.id)', 'count')
+          .where("l.action ILIKE '%error%' OR l.action ILIKE '%fail%'")
+          .andWhere("l.created_at > NOW() - INTERVAL '7 days'")
+          .groupBy("TO_CHAR(l.created_at, 'YYYY-MM-DD')")
+          .orderBy("TO_CHAR(l.created_at, 'YYYY-MM-DD')", 'DESC')
+          .getRawMany();
+
+        return { dailyAccesses: daily, recentFailures: failures };
+      },
+      {
+        fallback: { dailyAccesses: [] as any[], recentFailures: [] as any[] },
+        logger: this.logger,
+        context: 'stats: accesos diarios',
+      },
+    );
 
     const totalFailures = recentFailures.reduce((sum: number, r: any) => sum + Number(r.count), 0);
     const todayAccesses = dailyAccesses.find((d: any) => d.date === new Date().toISOString().slice(0, 10));
@@ -1543,11 +1567,16 @@ export class TenantsService {
     for (let i = 0; i < deptNames.length; i++) {
       const name = deptNames[i]?.trim();
       if (!name) continue;
-      try {
-        await this.departmentRepo.save(this.departmentRepo.create({
-          tenantId, name, sortOrder: i, isActive: true,
-        }));
-      } catch { /* duplicate — skip */ }
+      // SAVEPOINT por fila: el duplicado es esperable (unique tenant+name),
+      // pero sin aislarlo aborta la transacción del request y se pierde la
+      // operación que disparó este ensure (p.ej. la creación del tenant).
+      await inSavepoint(
+        this.departmentRepo.manager,
+        async (m) => m.getRepository(Department).save(
+          m.getRepository(Department).create({ tenantId, name, sortOrder: i, isActive: true }),
+        ),
+        { fallback: null, logger: this.logger, context: `departamento base "${name}"` },
+      );
     }
   }
 
@@ -1703,11 +1732,14 @@ export class TenantsService {
     for (const p of positions) {
       const name = p.name?.trim();
       if (!name) continue;
-      try {
-        await this.positionRepo.save(this.positionRepo.create({
-          tenantId, name, level: p.level || 0, isActive: true,
-        }));
-      } catch { /* duplicate — skip */ }
+      // SAVEPOINT por fila — ver nota en ensureDepartmentRecords.
+      await inSavepoint(
+        this.positionRepo.manager,
+        async (m) => m.getRepository(Position).save(
+          m.getRepository(Position).create({ tenantId, name, level: p.level || 0, isActive: true }),
+        ),
+        { fallback: null, logger: this.logger, context: `cargo base "${name}"` },
+      );
     }
   }
 
@@ -1734,13 +1766,21 @@ export class TenantsService {
     // como fallback — el admin debera asignarlo en el mantenedor.
     let inferredLevel = level;
     if (inferredLevel === undefined || inferredLevel === null) {
-      try {
-        const tenant = await this.tenantRepository.findOne({ where: { id: tenantId }, select: ['id', 'settings'] });
-        const positions: { name: string; level: number }[] = tenant?.settings?.positions || [];
-        const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
-        const match = positions.find(p => norm(p.name) === norm(trimmed));
-        if (match) inferredLevel = match.level;
-      } catch { /* ignore — use fallback */ }
+      // SAVEPOINT: si este lookup opcional falla, el save() de abajo
+      // reventaría con 25P02 en vez de crear el cargo con nivel por defecto.
+      inferredLevel = await inSavepoint(
+        this.tenantRepository.manager,
+        async (m) => {
+          const tenant = await m
+            .getRepository(Tenant)
+            .findOne({ where: { id: tenantId }, select: ['id', 'settings'] });
+          const positions: { name: string; level: number }[] = tenant?.settings?.positions || [];
+          const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+          const match = positions.find(p => norm(p.name) === norm(trimmed));
+          return match ? match.level : inferredLevel;
+        },
+        { fallback: inferredLevel, logger: this.logger, context: 'inferir nivel de cargo' },
+      );
     }
     pos = this.positionRepo.create({ tenantId, name: trimmed, level: inferredLevel ?? 0, isActive: true });
     const saved = await this.positionRepo.save(pos);

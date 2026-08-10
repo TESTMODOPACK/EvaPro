@@ -1,6 +1,7 @@
 import type ExcelJS from 'exceljs';
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { inSavepoint } from '../../common/db/savepoint';
 import { Repository, In } from 'typeorm';
 // jsPDF and autoTable loaded dynamically in export methods to avoid ESM issues
 import { EvaluationCycle, CycleStatus, CycleType } from '../evaluations/entities/evaluation-cycle.entity';
@@ -41,6 +42,8 @@ const PRIVACY_MIN_PEOPLE = 5;
 
 @Injectable()
 export class ReportsService {
+  private readonly logger = new Logger(ReportsService.name);
+
   constructor(
     @InjectRepository(EvaluationCycle)
     private readonly cycleRepo: Repository<EvaluationCycle>,
@@ -478,10 +481,22 @@ export class ReportsService {
     // Get template sections for section-level breakdown
     let templateSections: any[] = [];
     if (isIndividual && summary.cycle?.templateId) {
-      try {
-        const tmpl = await this.assignmentRepo.manager.getRepository('form_templates').findOne({ where: { id: summary.cycle.templateId } });
-        if (tmpl) templateSections = typeof (tmpl as any).sections === 'string' ? JSON.parse((tmpl as any).sections) : (tmpl as any).sections || [];
-      } catch {}
+      // SAVEPOINT: el desglose por sección es opcional. Sin aislarlo, un
+      // fallo abortaba la transacción del request y el export completo
+      // terminaba en 500 en vez de salir sin ese desglose.
+      templateSections = await inSavepoint(
+        this.assignmentRepo.manager,
+        async (m) => {
+          const tmpl = await m
+            .getRepository('form_templates')
+            .findOne({ where: { id: summary.cycle.templateId } });
+          if (!tmpl) return [];
+          return typeof (tmpl as any).sections === 'string'
+            ? JSON.parse((tmpl as any).sections)
+            : (tmpl as any).sections || [];
+        },
+        { fallback: [], logger: this.logger, context: 'secciones de plantilla para export' },
+      );
     }
 
     // Calculate section averages from responses

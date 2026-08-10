@@ -2,6 +2,7 @@ import { Injectable, Logger, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Tenant } from '../tenants/entities/tenant.entity';
+import { inSavepoint } from '../../common/db/savepoint';
 import { User } from '../users/entities/user.entity';
 import { AuditService } from '../audit/audit.service';
 import { signToken } from '../../common/utils/signed-token';
@@ -58,14 +59,27 @@ export class EmailService {
   /** Get the FROM address for a tenant (tenant-specific > env default) */
   private async getFromAddress(tenantId?: string): Promise<string> {
     if (tenantId && this.tenantRepo) {
-      try {
-        const tenant = await this.tenantRepo.findOne({ where: { id: tenantId }, select: ['id', 'settings', 'name'] });
-        const custom = tenant?.settings?.emailFrom;
-        if (custom) {
-          // Format: "OrgName <email>" or just "email"
-          return custom.includes('<') ? custom : `${tenant?.name || 'EvaPro'} <${custom}>`;
-        }
-      } catch {}
+      // SAVEPOINT: este lookup corre en CADA envío de email, y los emails se
+      // disparan desde flujos que están dentro de la transacción del request
+      // (crear usuario, lanzar ciclo, invitar...). Sin aislarlo, un fallo
+      // acá abortaría esa transacción (25P02) y tumbaría la operación
+      // principal. El remitente por defecto es un fallback perfectamente
+      // válido, así que nunca vale la pena romper el request por esto.
+      return await inSavepoint(
+        this.tenantRepo.manager,
+        async (m) => {
+          const tenant = await m
+            .getRepository(Tenant)
+            .findOne({ where: { id: tenantId }, select: ['id', 'settings', 'name'] });
+          const custom = tenant?.settings?.emailFrom;
+          if (custom) {
+            // Format: "OrgName <email>" or just "email"
+            return custom.includes('<') ? custom : `${tenant?.name || 'EvaPro'} <${custom}>`;
+          }
+          return this.from;
+        },
+        { fallback: this.from, logger: this.logger, context: 'remitente por tenant' },
+      );
     }
     return this.from;
   }

@@ -5,6 +5,7 @@ import { User } from '../users/entities/user.entity';
 import { EvaluationCycle, CycleStatus } from '../evaluations/entities/evaluation-cycle.entity';
 import { EvaluationAssignment, AssignmentStatus } from '../evaluations/entities/evaluation-assignment.entity';
 import { EvaluationResponse } from '../evaluations/entities/evaluation-response.entity';
+import { inSavepoint } from '../../common/db/savepoint';
 import { Objective, ObjectiveStatus } from '../objectives/entities/objective.entity';
 import { EngagementSurvey } from '../surveys/entities/engagement-survey.entity';
 import { SurveyResponse } from '../surveys/entities/survey-response.entity';
@@ -362,26 +363,30 @@ export class ExecutiveDashboardService {
     ]);
 
     // Department breakdown — calculated directly (no dep on ReportsService)
-    let cycleSummary: any = null;
-    try {
-      const deptData = await this.responseRepo
-        .createQueryBuilder('r')
-        .innerJoin('r.assignment', 'a', 'a.tenant_id = r.tenant_id')
-        .innerJoin(User, 'u', 'u.id = a.evaluatee_id AND u.tenant_id = a.tenant_id')
-        .where('a.cycleId = :cycleId', { cycleId })
-        .andWhere('r.tenantId = :tenantId', { tenantId })
-        .andWhere('r.overall_score IS NOT NULL')
-        .andWhere('u.department IS NOT NULL')
-        .select('u.department', 'department')
-        .addSelect('AVG(r.overall_score)', 'avgScore')
-        .addSelect('COUNT(DISTINCT u.id)', 'count')
-        .groupBy('u.department')
-        .orderBy('AVG(r.overall_score)', 'DESC')
-        .getRawMany();
-      if (deptData.length > 0) {
-        cycleSummary = { departmentBreakdown: deptData };
-      }
-    } catch { /* ignore — PDF will skip department table */ }
+    // SAVEPOINT: el desglose por departamento es opcional (el PDF se genera
+    // igual sin él). Sin aislarlo, un fallo abortaba la transacción del
+    // request y la exportación completa del dashboard terminaba en 500.
+    const cycleSummary: any = await inSavepoint(
+      this.responseRepo.manager,
+      async (m) => {
+        const deptData = await m
+          .createQueryBuilder(EvaluationResponse, 'r')
+          .innerJoin('r.assignment', 'a', 'a.tenant_id = r.tenant_id')
+          .innerJoin(User, 'u', 'u.id = a.evaluatee_id AND u.tenant_id = a.tenant_id')
+          .where('a.cycleId = :cycleId', { cycleId })
+          .andWhere('r.tenantId = :tenantId', { tenantId })
+          .andWhere('r.overall_score IS NOT NULL')
+          .andWhere('u.department IS NOT NULL')
+          .select('u.department', 'department')
+          .addSelect('AVG(r.overall_score)', 'avgScore')
+          .addSelect('COUNT(DISTINCT u.id)', 'count')
+          .groupBy('u.department')
+          .orderBy('AVG(r.overall_score)', 'DESC')
+          .getRawMany();
+        return deptData.length > 0 ? { departmentBreakdown: deptData } : null;
+      },
+      { fallback: null, logger: this.logger, context: 'desglose por departamento (PDF)' },
+    );
     const movements: any = null;
     const pdiCompliance: any = null;
     let enpsData: any = null;

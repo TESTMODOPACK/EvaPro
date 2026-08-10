@@ -1,10 +1,12 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   ConflictException,
   ForbiddenException,
   BadRequestException,
 } from '@nestjs/common';
+import { inSavepoint } from '../../common/db/savepoint';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DataSource, Repository, IsNull, Not, In, EntityManager } from 'typeorm';
@@ -36,6 +38,8 @@ import {
 
 @Injectable()
 export class UsersService {
+  private readonly logger = new Logger(UsersService.name);
+
   constructor(
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
@@ -81,22 +85,33 @@ export class UsersService {
     return tenant?.settings?.departments ?? UsersService.DEFAULT_DEPARTMENTS;
   }
 
-  /** Sync department/position tables → JSONB settings for backward compat (fire-and-forget) */
+  /** Sync department/position tables → JSONB settings for backward compat (fire-and-forget)
+   *
+   *  SAVEPOINT obligatorio: se invoca fire-and-forget desde create()/update()
+   *  de usuarios, que corren dentro de la transacción del request. Sin el
+   *  savepoint, un fallo aquí abortaría esa transacción (Postgres 25P02) y
+   *  el usuario recién creado se perdería en el ROLLBACK — aunque la API
+   *  hubiera respondido 201. Es sincronización de compatibilidad: si falla,
+   *  se omite sin afectar la operación principal. */
   private async syncDeptPosToSettings(tenantId: string): Promise<void> {
-    try {
-      const [depts, positions, tenant] = await Promise.all([
-        this.departmentRepo.find({ where: { tenantId, isActive: true }, order: { sortOrder: 'ASC', name: 'ASC' } }),
-        this.positionRepo.find({ where: { tenantId, isActive: true }, order: { level: 'ASC', name: 'ASC' } }),
-        this.tenantRepo.findOne({ where: { id: tenantId } }),
-      ]);
-      if (!tenant) return;
-      tenant.settings = {
-        ...(tenant.settings || {}),
-        departments: depts.map(d => d.name),
-        positions: positions.map(p => ({ name: p.name, level: p.level })),
-      };
-      await this.tenantRepo.save(tenant);
-    } catch { /* fire-and-forget */ }
+    await inSavepoint(
+      this.tenantRepo.manager,
+      async (m) => {
+        const [depts, positions, tenant] = await Promise.all([
+          m.getRepository(Department).find({ where: { tenantId, isActive: true }, order: { sortOrder: 'ASC', name: 'ASC' } }),
+          m.getRepository(Position).find({ where: { tenantId, isActive: true }, order: { level: 'ASC', name: 'ASC' } }),
+          m.getRepository(Tenant).findOne({ where: { id: tenantId } }),
+        ]);
+        if (!tenant) return;
+        tenant.settings = {
+          ...(tenant.settings || {}),
+          departments: depts.map(d => d.name),
+          positions: positions.map(p => ({ name: p.name, level: p.level })),
+        };
+        await m.getRepository(Tenant).save(tenant);
+      },
+      { fallback: undefined, logger: this.logger, context: 'sync dept/pos → settings' },
+    );
   }
 
   /**
