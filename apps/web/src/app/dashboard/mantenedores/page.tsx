@@ -10,6 +10,25 @@ import { DepartmentData, PositionData } from '@/lib/api';
 import { useInvalidateDepartments } from '@/hooks/useDepartments';
 import { useInvalidatePositions } from '@/hooks/usePositions';
 
+/**
+ * Orden alfabético de los elementos de un parámetro (es-CL).
+ *
+ * `numeric: true` es clave para catálogos con prefijo numérico como las
+ * Escalas de Evaluación ("1 - Insuficiente" … "5 - Excepcional"): sin él,
+ * un catálogo de 10+ elementos ordenaría 1, 10, 2… rompiendo la gradación.
+ * `sensitivity: base` ignora mayúsculas y acentos al comparar.
+ */
+const sortItems = (items: string[]): string[] =>
+  [...items].sort((a, b) =>
+    String(a).localeCompare(String(b), 'es', { numeric: true, sensitivity: 'base' }),
+  );
+
+/** Aplica el orden alfabético a los elementos de TODOS los parámetros. */
+const sortAllSettings = (settings: Record<string, string[]>): Record<string, string[]> =>
+  Object.fromEntries(
+    Object.entries(settings || {}).map(([k, v]) => [k, Array.isArray(v) ? sortItems(v) : v]),
+  ) as Record<string, string[]>;
+
 const labelStyle: React.CSSProperties = {
   display: 'block',
   fontSize: '0.78rem',
@@ -63,7 +82,11 @@ export default function MantenedoresPage() {
       api.tenants.getPositionsCatalog(token).catch(() => []),
       api.tenants.getDepartmentsTable(token).catch(() => []),
     ]).then(([settings, pos, depts]) => {
-      setCustomSettings(settings);
+      // Los elementos de cada parámetro se muestran ordenados alfabéticamente.
+      // Se ordena el array REAL (no solo la vista) porque editar y borrar
+      // trabajan por índice: si la vista tuviera otro orden que el array,
+      // editar una fila modificaría un elemento distinto.
+      setCustomSettings(sortAllSettings(settings));
       setPositions(pos);
       setDeptRecords(Array.isArray(depts) ? depts.filter((d: any) => d.isActive) : []);
     }).finally(() => setLoading(false));
@@ -96,7 +119,7 @@ export default function MantenedoresPage() {
     if (!text || customSettings[key]?.includes(text)) return;
     setCustomSettings((prev) => ({
       ...prev,
-      [key]: [...(prev[key] || []), text],
+      [key]: sortItems([...(prev[key] || []), text]),
     }));
     setNewItemText('');
   };
@@ -425,7 +448,7 @@ export default function MantenedoresPage() {
             {/* Add new position */}
             <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
               <input className="input" type="text" value={posNewName} onChange={(e) => setPosNewName(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (posNewName.trim()) { setPositions(prev => [...prev, { name: posNewName.trim(), level: posNewLevel }].sort((a, b) => a.level - b.level)); setPosNewName(''); } } }}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (posNewName.trim()) { setPositions(prev => [...prev, { name: posNewName.trim(), level: posNewLevel }].sort((a, b) => a.name.localeCompare(b.name, 'es'))); setPosNewName(''); } } }}
                 placeholder="Nombre del cargo" style={{ flex: 1, fontSize: '0.88rem', minWidth: '150px' }} />
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
                 <label style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Nivel:</label>
@@ -433,7 +456,7 @@ export default function MantenedoresPage() {
                   style={{ width: '60px', fontSize: '0.88rem', textAlign: 'center' }} />
               </div>
               <button type="button" className="btn-primary" disabled={!posNewName.trim()}
-                onClick={() => { if (posNewName.trim()) { setPositions(prev => [...prev, { name: posNewName.trim(), level: posNewLevel }].sort((a, b) => a.level - b.level)); setPosNewName(''); } }}
+                onClick={() => { if (posNewName.trim()) { setPositions(prev => [...prev, { name: posNewName.trim(), level: posNewLevel }].sort((a, b) => a.name.localeCompare(b.name, 'es'))); setPosNewName(''); } }}
                 style={{ fontSize: '0.85rem', padding: '0.45rem 1rem', opacity: !posNewName.trim() ? 0.5 : 1 }}>
                 Agregar
               </button>

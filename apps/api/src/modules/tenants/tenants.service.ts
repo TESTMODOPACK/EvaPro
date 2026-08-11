@@ -1607,9 +1607,13 @@ export class TenantsService {
   // ─── Positions Table CRUD ──────────────────────────────────────────
 
   async getPositionsTable(tenantId: string): Promise<Position[]> {
+    // Orden alfabético por nombre, igual que el resto de los mantenedores
+    // (departamentos y demás datos personalizados). Antes ordenaba por
+    // nivel jerárquico, lo que hacía difícil encontrar un cargo puntual en
+    // catálogos grandes. El nivel sigue mostrándose en cada fila.
     return this.positionRepo.find({
       where: { tenantId },
-      order: { level: 'ASC', name: 'ASC' },
+      order: { name: 'ASC' },
     });
   }
 
@@ -1677,12 +1681,29 @@ export class TenantsService {
       // en los users existentes: sus `hierarchyLevel` quedaba con el valor
       // viejo (o null si nunca tuvieron). Eso rompía el filtro de jefatura
       // directa que compara niveles para determinar quien puede ser jefe de
-      // quien. La propagacion usa `positionId` (FK directa) para mayor
-      // precision que el nombre en texto.
+      // quien.
+      //
+      // 1) Por `positionId` (FK directa) — el caso normal y más preciso.
       await this.userRepository.update(
         { tenantId, positionId: posId },
         { hierarchyLevel: dto.level },
       );
+      // 2) Por NOMBRE, para los usuarios que aún no tienen la FK vinculada.
+      //    Los imports masivos (CSV) y los usuarios creados antes de que
+      //    existiera el catálogo guardan `position` como texto con
+      //    positionId NULL: la propagación por FK NO los alcanzaba y su
+      //    hierarchyLevel quedaba desfasado del nivel real del cargo, lo
+      //    que hacía que el organigrama mostrara un nivel distinto al que
+      //    figura en la ficha del colaborador. De paso se vincula la FK
+      //    para que a futuro entren por el camino 1.
+      await this.userRepository
+        .createQueryBuilder()
+        .update(User)
+        .set({ hierarchyLevel: dto.level, positionId: posId })
+        .where('tenant_id = :tenantId', { tenantId })
+        .andWhere('position_id IS NULL')
+        .andWhere('LOWER(TRIM(position)) = LOWER(TRIM(:name))', { name: pos.name })
+        .execute();
     }
     if (dto.isActive !== undefined) pos.isActive = dto.isActive;
 

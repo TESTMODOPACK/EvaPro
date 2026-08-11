@@ -366,7 +366,7 @@ export default function NuevoProcesoPage() {
                         <button className="btn-primary" style={{ fontSize: '0.78rem' }} disabled={!newPosName.trim()} onClick={async () => {
                           if (!token || !newPosName.trim()) return;
                           try {
-                            const current = [...positionCatalog, { name: newPosName.trim(), level: newPosLevel }].sort((a, b) => a.level - b.level);
+                            const current = [...positionCatalog, { name: newPosName.trim(), level: newPosLevel }].sort((a, b) => a.name.localeCompare(b.name, 'es'));
                             await api.tenants.setPositionsCatalog(token, current);
                             setPosition(newPosName.trim());
                             setNewPosName(''); setShowNewPosition(false);

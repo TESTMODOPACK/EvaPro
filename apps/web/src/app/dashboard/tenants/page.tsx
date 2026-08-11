@@ -1159,7 +1159,7 @@ export default function TenantsPage() {
                       }
                     }}>
                     <option value="">-- Seleccionar cargo --</option>
-                    {[...adminPositions].sort((a: any, b: any) => a.level - b.level).map((p: any) => (
+                    {[...adminPositions].sort((a: any, b: any) => a.name.localeCompare(b.name, 'es')).map((p: any) => (
                       <option key={p.name} value={p.name}>{p.name} (Nivel {p.level})</option>
                     ))}
                     <option value="__new__">+ Nuevo cargo...</option>
@@ -1189,7 +1189,7 @@ export default function TenantsPage() {
                       </p>
                       {adminPositions.length > 0 && (
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: '0.15rem 1rem', marginTop: '0.25rem' }}>
-                          {[...adminPositions].sort((a: any, b: any) => a.level - b.level).map((p: any) => (
+                          {[...adminPositions].sort((a: any, b: any) => a.name.localeCompare(b.name, 'es')).map((p: any) => (
                                   <div key={p.name} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.1rem 0', borderBottom: '1px solid var(--border)' }}>
                                     <span>{p.name}</span>
                                     <span style={{ fontWeight: 600, color: 'var(--accent)' }}>Nv.{p.level}</span>

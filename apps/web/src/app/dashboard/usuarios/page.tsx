@@ -1093,7 +1093,7 @@ export default function UsuariosPage() {
                       </p>
                       {positionCatalog.length > 0 && (
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '0.15rem 1rem', marginTop: '0.25rem' }}>
-                          {[...positionCatalog].sort((a, b) => a.level - b.level).map((p) => (
+                          {[...positionCatalog].sort((a, b) => a.name.localeCompare(b.name, 'es')).map((p) => (
                             <div key={p.name} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.1rem 0', borderBottom: '1px solid var(--border)' }}>
                               <span>{p.name}</span>
                               <span style={{ fontWeight: 600, color: 'var(--accent)' }}>Nv.{p.level}</span>
