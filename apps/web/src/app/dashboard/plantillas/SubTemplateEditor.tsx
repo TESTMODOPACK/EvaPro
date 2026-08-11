@@ -742,9 +742,32 @@ export function SubTemplateEditor({
     );
   };
   const updateSection = (sIdx: number, field: string, value: any) => {
-    if (!activeSub) return;
-    updateActiveSubSections(
-      activeSub.sections.map((s, i) => (i === sIdx ? { ...s, [field]: value } : s)),
+    patchSection(sIdx, { [field]: value });
+  };
+
+  /**
+   * Actualiza VARIOS campos de una sección en una sola pasada, calculando
+   * desde el estado PREVIO (`setSubs(prev => ...)`).
+   *
+   * Necesario porque encadenar dos `updateSection` seguidos perdía el
+   * primer cambio: ambas llamadas leían `activeSub.sections` del render
+   * actual (React no re-renderiza entre ellas), así que la segunda pisaba
+   * a la primera. Eso hacía que al elegir una competencia se guardara el
+   * título pero se perdiera el `competencyId` → el selector saltaba de
+   * vuelta a "Sección personalizada (texto libre)".
+   */
+  const patchSection = (sIdx: number, patch: Record<string, any>) => {
+    setSubs((prev) =>
+      prev.map((sub) =>
+        sub.relationType === activeTab
+          ? {
+              ...sub,
+              sections: sub.sections.map((s, i) =>
+                i === sIdx ? { ...s, ...patch } : s,
+              ),
+            }
+          : sub,
+      ),
     );
   };
   const addQuestion = (sIdx: number) => {
@@ -1433,8 +1456,10 @@ export function SubTemplateEditor({
               {!isCollapsed && (<>
               {/* Section title — competency picker or custom */}
               {(() => {
+                // Sin competencia asociada ⇒ sección de texto libre (el
+                // input de título queda habilitado al lado del selector).
                 const isCustom = !sec.competencyId;
-                const selectValue = sec.competencyId || (sec.title || isCustom ? '__custom__' : '');
+                const selectValue = sec.competencyId || '__custom__';
                 return (
                   <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start', marginBottom: '0.6rem' }}>
                     <select
@@ -1442,18 +1467,28 @@ export function SubTemplateEditor({
                       value={selectValue}
                       onChange={(e) => {
                         const val = e.target.value;
+                        // Un solo patch atómico: encadenar dos updateSection
+                        // hacía que el segundo pisara al primero (ambos leían
+                        // el mismo estado del render) y se perdía el
+                        // competencyId → el selector volvía a "texto libre".
                         if (val === '__custom__') {
-                          updateSection(si, 'competencyId', undefined);
-                          updateSection(si, 'title', sec.title || '');
+                          // Texto libre: se libera la competencia y el título
+                          // queda editable en el input de al lado. Se conserva
+                          // el texto actual como punto de partida.
+                          patchSection(si, {
+                            competencyId: undefined,
+                            title: sec.title || '',
+                          });
                         } else if (val) {
                           const comp = competencies.find((c: any) => c.id === val);
                           if (comp) {
-                            updateSection(si, 'competencyId', comp.id);
-                            updateSection(si, 'title', comp.name);
+                            patchSection(si, {
+                              competencyId: comp.id,
+                              title: comp.name,
+                            });
                           }
                         } else {
-                          updateSection(si, 'competencyId', undefined);
-                          updateSection(si, 'title', '');
+                          patchSection(si, { competencyId: undefined, title: '' });
                         }
                       }}
                     >
