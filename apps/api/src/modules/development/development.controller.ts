@@ -229,6 +229,21 @@ export class DevelopmentController {
     return this.developmentService.bulkAssignCompetencies(tenantId, dto.position, dto.defaultLevel || 5, dto.positionId);
   }
 
+  /**
+   * Completa el perfil de competencias de todos los cargos activos en una sola
+   * llamada. Sin `defaultLevel`, el nivel esperado se deriva de la jerarquía
+   * de cada cargo.
+   */
+  @Post('role-competencies/bulk-all')
+  @Roles('super_admin', 'tenant_admin')
+  bulkAssignAllPositions(
+    @Request() req: any,
+    @Body() dto: { defaultLevel?: number; tenantId?: string },
+  ) {
+    const tenantId = resolveOperatingTenantId(req.user, dto?.tenantId);
+    return this.developmentService.bulkAssignAllPositions(tenantId, dto?.defaultLevel);
+  }
+
   // ─── Plans (requires PDI feature) ──────────────────────────────────────
 
   /** Planes activos sin acciones cargadas. Para alerta del CommandCenter. */

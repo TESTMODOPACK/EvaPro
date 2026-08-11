@@ -1840,6 +1840,13 @@ export const api = {
         request<void>(`/development/role-competencies/${id}`, { method: "DELETE" }, token),
       bulkAssign: (token: string, data: { position: string; defaultLevel?: number }) =>
         request<{ created: number }>("/development/role-competencies/bulk", { method: "POST", body: JSON.stringify(data) }, token),
+      /** Completa el perfil de competencias de todos los cargos activos de una vez. */
+      bulkAssignAll: (token: string, data?: { defaultLevel?: number }) =>
+        request<{ positionsProcessed: number; created: number; competencies: number; skipped: string[] }>(
+          "/development/role-competencies/bulk-all",
+          { method: "POST", body: JSON.stringify(data || {}) },
+          token,
+        ),
     },
     plans: {
       list: (token: string) => request<any[]>("/development/plans", {}, token),

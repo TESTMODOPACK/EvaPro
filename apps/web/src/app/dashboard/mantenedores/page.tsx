@@ -858,6 +858,41 @@ function RoleCompetenciesSection() {
     setSaving(false);
   };
 
+  /**
+   * Completa el perfil de TODOS los cargos, no solo los que están vacíos: a
+   * cada uno le agrega las competencias que le falten. Es idempotente — no
+   * duplica ni pisa los niveles ya definidos.
+   */
+  const handleBulkAllPositions = async () => {
+    if (!token) return;
+    const ok = window.confirm(
+      `Se completará el perfil de competencias de los ${positions.length} cargos registrados.\n\n` +
+      'A cada cargo se le agregarán solo las competencias que le falten, con el nivel ' +
+      'sugerido según su jerarquía. No se modifican los niveles ya definidos.\n\n¿Continuar?',
+    );
+    if (!ok) return;
+    setSaving(true); setMsg('');
+    try {
+      const result = await api.development.roleCompetencies.bulkAssignAll(token);
+      await loadData();
+      const omitidos = result.skipped?.length
+        ? ` · ${result.skipped.length} cargo(s) omitidos por nombre demasiado largo: ${result.skipped.join(', ')}`
+        : '';
+      if (result.competencies === 0) {
+        // Sin competencias aprobadas no hay nada que asignar; decirlo explícito
+        // en vez de reportar "perfil completo", que sería engañoso.
+        setMsg('No hay competencias aprobadas y activas para asignar. Apruebe competencias primero.');
+      } else {
+        setMsg(
+          (result.created === 0
+            ? `Todos los cargos (${result.positionsProcessed}) ya tenían su perfil completo`
+            : `${result.created} competencias agregadas en ${result.positionsProcessed} cargos (niveles según jerarquía)`) + omitidos,
+        );
+      }
+    } catch (e: any) { setMsg(e.message || 'Error'); }
+    setSaving(false);
+  };
+
   return (
     <div className="card" style={{ marginTop: '1.5rem' }}>
       <button onClick={() => setExpanded(!expanded)} style={{
@@ -912,6 +947,17 @@ function RoleCompetenciesSection() {
             {positionsWithout.length > 0 && (
               <button className="btn-ghost" disabled={saving} onClick={handleBulkAll} style={{ fontSize: '0.78rem', whiteSpace: 'nowrap' }}>
                 {saving ? '...' : `Asignar a ${positionsWithout.length} cargos sin perfil`}
+              </button>
+            )}
+            {positions.length > 0 && competencies.length > 0 && (
+              <button
+                className="btn-primary"
+                disabled={saving}
+                onClick={handleBulkAllPositions}
+                title="Agrega a cada cargo las competencias que le falten, con el nivel sugerido según su jerarquía. No modifica los niveles ya definidos."
+                style={{ fontSize: '0.78rem', whiteSpace: 'nowrap' }}
+              >
+                {saving ? '...' : `Completar los ${positions.length} cargos`}
               </button>
             )}
           </div>

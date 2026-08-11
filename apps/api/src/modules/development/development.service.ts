@@ -19,6 +19,7 @@ import { User } from '../users/entities/user.entity';
 import { TalentAssessment } from '../talent/entities/talent-assessment.entity';
 import { RoleCompetency } from './entities/role-competency.entity';
 import { Position } from '../tenants/entities/position.entity';
+import { Tenant } from '../tenants/entities/tenant.entity';
 import { assertManagerCanAccessUser } from '../../common/utils/validate-manager-scope';
 import { AuditService } from '../audit/audit.service';
 import { EmailService } from '../notifications/email.service';
@@ -401,6 +402,147 @@ export class DevelopmentService {
       }
     }
     return { created };
+  }
+
+  /**
+   * Nivel de competencia sugerido a partir del nivel jerárquico del cargo.
+   * Espeja `getSuggestedLevel` del frontend: jerarquía 1 (más alta) → 9.
+   */
+  private suggestedLevelFor(hierarchyLevel?: number | null): number {
+    const map: Record<number, number> = { 1: 9, 2: 8, 3: 7, 4: 6, 5: 5, 6: 4, 7: 3 };
+    return map[hierarchyLevel as number] || 2;
+  }
+
+  /**
+   * Completa el perfil de competencias de TODOS los cargos activos de una sola
+   * vez: a cada cargo le agrega las competencias aprobadas que le falten.
+   *
+   * Es idempotente — solo crea lo ausente, nunca duplica ni pisa el nivel
+   * esperado de una asignación existente. A diferencia del botón por cargo,
+   * también completa cargos que ya tenían un perfil parcial.
+   *
+   * @param defaultLevel Nivel esperado a usar para todo. Si se omite, se
+   *                     deriva del nivel jerárquico de cada cargo.
+   */
+  async bulkAssignAllPositions(
+    tenantId: string,
+    defaultLevel?: number,
+  ): Promise<{ positionsProcessed: number; created: number; competencies: number; skipped: string[] }> {
+    if (defaultLevel !== undefined && (!Number.isInteger(defaultLevel) || defaultLevel < 1 || defaultLevel > 10)) {
+      throw new BadRequestException('El nivel esperado debe ser un entero entre 1 y 10');
+    }
+
+    // Consultas secuenciales a propósito: corren dentro de la transacción de
+    // la request y comparten conexión.
+    //
+    // El catálogo que ve el usuario vive en `tenant.settings.positions` (JSONB);
+    // la tabla `positions` es la fuente de la FK y puede estar desalineada (un
+    // tenant que nunca guardó el catálogo la tiene vacía, y los cargos borrados
+    // del JSONB no se desactivan ahí). Se recorre el JSONB para que el botón
+    // opere exactamente sobre los cargos en pantalla, y se usa la tabla solo
+    // para resolver la FK — igual que hace el botón por cargo.
+    const positionRows = await this.positionRepo.find({ where: { tenantId, isActive: true } });
+    const rowByName = new Map(positionRows.map((p) => [p.name.trim().toLowerCase(), p]));
+
+    const tenant = await this.positionRepo.manager
+      .getRepository(Tenant)
+      .findOne({ where: { id: tenantId }, select: ['id', 'settings'] });
+    const catalog: { name: string; level: number }[] = Array.isArray(tenant?.settings?.positions)
+      && tenant!.settings.positions.length > 0
+      ? tenant!.settings.positions
+      : positionRows.map((p) => ({ name: p.name, level: p.level }));
+
+    const competencies = await this.competencyRepo.find({
+      where: { tenantId, isActive: true, status: CompetencyStatus.APPROVED },
+    });
+
+    if (!catalog.length || !competencies.length) {
+      return { positionsProcessed: catalog.length, created: 0, competencies: competencies.length, skipped: [] };
+    }
+
+    // Se lee el universo de asignaciones una sola vez en vez de un findOne por
+    // par cargo×competencia (con 60 cargos y 20 competencias serían 1.200).
+    const existing = await this.roleCompetencyRepo.find({
+      where: { tenantId },
+      select: ['position', 'competencyId'],
+    });
+    const key = (position: string, competencyId: string) => `${position}::${competencyId}`;
+    const taken = new Set(existing.map((rc) => key(rc.position, rc.competencyId)));
+
+    const rows: Array<{
+      tenantId: string;
+      position: string;
+      positionId: string | null;
+      competencyId: string;
+      expectedLevel: number;
+    }> = [];
+    const processed = new Set<string>();
+    const skipped: string[] = [];
+    for (const entry of catalog) {
+      const name = entry?.name?.trim();
+      if (!name) continue;
+      // `role_competencies.position` es varchar(100). El catálogo JSONB no
+      // valida largo, así que un nombre excedido reventaría el INSERT y con él
+      // la transacción entera de la request.
+      if (name.length > 100) {
+        skipped.push(name);
+        continue;
+      }
+
+      const row = rowByName.get(name.toLowerCase());
+      // Se prefiere el nombre canónico de la tabla para que la asignación quede
+      // bajo la misma clave que usan las demás pantallas.
+      const posName = row?.name ?? name;
+
+      // Guarda ante nombres repetidos en el catálogo: dos filas idénticas en el
+      // mismo INSERT violarían uq_role_comp y abortarían la transacción entera.
+      const dedupeKey = posName.toLowerCase();
+      if (processed.has(dedupeKey)) continue;
+      processed.add(dedupeKey);
+
+      const level = defaultLevel ?? this.suggestedLevelFor(entry.level ?? row?.level);
+      for (const comp of competencies) {
+        if (taken.has(key(posName, comp.id))) continue;
+        taken.add(key(posName, comp.id));
+        rows.push({
+          tenantId,
+          position: posName,
+          positionId: row?.id ?? null,
+          competencyId: comp.id,
+          expectedLevel: level,
+        });
+      }
+    }
+
+    // Inserción por lotes para no armar una sentencia gigante.
+    //
+    // `orIgnore()` (ON CONFLICT DO NOTHING sobre uq_role_comp) hace la operación
+    // inmune a que dos admins la disparen a la vez: sin él, la segunda request
+    // chocaría con la constraint y —al correr todo dentro de la transacción de
+    // la request— abortaría la transacción completa con un 500.
+    const CHUNK = 200;
+    let created = 0;
+    for (let i = 0; i < rows.length; i += CHUNK) {
+      const result = await this.roleCompetencyRepo
+        .createQueryBuilder()
+        .insert()
+        .into(RoleCompetency)
+        .values(rows.slice(i, i + CHUNK) as any)
+        .orIgnore()
+        // RETURNING explícito: con ON CONFLICT DO NOTHING solo vuelven las filas
+        // realmente insertadas, así el contador es exacto sin depender de las
+        // heurísticas de RETURNING por defecto de TypeORM.
+        .returning(['id'])
+        .execute();
+      created += Array.isArray(result.raw) ? result.raw.length : 0;
+    }
+
+    return {
+      positionsProcessed: processed.size,
+      created,
+      competencies: competencies.length,
+      skipped,
+    };
   }
 
   /**
