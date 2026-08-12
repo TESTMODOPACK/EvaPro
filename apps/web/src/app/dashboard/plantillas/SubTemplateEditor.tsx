@@ -12,7 +12,8 @@
  * legacy - editar como antes" y delega al editor clásico.
  */
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useToastStore } from '@/store/toast.store';
 import { useAuthStore } from '@/store/auth.store';
 import { api } from '@/lib/api';
@@ -298,6 +299,7 @@ export function SubTemplateEditor({
   const toast = useToastStore();
   const token = useAuthStore((s) => s.token);
   const { data, isLoading, refetch } = useTemplateWithSubTemplates(templateId);
+  const queryClient = useQueryClient();
   const saveAll = useSaveAllSubTemplates();
   const createSub = useCreateSubTemplate();
   const deleteSub = useDeleteSubTemplate();
@@ -454,6 +456,16 @@ export function SubTemplateEditor({
 
   const openMirrorDialog = () => {
     if (!activeSub) return;
+    // La replicación copia lo que está EN LA BASE, no lo que se ve en
+    // pantalla. Con cambios sin guardar, el diálogo contaría las preguntas
+    // nuevas pero el backend copiaría las viejas, y el refetch posterior
+    // descartaría las ediciones pendientes.
+    if (hasUnsavedChanges) {
+      toast.warning(
+        'Guardá los cambios antes de replicar: la replicación copia la versión guardada de la plantilla.',
+      );
+      return;
+    }
     const candidates = mirrorCandidates(activeSub.relationType);
     // Preseleccionar solo las que están vacías — las que ya tienen
     // preguntas se muestran deshabilitadas (no se pisa trabajo existente).
@@ -463,6 +475,12 @@ export function SubTemplateEditor({
 
   const handleMirror = async () => {
     if (!token || !activeSub || mirrorTargets.length === 0) return;
+    // Segunda barrera: el diálogo pudo abrirse limpio y el admin editar
+    // detrás antes de confirmar.
+    if (hasUnsavedChanges) {
+      toast.warning('Hay cambios sin guardar. Guardá primero y volvé a replicar.');
+      return;
+    }
     setMirroring(true);
     try {
       const result = await api.templates.mirrorSubTemplate(token, templateId, {
@@ -476,11 +494,17 @@ export function SubTemplateEditor({
         .join(', ');
 
       if (result.created.length > 0) {
+        // `mixed` = parte con IA y parte con reglas (el modelo omitió algunas
+        // preguntas). Ese caso también necesita revisión, así que solo `ai`
+        // puro omite la advertencia.
+        const pendientes = result.needsReviewCount
+          ? ` (${result.needsReviewCount} pregunta(s) marcadas para revisión)`
+          : '';
         toast.success(
           `Preguntas replicadas a: ${createdLabels}. ` +
             (result.mode === 'ai'
               ? 'Redacción adaptada con IA.'
-              : 'Redacción adaptada con reglas automáticas — revisá los textos antes de publicar.') +
+              : `Redacción adaptada con reglas automáticas${pendientes} — revisá los textos antes de publicar.`) +
             ' Recordá ajustar los pesos para que sumen 100%.',
         );
       }
@@ -501,6 +525,11 @@ export function SubTemplateEditor({
       }
 
       setMirrorOpen(false);
+      // Se replicaron subplantillas nuevas: el listado de plantillas muestra
+      // el conteo, así que hay que invalidarlo igual que hacen los hooks de
+      // mutación de subplantillas (useTemplates).
+      queryClient.invalidateQueries({ queryKey: ['templates'] });
+      queryClient.invalidateQueries({ queryKey: ['template-sub-templates', templateId] });
       await refetch();
     } catch (err: any) {
       toast.error(err?.message || 'Error al replicar la subplantilla');
@@ -550,6 +579,14 @@ export function SubTemplateEditor({
     }
   };
 
+  /**
+   * Snapshot de lo último sincronizado con el backend. Sirve para saber si
+   * hay ediciones sin guardar: la replicación trabaja sobre lo PERSISTIDO,
+   * así que operar con cambios pendientes copiaría texto viejo y además el
+   * `refetch()` posterior los borraría sin aviso.
+   */
+  const syncedSnapshot = useRef<string>('');
+
   // Sync state con data del backend
   useEffect(() => {
     if (data?.subTemplates) {
@@ -559,11 +596,18 @@ export function SubTemplateEditor({
         sections: Array.isArray(s.sections) ? s.sections : [],
       }));
       setSubs(normalized);
+      syncedSnapshot.current = JSON.stringify(normalized);
       if (normalized.length > 0 && !activeTab) {
         setActiveTab(normalized[0].relationType);
       }
     }
   }, [data, activeTab]);
+
+  /** true si el editor tiene cambios que aún no se guardaron. */
+  const hasUnsavedChanges = useMemo(
+    () => subs.length > 0 && JSON.stringify(subs) !== syncedSnapshot.current,
+    [subs],
+  );
 
   const activeSub = subs.find((s) => s.relationType === activeTab);
   const totalWeight = useMemo(

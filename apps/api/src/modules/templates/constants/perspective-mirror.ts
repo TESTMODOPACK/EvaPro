@@ -111,14 +111,48 @@ const VERB_THIRD_TO_FIRST: Record<string, string> = Object.fromEntries(
   Object.entries(VERB_FIRST_TO_THIRD).map(([first, third]) => [third, first]),
 );
 
-/** Pronombres y posesivos, primera → tercera persona. */
+/**
+ * Formas verbales que en español son TAMBIÉN sustantivos de uso frecuente en
+ * preguntas de competencias. Convertirlas a ciegas rompe el texto:
+ *
+ *   "la toma de decisiones"   → "la tomo de decisiones"
+ *   "escucha activa"          → "escucho activa"
+ *   "Brindo apoyo al equipo"  → "Brinda apoya al equipo"
+ *   "Contribuyo al desarrollo"→ "Contribuye al desarrolla"
+ *
+ * Se excluyen SOLO en la dirección en que la forma ambigua es la ENTRADA. Por
+ * ejemplo "apoya" (tercera) no es sustantivo, así que "Apoya a su equipo" →
+ * "Apoyo a mi equipo" se sigue convirtiendo bien; lo que se bloquea es la
+ * dirección contraria, donde la entrada "apoyo" pudo ser el sustantivo.
+ *
+ * El criterio es deliberadamente conservador: dejar un verbo sin conjugar
+ * produce texto gramatical que el admin corrige de un vistazo, mientras que
+ * conjugar un sustantivo produce galimatías. En un fallback best-effort,
+ * quedarse corto es siempre mejor que romper.
+ */
+const AMBIGUOUS_AS_FIRST = new Set([
+  'apoyo', 'desarrollo', 'respeto', 'documento', 'motivo', 'logro',
+]);
+const AMBIGUOUS_AS_THIRD = new Set([
+  'ayuda', 'toma', 'mejora', 'entrega', 'escucha',
+]);
+
+/**
+ * Pronombres y posesivos, primera → tercera persona.
+ * `me` NO va acá: es ambiguo (reflexivo "me comunico" → "se comunica" vs.
+ * dativo "me da feedback" → "le da feedback") y se resuelve por contexto.
+ */
 const PRONOUN_FIRST_TO_THIRD: Record<string, string> = {
   mi: 'su', mis: 'sus', mío: 'suyo', mía: 'suya',
-  míos: 'suyos', mías: 'suyas', me: 'le', conmigo: 'con esta persona',
+  míos: 'suyos', mías: 'suyas', conmigo: 'con esta persona',
   yo: 'esta persona',
 };
 
-/** Pronombres y posesivos, tercera → primera persona. */
+/**
+ * Pronombres y posesivos, tercera → primera persona.
+ * `se` NO va acá: reflexivo ("se adapta" → "me adapto") vs. impersonal
+ * ("se espera que…", que no debe tocarse). Se resuelve por contexto.
+ */
 const PRONOUN_THIRD_TO_FIRST: Record<string, string> = {
   su: 'mi', sus: 'mis', suyo: 'mío', suya: 'mía',
   suyos: 'míos', suyas: 'mías', le: 'me',
@@ -146,23 +180,68 @@ function capitalizeFirst(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
+/** Aplica el reemplazo preservando la capitalización de la palabra original. */
+function keepCase(original: string, replacement: string): string {
+  return original[0] === original[0].toUpperCase()
+    ? capitalizeFirst(replacement)
+    : replacement;
+}
+
 /**
- * Reemplaza palabras completas usando un diccionario, preservando la
- * capitalización original de cada ocurrencia. Case-insensitive en el
- * match, case-preserving en el resultado.
+ * Convierte el texto entre personas gramaticales mirando el contexto de cada
+ * palabra, no solo la palabra suelta.
+ *
+ * Dos reglas que un reemplazo ciego por diccionario no puede resolver:
+ *
+ *  1. Formas ambiguas verbo/sustantivo (ver AMBIGUOUS_AS_*): se dejan intactas.
+ *  2. Reflexivos `me`/`se`: solo se convierten si la palabra siguiente es un
+ *     verbo conocido de la dirección correspondiente. Así "Me comunico" pasa a
+ *     "Se comunica" (reflexivo) pero "Me da feedback" pasa a "Le da feedback"
+ *     (dativo), y el "se" impersonal de "Se espera que…" no se toca.
  */
-function replaceWords(text: string, dict: Record<string, string>): string {
-  if (Object.keys(dict).length === 0) return text;
+function transformWords(text: string, dir: 'firstToThird' | 'thirdToFirst'): string {
+  const verbs = dir === 'firstToThird' ? VERB_FIRST_TO_THIRD : VERB_THIRD_TO_FIRST;
+  const pronouns = dir === 'firstToThird' ? PRONOUN_FIRST_TO_THIRD : PRONOUN_THIRD_TO_FIRST;
+  const ambiguous = dir === 'firstToThird' ? AMBIGUOUS_AS_FIRST : AMBIGUOUS_AS_THIRD;
+
+  // Se tokeniza conservando los separadores para poder mirar la palabra
+  // siguiente sin perder la puntuación ni los espacios originales.
   // \p{L} con flag u para que los acentos cuenten como parte de la palabra
   // (evita que "evalúo" matchee como "eval" + "úo").
-  return text.replace(/\p{L}+/gu, (word) => {
-    const replacement = dict[word.toLowerCase()];
-    if (!replacement) return word;
-    // Preservar capitalización inicial de la palabra original.
-    return word[0] === word[0].toUpperCase()
-      ? capitalizeFirst(replacement)
-      : replacement;
-  });
+  const isWord = (t: string) => /^\p{L}+$/u.test(t);
+  const tokens = text.match(/\p{L}+|[^\p{L}]+/gu) ?? [];
+
+  /** Palabra siguiente en minúsculas, saltando espacios y puntuación. */
+  const nextWord = (i: number): string | null => {
+    for (let j = i + 1; j < tokens.length; j++) {
+      if (isWord(tokens[j])) return tokens[j].toLowerCase();
+    }
+    return null;
+  };
+
+  return tokens
+    .map((token, i) => {
+      if (!isWord(token)) return token;
+      const lower = token.toLowerCase();
+
+      // Reflexivo vs. dativo/impersonal — decidido por el verbo que sigue.
+      if (dir === 'firstToThird' && lower === 'me') {
+        const next = nextWord(i);
+        return keepCase(token, next && verbs[next] ? 'se' : 'le');
+      }
+      if (dir === 'thirdToFirst' && lower === 'se') {
+        const next = nextWord(i);
+        // Sin verbo conocido detrás es probablemente impersonal: no tocar.
+        return next && verbs[next] ? keepCase(token, 'me') : token;
+      }
+
+      // Forma que también es sustantivo frecuente → se deja como está.
+      if (ambiguous.has(lower)) return token;
+
+      const replacement = verbs[lower] ?? pronouns[lower];
+      return replacement ? keepCase(token, replacement) : token;
+    })
+    .join('');
 }
 
 /**
@@ -204,12 +283,12 @@ export function transformQuestionByRules(
       }
     }
     // 2. Conjugar verbos + ajustar pronombres.
-    out = replaceWords(out, { ...VERB_THIRD_TO_FIRST, ...PRONOUN_THIRD_TO_FIRST });
+    out = transformWords(out, 'thirdToFirst');
     return capitalizeFirst(out.trim());
   }
 
   // first → third
-  out = replaceWords(out, { ...VERB_FIRST_TO_THIRD, ...PRONOUN_FIRST_TO_THIRD });
+  out = transformWords(out, 'firstToThird');
   return capitalizeFirst(out.trim());
 }
 

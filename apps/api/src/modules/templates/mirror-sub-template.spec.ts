@@ -385,4 +385,90 @@ describe('TemplatesService.mirrorSubTemplate', () => {
     expect(result.aiError).toBe('Sin cuota IA');
     expect(result.created).toHaveLength(1); // la replicación NO se cae
   });
+
+  /**
+   * Regresiones de la auditoría previa al deploy.
+   *
+   * `mode` se reportaba global ('ai' en cuanto la llamada no lanzara), pero el
+   * merge de textos es POR PREGUNTA: si el modelo omitía alguna, esa caía a
+   * reglas mientras la UI decía "adaptado con IA" y ocultaba el aviso de
+   * revisión. Y el marcador `needsReview` estaba documentado pero nunca se
+   * escribía.
+   */
+  describe('regresiones: modo reportado y marcado de revisión', () => {
+    const allQuestions = (subs: any[]) =>
+      subs.flatMap((s: any) => (s.sections || []).flatMap((sec: any) => sec.questions || []));
+
+    it('marca needsReview en las preguntas resueltas por reglas', async () => {
+      subTemplateRepo.findOne.mockResolvedValue(makeSub(MANAGER, managerSections));
+      subTemplateRepo.find.mockResolvedValue([makeSub(MANAGER, managerSections)]);
+
+      const result = await service.mirrorSubTemplate('tpl-1', 'tenant-1', 'user-1', {
+        sourceRelationType: MANAGER,
+        targetRelationTypes: [SELF],
+      } as any);
+
+      expect(result.mode).toBe('rules');
+      expect(result.needsReviewCount).toBe(2);
+      expect(allQuestions(saved).every((q: any) => q.needsReview === true)).toBe(true);
+    });
+
+    it('reporta mixed cuando la IA resuelve solo parte de las preguntas', async () => {
+      subTemplateRepo.findOne.mockResolvedValue(makeSub(MANAGER, managerSections));
+      subTemplateRepo.find.mockResolvedValue([makeSub(MANAGER, managerSections)]);
+      // La IA devuelve q1 pero omite q2 → q2 debe caer a reglas.
+      jest
+        .spyOn(service as any, 'rewriteQuestionsWithAi')
+        .mockResolvedValue({ [SELF]: { q1: 'Demuestro liderazgo siempre' } });
+
+      const result = await service.mirrorSubTemplate('tpl-1', 'tenant-1', 'user-1', {
+        sourceRelationType: MANAGER,
+        targetRelationTypes: [SELF],
+      } as any);
+
+      expect(result.mode).toBe('mixed');
+      expect(result.needsReviewCount).toBe(1);
+      const qs = allQuestions(saved);
+      expect(qs.find((q: any) => q.id === `q1__${SELF}`).needsReview).toBeUndefined();
+      expect(qs.find((q: any) => q.id === `q2__${SELF}`).needsReview).toBe(true);
+    });
+
+    it('reporta ai puro solo si la IA resolvió TODAS las preguntas', async () => {
+      subTemplateRepo.findOne.mockResolvedValue(makeSub(MANAGER, managerSections));
+      subTemplateRepo.find.mockResolvedValue([makeSub(MANAGER, managerSections)]);
+      jest.spyOn(service as any, 'rewriteQuestionsWithAi').mockResolvedValue({
+        [SELF]: { q1: 'Demuestro liderazgo', q2: 'Mantengo mis compromisos' },
+      });
+
+      const result = await service.mirrorSubTemplate('tpl-1', 'tenant-1', 'user-1', {
+        sourceRelationType: MANAGER,
+        targetRelationTypes: [SELF],
+      } as any);
+
+      expect(result.mode).toBe('ai');
+      expect(result.needsReviewCount).toBe(0);
+      expect(allQuestions(saved).some((q: any) => q.needsReview)).toBe(false);
+    });
+
+    it('las perspectivas omitidas no contaminan el modo reportado', async () => {
+      // PEER ya tiene contenido → se omite; SELF se crea con IA completa.
+      subTemplateRepo.findOne.mockResolvedValue(makeSub(MANAGER, managerSections));
+      subTemplateRepo.find.mockResolvedValue([
+        makeSub(MANAGER, managerSections),
+        makeSub(PEER, managerSections),
+      ]);
+      jest.spyOn(service as any, 'rewriteQuestionsWithAi').mockResolvedValue({
+        [SELF]: { q1: 'Demuestro liderazgo', q2: 'Mantengo mis compromisos' },
+      });
+
+      const result = await service.mirrorSubTemplate('tpl-1', 'tenant-1', 'user-1', {
+        sourceRelationType: MANAGER,
+        targetRelationTypes: [SELF, PEER],
+      } as any);
+
+      expect(result.mode).toBe('ai');
+      expect(result.needsReviewCount).toBe(0);
+    });
+  });
+
 });

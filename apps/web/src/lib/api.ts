@@ -1190,9 +1190,12 @@ export const api = {
       },
     ) =>
       request<{
-        mode: 'ai' | 'rules';
+        /** 'mixed' = la IA resolvió parte y el resto cayó a reglas. */
+        mode: 'ai' | 'mixed' | 'rules';
         created: Array<{ relationType: string; questionCount: number }>;
         skipped: Array<{ relationType: string; reason: string }>;
+        /** Preguntas generadas por reglas, marcadas para revisión del admin. */
+        needsReviewCount?: number;
         aiError?: string;
       }>(
         `/templates/${parentId}/sub-templates/mirror`,

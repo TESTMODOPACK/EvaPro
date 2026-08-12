@@ -1278,9 +1278,12 @@ export class TemplatesService {
     userId: string,
     dto: MirrorSubTemplateDto,
   ): Promise<{
-    mode: 'ai' | 'rules';
+    /** 'mixed' = la IA resolvió parte de las preguntas y el resto cayó a reglas. */
+    mode: 'ai' | 'mixed' | 'rules';
     created: Array<{ relationType: string; questionCount: number }>;
     skipped: Array<{ relationType: string; reason: string }>;
+    /** Preguntas generadas por reglas, marcadas con `needsReview`. */
+    needsReviewCount?: number;
     aiError?: string;
   }> {
     const parent = await this.findById(parentId, tenantId);
@@ -1354,7 +1357,14 @@ export class TemplatesService {
     }
 
     // ── 3. Transformar (IA con fallback a reglas) ────────────────────────
-    let mode: 'ai' | 'rules' = 'rules';
+    // 'mixed' es un estado real, no teórico: la IA se pide en UNA llamada para
+    // todas las perspectivas, pero el merge es POR PREGUNTA. Si el modelo omite
+    // alguna, esa cae a reglas mientras el resto sí viene de IA. Marcar 'ai' en
+    // ese caso hacía que la UI ocultara el aviso de revisión justo cuando más
+    // falta hace.
+    let mode: 'ai' | 'mixed' | 'rules' = 'rules';
+    let aiQuestionCount = 0;
+    let rulesQuestionCount = 0;
     let aiError: string | undefined;
     /** Mapa: relationType destino → (id pregunta origen → texto nuevo). */
     let aiTexts: Record<string, Record<string, string>> | null = null;
@@ -1369,7 +1379,8 @@ export class TemplatesService {
           targets,
           sourceSections,
         );
-        mode = 'ai';
+        // `mode` no se fija acá: depende de cuántas preguntas resolvió
+        // realmente la IA, y eso solo se sabe al construir las subplantillas.
       } catch (err: any) {
         // Fallback silencioso a reglas: la replicación NO debe fallar por
         // falta de cuota IA o un error transitorio de la API.
@@ -1411,7 +1422,7 @@ export class TemplatesService {
           questions: (section.questions || []).map((q: any) => {
             const original = String(q.text ?? '');
             const fromAi = aiTexts?.[target]?.[String(q.id)];
-            return {
+            const built: any = {
               ...q,
               id: `${q.id || 'q'}__${target}`,
               ...(q.condition !== undefined
@@ -1421,6 +1432,13 @@ export class TemplatesService {
                 fromAi ||
                 transformQuestionByRules(original, dto.sourceRelationType, target),
             };
+            // Las preguntas resueltas por reglas son best-effort (conjugación
+            // mecánica, y en third→third ni siquiera cambian): se marcan para
+            // que el admin las revise. Las de IA arrastran el flag del origen,
+            // así que hay que limpiarlo explícitamente.
+            if (fromAi) delete built.needsReview;
+            else built.needsReview = true;
+            return built;
           }),
         }));
 
@@ -1451,6 +1469,16 @@ export class TemplatesService {
           continue;
         }
 
+        // Se cuenta recién acá, después del descarte: las perspectivas
+        // omitidas no se persisten y no deben influir en el modo reportado.
+        const rulesInTarget = newSections.reduce(
+          (acc: number, s: any) =>
+            acc + (s.questions || []).filter((q: any) => q.needsReview).length,
+          0,
+        );
+        rulesQuestionCount += rulesInTarget;
+        aiQuestionCount += questionCount - rulesInTarget;
+
         if (existing) {
           // Existía pero vacía → la llenamos (weight se respeta tal cual).
           existing.sections = newSections;
@@ -1476,7 +1504,18 @@ export class TemplatesService {
       }
     });
 
-    return { mode, created, skipped, ...(aiError ? { aiError } : {}) };
+    // El modo refleja lo que realmente se escribió, no lo que se intentó.
+    if (aiQuestionCount > 0) mode = rulesQuestionCount === 0 ? 'ai' : 'mixed';
+    else mode = 'rules';
+
+    return {
+      mode,
+      created,
+      skipped,
+      // Cuántas preguntas quedaron marcadas para revisión del admin.
+      needsReviewCount: rulesQuestionCount,
+      ...(aiError ? { aiError } : {}),
+    };
   }
 
   /**
@@ -1504,12 +1543,24 @@ export class TemplatesService {
 
     // Preguntas de origen, saneadas contra prompt-injection (el texto lo
     // escribe un admin del tenant → es input no confiable para el modelo).
+    // El límite es generoso a propósito: el editor no acota el largo de la
+    // pregunta, y como la reescritura de la IA REEMPLAZA el texto completo,
+    // recortar la entrada equivale a perder contenido en silencio.
+    const PROMPT_TEXT_LIMIT = 1200;
+    /** Ids cuyo texto no cupo entero: su resultado de IA no es confiable. */
+    const truncatedIds = new Set<string>();
     const questions = sourceSections.flatMap((s: any) =>
-      (s.questions || []).map((q: any) => ({
-        id: String(q.id),
-        type: q.type === 'text' ? 'abierta' : 'escala',
-        text: sanitizeForPrompt(q.text, 400),
-      })),
+      (s.questions || []).map((q: any) => {
+        // Se mide DESPUÉS de sanear: el saneo colapsa espacios y quita
+        // caracteres, así que el largo crudo sobreestima el recorte.
+        const text = sanitizeForPrompt(q.text, PROMPT_TEXT_LIMIT);
+        if (text.length >= PROMPT_TEXT_LIMIT) truncatedIds.add(String(q.id));
+        return {
+          id: String(q.id),
+          type: q.type === 'text' ? 'abierta' : 'escala',
+          text,
+        };
+      }),
     );
 
     const sourceProfile = PERSPECTIVE_PROFILES[sourceRelationType];
@@ -1555,9 +1606,17 @@ Incluye TODOS los ids de las preguntas origen en CADA perspectiva destino.`;
     let outputTokens = 0;
 
     try {
+      // El presupuesto se escala con el trabajo real (preguntas × destinos).
+      // Con 8000 fijos, una plantilla grande replicada a 4 perspectivas cortaba
+      // el JSON a la mitad: el parseo fallaba y caía TODO a reglas, después de
+      // haber facturado los tokens igual.
+      const maxTokens = Math.min(
+        16000,
+        Math.max(4000, 1500 + questions.length * targets.length * 90),
+      );
       const response = await client.messages.create({
         model,
-        max_tokens: 8000,
+        max_tokens: maxTokens,
         messages: [{ role: 'user', content: prompt }],
       });
       const textBlock = response.content.find((b) => b.type === 'text');
@@ -1565,14 +1624,22 @@ Incluye TODOS los ids de las preguntas origen en CADA perspectiva destino.`;
       inputTokens = response.usage?.input_tokens || 0;
       outputTokens = response.usage?.output_tokens || 0;
       tokensUsed = inputTokens + outputTokens;
-      try {
-        const cleaned = text
-          .replace(/^```(?:json)?\s*/i, '')
-          .replace(/\s*```\s*$/, '')
-          .trim();
-        parsed = JSON.parse(cleaned);
-      } catch (e: any) {
-        parseError = `JSON parse error: ${e.message}`;
+      // Un corte por límite deja el JSON incompleto. Detectarlo explícitamente
+      // da un motivo legible en el log en vez de un "JSON parse error" opaco.
+      if ((response as any).stop_reason === 'max_tokens') {
+        parseError = `Respuesta truncada por max_tokens (${maxTokens}); se usan reglas.`;
+      }
+      // Si ya se sabe que vino truncada, no tiene sentido intentar parsear.
+      if (!parseError) {
+        try {
+          const cleaned = text
+            .replace(/^```(?:json)?\s*/i, '')
+            .replace(/\s*```\s*$/, '')
+            .trim();
+          parsed = JSON.parse(cleaned);
+        } catch (e: any) {
+          parseError = `JSON parse error: ${e.message}`;
+        }
       }
     } catch (err: any) {
       await this.aiCallLogRepo
@@ -1630,6 +1697,10 @@ Incluye TODOS los ids de las preguntas origen en CADA perspectiva destino.`;
       if (!raw || typeof raw !== 'object') continue;
       const clean: Record<string, string> = {};
       for (const [qid, val] of Object.entries(raw)) {
+        // La IA reescribió a partir de un texto recortado: aceptar su versión
+        // borraría lo que quedó fuera del prompt. Esa pregunta cae a reglas,
+        // que trabajan sobre el texto íntegro.
+        if (truncatedIds.has(qid)) continue;
         if (typeof val === 'string' && val.trim()) clean[qid] = val.trim();
       }
       out[target] = clean;

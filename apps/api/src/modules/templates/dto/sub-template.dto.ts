@@ -3,6 +3,7 @@
  * form_sub_templates.
  */
 import {
+  ArrayNotEmpty,
   IsArray,
   IsBoolean,
   IsIn,
@@ -101,7 +102,9 @@ export class MirrorSubTemplateDto {
    * y distorsiona la validación de suma de pesos.
    */
   @IsArray()
-  @IsNotEmpty()
+  // `@IsNotEmpty()` da por válido el array vacío (no es null ni ''), así que
+  // `[]` pasaba la validación y devolvía un 200 que no hacía nada.
+  @ArrayNotEmpty()
   @IsIn(RELATION_TYPE_VALUES, { each: true })
   targetRelationTypes: RelationType[];
 

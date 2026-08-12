@@ -153,3 +153,70 @@ describe('perspectiveLabel', () => {
     expect(perspectiveLabel('inexistente')).toBe('inexistente');
   });
 });
+
+/**
+ * Regresiones de la auditoría previa al deploy.
+ *
+ * El reemplazo palabra-por-palabra sin contexto rompía dos familias de casos
+ * que aparecen en prácticamente cualquier plantilla de competencias en
+ * español. Se fijan acá para que no vuelvan.
+ */
+describe('regresiones: contexto gramatical', () => {
+  describe('formas que también son sustantivos', () => {
+    // "la toma de decisiones" → "la tomo de decisiones" era el caso típico.
+    it.each([
+      ['Participa en la toma de decisiones', 'Participo en la toma de decisiones'],
+      ['Demuestra escucha activa con el equipo', 'Demuestro escucha activa con el equipo'],
+      ['Promueve la mejora continua', 'Promuevo la mejora continua'],
+      ['Ofrece ayuda a sus pares', 'Ofrezco ayuda a mis pares'],
+      ['Cumple con la entrega a tiempo', 'Cumplo con la entrega a tiempo'],
+    ])('tercera → primera no destroza el sustantivo: %s', (input, expected) => {
+      expect(transformQuestionByRules(input, MANAGER, SELF)).toBe(expected);
+    });
+
+    it.each([
+      ['Brindo apoyo a mi equipo', 'Brindo apoyo a su equipo'],
+      ['Contribuyo al desarrollo de mis colegas', 'Contribuye al desarrollo de sus colegas'],
+      ['Trato a mis pares con respeto', 'Trato a sus pares con respeto'],
+      ['Actualizo el documento cuando corresponde', 'Actualizo el documento cuando corresponde'],
+    ])('primera → tercera no destroza el sustantivo: %s', (input, expected) => {
+      expect(transformQuestionByRules(input, SELF, MANAGER)).toBe(expected);
+    });
+
+    it('sigue conjugando la forma verbal no ambigua en la dirección contraria', () => {
+      // "apoya" (tercera) no es sustantivo, así que sí debe convertirse.
+      expect(transformQuestionByRules('Apoya a su equipo', MANAGER, SELF)).toBe(
+        'Apoyo a mi equipo',
+      );
+    });
+  });
+
+  describe('pronombres reflexivos vs. dativo/impersonal', () => {
+    it('convierte el reflexivo con "se", no con "le"', () => {
+      expect(transformQuestionByRules('Me comunico con claridad', SELF, MANAGER)).toBe(
+        'Se comunica con claridad',
+      );
+      expect(transformQuestionByRules('Me adapto a los cambios', SELF, MANAGER)).toBe(
+        'Se adapta a los cambios',
+      );
+    });
+
+    it('mantiene "le" cuando el "me" es dativo (no lo sigue un verbo propio)', () => {
+      expect(transformQuestionByRules('Me da retroalimentacion oportuna', SELF, MANAGER)).toBe(
+        'Le da retroalimentacion oportuna',
+      );
+    });
+
+    it('convierte el reflexivo en tercera → primera', () => {
+      expect(transformQuestionByRules('Se adapta a los cambios', MANAGER, SELF)).toBe(
+        'Me adapto a los cambios',
+      );
+    });
+
+    it('no toca el "se" impersonal', () => {
+      expect(
+        transformQuestionByRules('Se espera que resuelva los conflictos', MANAGER, SELF),
+      ).toBe('Se espera que resuelva los conflictos');
+    });
+  });
+});
