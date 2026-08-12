@@ -1486,7 +1486,7 @@ export class RemindersService {
           this.logger.log('[Cron] Processing auto-renewals...');
           const result = await this.subscriptionsService.processAutoRenewals();
           this.logger.log(
-            `[Cron] Auto-renewals: ${result.renewed} renewed, ${result.suspended} suspended, ${result.invoicesGenerated} invoices generated, ${result.invoiceErrors} invoice errors`,
+            `[Cron] Auto-renewals: ${result.renewed} renewed, ${result.suspended} suspended, ${result.invoicesGenerated} invoices generated, ${result.invoiceErrors} invoice errors, ${result.loopErrors} loop errors`,
           );
           await this.auditService
             .log(null, 'system', 'subscription.auto_renewals_run', 'Cron', undefined, { ...result })

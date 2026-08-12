@@ -72,6 +72,8 @@ describe('SubscriptionsService', () => {
       }),
       // Fase A — el cobro automático exitoso marca la factura como pagada.
       markAsPaid: jest.fn().mockResolvedValue(undefined),
+      // Fase B — la factura no cobrada se envía (DRAFT→SENT) para dunning.
+      sendInvoice: jest.fn().mockResolvedValue(undefined),
       // Fase 2 / Tarea 2.4.1 — approveRequest llama estos metodos para
       // emitir credit note auto cuando hay prorrateo > 0.
       findLatestPaidInvoiceByTenant: jest.fn().mockResolvedValue(null),
@@ -386,7 +388,10 @@ describe('SubscriptionsService', () => {
     });
 
     it('does NOT advance nextBillingDate if generateInvoice fails (so next cron retries)', async () => {
-      const sub = buildSub();
+      // Vencida hace 2 días: dentro de la gracia de 15 → NO se suspende.
+      const sub = buildSub({
+        nextBillingDate: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+      });
       mockOverdueSubs([sub]);
       // Simulate falla persistente (e.g. plan sin precio)
       invoicesService.generateInvoice.mockRejectedValueOnce(
@@ -398,6 +403,7 @@ describe('SubscriptionsService', () => {
       expect(result.invoiceErrors).toBe(1);
       expect(result.invoicesGenerated).toBe(0);
       expect(result.renewed).toBe(0); // NO incrementado
+      expect(result.suspended).toBe(0); // dentro de la gracia
       // subRepo.save NO debe haber sido llamado para esta sub —
       // significa que nextBillingDate NO se avanzo y el proximo cron run
       // la encontrara aun overdue para reintento.
@@ -410,6 +416,37 @@ describe('SubscriptionsService', () => {
         'subscription',
         sub.id,
         expect.objectContaining({ error: expect.stringContaining('sin precio') }),
+      );
+    });
+
+    /**
+     * Fase B (auditoría facturación) — gracia de 15 días: una sub cuya
+     * generación de factura falla persistentemente se SUSPENDE al superar
+     * los 15 días de vencimiento. Sin esto conservaba acceso pago para
+     * siempre (caso real: 74 días "activa" sin facturar).
+     */
+    it('suspende tras 15 días de gracia cuando la generación falla persistentemente', async () => {
+      const sub = buildSub({
+        nextBillingDate: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000),
+      });
+      mockOverdueSubs([sub]);
+      invoicesService.generateInvoice.mockRejectedValueOnce(
+        new Error('plan sin precio configurado'),
+      );
+
+      const result = await service.processAutoRenewals();
+
+      expect(result.suspended).toBe(1);
+      expect(result.renewed).toBe(0);
+      const savedSub = subRepo.save.mock.calls[0][0];
+      expect(savedSub.status).toBe('suspended');
+      expect(auditService.log).toHaveBeenCalledWith(
+        sub.tenantId,
+        'system',
+        'subscription.suspended_renewal_failed',
+        'subscription',
+        sub.id,
+        expect.objectContaining({ lastError: expect.stringContaining('sin precio') }),
       );
     });
 
@@ -535,6 +572,146 @@ describe('SubscriptionsService', () => {
       expect(result.renewed).toBe(1); // solo goodSub
       expect(result.invoicesGenerated).toBe(1);
       expect(result.invoiceErrors).toBe(1);
+    });
+
+    /**
+     * Fase B — aislamiento TOTAL por suscripción: un throw fuera de los
+     * try internos (ej. el save del avance) tampoco debe abortar el loop.
+     * Este era el envenenamiento real: la primera sub moría en el save y
+     * las siguientes jamás se facturaban.
+     */
+    describe('Fase B: cobranza destrabada', () => {
+      it('un throw inesperado en una sub no aborta el resto del batch', async () => {
+        const poisonSub = buildSub({ id: fakeUuid(604) });
+        const healthySub = buildSub({ id: fakeUuid(605) });
+        mockOverdueSubs([poisonSub, healthySub]);
+        // El save del avance falla SOLO para la primera sub.
+        subRepo.save
+          .mockRejectedValueOnce(new Error('deadlock detected'))
+          .mockImplementation((e: any) => Promise.resolve(e));
+
+        const result = await service.processAutoRenewals();
+
+        expect(result.loopErrors).toBe(1);
+        expect(result.renewed).toBe(1); // la sana igual se procesó
+        expect(auditService.log).toHaveBeenCalledWith(
+          poisonSub.tenantId,
+          'system',
+          'subscription.renewal_error',
+          'subscription',
+          poisonSub.id,
+          expect.objectContaining({ error: expect.stringContaining('deadlock') }),
+        );
+      });
+
+      it('ancla nextBillingDate al periodEnd de la factura generada', async () => {
+        const sub = buildSub();
+        mockOverdueSubs([sub]);
+        invoicesService.generateInvoice.mockResolvedValueOnce({
+          id: fakeUuid(801),
+          invoiceNumber: 'EVA-2026-0100',
+          total: 3.5,
+          currency: 'UF',
+          periodEnd: new Date('2026-06-01'),
+        });
+
+        await service.processAutoRenewals();
+
+        const savedSub = subRepo.save.mock.calls[0][0];
+        expect(savedSub.nextBillingDate.toISOString()).toBe(
+          new Date('2026-06-01').toISOString(),
+        );
+      });
+
+      it('procesa subs con next_billing_date NULL usando end_date (antes invisibles)', async () => {
+        const sub = buildSub({
+          nextBillingDate: null,
+          endDate: new Date('2026-05-01'),
+        });
+        mockOverdueSubs([sub]);
+        invoicesService.generateInvoice.mockResolvedValueOnce({
+          id: fakeUuid(802),
+          invoiceNumber: 'EVA-2026-0101',
+          total: 3.5,
+          currency: 'UF',
+          periodEnd: new Date('2026-06-01'),
+        });
+
+        const result = await service.processAutoRenewals();
+
+        expect(result.renewed).toBe(1);
+        const savedSub = subRepo.save.mock.calls[0][0];
+        expect(savedSub.nextBillingDate).toEqual(new Date('2026-06-01'));
+      });
+
+      it('auto-envía la factura que el cobro automático NO pagó (entra a dunning)', async () => {
+        const sub = buildSub();
+        mockOverdueSubs([sub]);
+        // Sin tarjeta: chargeWithDefault default → null.
+
+        const result = await service.processAutoRenewals();
+
+        expect(result.renewed).toBe(1);
+        expect(invoicesService.sendInvoice).toHaveBeenCalledWith(fakeUuid(700), 'system');
+      });
+
+      it('NO envía la factura cuando el cobro automático la pagó', async () => {
+        const sub = buildSub();
+        mockOverdueSubs([sub]);
+        paymentMethodsService.chargeWithDefault.mockResolvedValueOnce({
+          chargeId: 'ch_ok',
+          status: 'succeeded',
+          paymentMethodId: 'pm_1',
+        });
+
+        await service.processAutoRenewals();
+
+        expect(invoicesService.markAsPaid).toHaveBeenCalled();
+        expect(invoicesService.sendInvoice).not.toHaveBeenCalled();
+      });
+
+      it('un fallo del envío no bloquea el avance del ciclo (audit + continúa)', async () => {
+        const sub = buildSub();
+        mockOverdueSubs([sub]);
+        invoicesService.sendInvoice.mockRejectedValueOnce(new Error('SMTP caído'));
+
+        const result = await service.processAutoRenewals();
+
+        expect(result.renewed).toBe(1); // el ciclo avanzó igual
+        expect(auditService.log).toHaveBeenCalledWith(
+          sub.tenantId,
+          'system',
+          'invoice.autosend_failed',
+          'invoice',
+          fakeUuid(700),
+          expect.objectContaining({ requiresImmediateAction: true }),
+        );
+      });
+
+      it('si markAsPaid falla tras un cargo EXITOSO, audita el descuadre y no re-envía', async () => {
+        const sub = buildSub();
+        mockOverdueSubs([sub]);
+        paymentMethodsService.chargeWithDefault.mockResolvedValueOnce({
+          chargeId: 'ch_charged',
+          status: 'succeeded',
+          paymentMethodId: 'pm_1',
+        });
+        invoicesService.markAsPaid.mockRejectedValueOnce(new Error('tx abortada'));
+
+        const result = await service.processAutoRenewals();
+
+        expect(result.renewed).toBe(1);
+        expect(auditService.log).toHaveBeenCalledWith(
+          sub.tenantId,
+          'system',
+          'invoice.auto_charge_unreconciled',
+          'invoice',
+          fakeUuid(700),
+          expect.objectContaining({ chargeId: 'ch_charged', requiresImmediateAction: true }),
+        );
+        // El dinero ya se movió: NO debe mandarse a cobranza manual.
+        expect(invoicesService.sendInvoice).not.toHaveBeenCalled();
+      });
     });
   });
 

@@ -1380,13 +1380,14 @@ export class SubscriptionsService {
   }> {
     const now = new Date();
 
-    // Misma query que el cron, carácter por carácter.
+    // Misma query que el cron, carácter por carácter (actualizada en Fase B
+    // junto con processAutoRenewals: COALESCE con end_date).
     const overdue = await this.subRepo
       .createQueryBuilder('s')
       .leftJoinAndSelect('s.plan', 'p')
       .where('s.status = :status', { status: SubscriptionStatus.ACTIVE })
-      .andWhere('s.next_billing_date IS NOT NULL')
-      .andWhere('s.next_billing_date <= :now', { now })
+      .andWhere('COALESCE(s.next_billing_date, s.end_date) IS NOT NULL')
+      .andWhere('COALESCE(s.next_billing_date, s.end_date) <= :now', { now })
       .getMany();
 
     // Control: si `wouldProcess` viene vacío, esto dice si es porque no hay
@@ -1439,6 +1440,7 @@ export class SubscriptionsService {
     suspended: number;
     invoicesGenerated: number;
     invoiceErrors: number;
+    loopErrors: number;
   }> {
     const result = await this.processAutoRenewals();
     await this.auditService
@@ -1454,26 +1456,40 @@ export class SubscriptionsService {
     suspended: number;
     invoicesGenerated: number;
     invoiceErrors: number;
+    loopErrors: number;
   }> {
     const now = new Date();
     let renewed = 0;
     let suspended = 0;
     let invoicesGenerated = 0;
     let invoiceErrors = 0;
+    let loopErrors = 0;
 
     // Find active subscriptions past their billing date.
     // Fase 3 / Tarea 3.5.4 — PAUSED EXCLUIDO explicitamente: las subs
     // pausadas no facturan ni entran a dunning. El cron de
     // processScheduledResumes las reactiva cuando llegue resumeAt.
+    //
+    // Fase B (auditoría facturación) — COALESCE con end_date: una sub con
+    // next_billing_date NULL pero end_date vencida era INVISIBLE para
+    // siempre (no renovaba, no suspendía, no vencía). El avance posterior
+    // ancla al periodEnd de la factura generada, así que no depende de que
+    // next_billing_date exista.
     const overdue = await this.subRepo
       .createQueryBuilder('s')
       .leftJoinAndSelect('s.plan', 'p')
       .where('s.status = :status', { status: SubscriptionStatus.ACTIVE })
-      .andWhere('s.next_billing_date IS NOT NULL')
-      .andWhere('s.next_billing_date <= :now', { now })
+      .andWhere('COALESCE(s.next_billing_date, s.end_date) IS NOT NULL')
+      .andWhere('COALESCE(s.next_billing_date, s.end_date) <= :now', { now })
       .getMany();
 
     for (const sub of overdue) {
+      // Fase B — aislamiento por suscripción: un throw inesperado en una
+      // sub (un save que falla, un dato corrupto) NO debe abortar el loop.
+      // Sin esto, una suscripción envenenada dejaba sin facturar a todos
+      // los tenants que venían después, cada noche y en silencio (caso
+      // real: Cesce nunca recibió una factura porque Demo iba primero).
+      try {
       if (sub.autoRenew) {
         // Fase 0 / Tarea 0.2.2 — ORDER MATTERS:
         //   1. Generar factura del nuevo periodo PRIMERO.
@@ -1495,17 +1511,20 @@ export class SubscriptionsService {
           invoiceNumber: string;
           total: number;
           currency: string;
+          periodEnd: Date | null;
         } | null = null;
         try {
           const generated = await this.invoicesService.generateInvoice(
             sub.id,
             'system',
           );
+          const periodEndDate = generated.periodEnd ? new Date(generated.periodEnd as any) : null;
           invoiceResult = {
             id: generated.id,
             invoiceNumber: generated.invoiceNumber,
             total: Number(generated.total),
             currency: generated.currency || 'UF',
+            periodEnd: periodEndDate && !isNaN(periodEndDate.getTime()) ? periodEndDate : null,
           };
           invoicesGenerated++;
         } catch (err: any) {
@@ -1530,6 +1549,40 @@ export class SubscriptionsService {
           // SKIP el avance de nextBillingDate: el proximo cron run vera
           // la sub aun overdue y reintentara. Si el error es persistente
           // (plan sin precio, etc.), super_admin tiene que intervenir.
+          //
+          // Fase B — gracia de 15 días: si la generación lleva 15+ días
+          // fallando desde el vencimiento, la sub se SUSPENDE. Sin esto,
+          // una sub con la facturación rota conservaba acceso pago
+          // INDEFINIDAMENTE (caso real: 74 días "activa" sin facturar).
+          // El pago de la deuda la reactiva (markAsPaid → ACTIVE) y el
+          // super_admin puede reactivarla manualmente tras corregir la
+          // causa. 15 días = umbral acordado; da margen para arreglar un
+          // problema de configuración sin cortarle a un cliente que paga.
+          const dueRef = sub.nextBillingDate || sub.endDate;
+          const GRACE_MS = 15 * 24 * 60 * 60 * 1000;
+          if (dueRef && now.getTime() - new Date(dueRef).getTime() > GRACE_MS) {
+            sub.status = SubscriptionStatus.SUSPENDED;
+            await this.subRepo.save(sub);
+            suspended++;
+            this.logger.warn(
+              `[AutoRenew] sub ${sub.id} (tenant ${sub.tenantId}) SUSPENDIDA: ` +
+                `renovación imposible por 15+ días (vencida ${new Date(dueRef).toISOString().split('T')[0]}).`,
+            );
+            await this.auditService
+              .log(
+                sub.tenantId,
+                'system',
+                'subscription.suspended_renewal_failed',
+                'subscription',
+                sub.id,
+                {
+                  reason: 'Generación de factura fallando por 15+ días desde el vencimiento',
+                  dueDate: new Date(dueRef).toISOString(),
+                  lastError: String(err?.message || err).slice(0, 300),
+                },
+              )
+              .catch(() => undefined);
+          }
           continue;
         }
 
@@ -1537,8 +1590,9 @@ export class SubscriptionsService {
         // off-session con la tarjeta default del tenant. Si tiene
         // metodo activo y succeed, marcamos la invoice como PAID y el
         // tenant evita el flow de pago manual. Si no hay metodo o el
-        // cobro falla, dejamos la invoice en DRAFT/SENT y el cron de
-        // dunning + email de aviso se encargaran.
+        // cobro falla, la factura se ENVÍA al cliente más abajo (Fase B)
+        // para que entre al circuito de dunning.
+        let invoicePaid = false;
         try {
           // Auditoría facturación/cobros — Fase A. La factura está en su
           // moneda (UF para todos los planes hoy) y Stripe cobra en CLP.
@@ -1575,19 +1629,37 @@ export class SubscriptionsService {
             idempotencyKey: `auto-renew-${invoiceResult.id}`,
           });
           if (chargeResult && chargeResult.status === 'succeeded') {
-            // Cobro OK: marcar invoice PAID.
-            await this.invoicesService.markAsPaid(
-              invoiceResult.id,
-              {
-                paymentMethod: 'stripe_auto',
-                transactionRef: chargeResult.chargeId,
-                notes:
-                  `Cobro automatico con tarjeta default en renovacion: ` +
-                  `${conversion.amount} ${conversion.currency} ` +
-                  `(${conversion.originalAmount} ${conversion.originalCurrency}, tasa ${conversion.rate}).`,
-              },
-              'system',
-            );
+            // El dinero YA se movió: pase lo que pase después, esta
+            // factura no debe entrar al circuito de cobranza manual.
+            invoicePaid = true;
+            // Fase B — markAsPaid aislado del catch del cobro: si falla
+            // DESPUÉS de un cargo exitoso, el cliente pagó pero la factura
+            // quedaría DRAFT. Sin este audit, el descuadre era invisible.
+            try {
+              await this.invoicesService.markAsPaid(
+                invoiceResult.id,
+                {
+                  paymentMethod: 'stripe_auto',
+                  transactionRef: chargeResult.chargeId,
+                  notes:
+                    `Cobro automatico con tarjeta default en renovacion: ` +
+                    `${conversion.amount} ${conversion.currency} ` +
+                    `(${conversion.originalAmount} ${conversion.originalCurrency}, tasa ${conversion.rate}).`,
+                },
+                'system',
+              );
+            } catch (markErr: any) {
+              this.logger.error(
+                `[AutoRenew] COBRADO pero markAsPaid falló para invoice ${invoiceResult.invoiceNumber} (charge=${chargeResult.chargeId}): ${markErr?.message || markErr}. Conciliar manualmente.`,
+              );
+              await this.auditService
+                .log(sub.tenantId, 'system', 'invoice.auto_charge_unreconciled', 'invoice', invoiceResult.id, {
+                  chargeId: chargeResult.chargeId,
+                  error: String(markErr?.message || markErr).slice(0, 500),
+                  requiresImmediateAction: true,
+                })
+                .catch(() => undefined);
+            }
             this.logger.log(
               `[AutoRenew] tenant=${sub.tenantId} invoice=${invoiceResult.invoiceNumber} cobrado automaticamente (charge=${chargeResult.chargeId}).`,
             );
@@ -1623,21 +1695,62 @@ export class SubscriptionsService {
           );
         }
 
-        // Auto-renew: advance billing date forward (post-invoice success)
-        let nextDate = this.calculateNextBillingDate(
-          sub.nextBillingDate!,
-          sub.billingPeriod || BillingPeriod.MONTHLY,
-        );
-        // Ensure it's in the future
-        while (nextDate <= now) {
+        // Auto-renew: advance billing date forward (post-invoice success).
+        //
+        // Fase B — el ancla es el periodEnd de la factura RECIÉN GENERADA,
+        // no un salto calculado desde nextBillingDate. El salto anterior
+        // ("while <= now, sumar un período") tenía dos fallas con backlog:
+        //   1. Saltaba períodos sin facturar (la continuidad histórica los
+        //      factura uno a uno, pero nextBillingDate ya estaba meses
+        //      adelante → desfase permanente + choque con el guard de
+        //      emisión anticipada).
+        //   2. Con nextBillingDate NULL directamente crasheaba.
+        // Con el ancla en periodEnd, una sub atrasada N períodos se pone
+        // al día generando una factura por noche (cada una entra a
+        // cobranza), y una sub al día avanza exactamente igual que antes.
+        let nextDate: Date;
+        if (invoiceResult.periodEnd) {
+          nextDate = invoiceResult.periodEnd;
+        } else {
+          // Fallback defensivo si la factura no trajo periodEnd.
           nextDate = this.calculateNextBillingDate(
-            nextDate,
+            sub.nextBillingDate || sub.endDate || now,
             sub.billingPeriod || BillingPeriod.MONTHLY,
           );
+          while (nextDate <= now) {
+            nextDate = this.calculateNextBillingDate(
+              nextDate,
+              sub.billingPeriod || BillingPeriod.MONTHLY,
+            );
+          }
         }
         sub.nextBillingDate = nextDate;
         await this.subRepo.save(sub);
         renewed++;
+
+        // Fase B — la factura no cobrada se ENVÍA (DRAFT→SENT + email al
+        // contacto de cobranza). Sin esto, las facturas del cron quedaban
+        // en DRAFT: dunning solo procesa SENT/OVERDUE, así que el cliente
+        // jamás se enteraba y la sub jamás se suspendía (caso real: 6
+        // facturas DRAFT acumuladas, 0 enviadas). El envío va DESPUÉS del
+        // avance de fecha para que un fallo de email no bloquee el ciclo
+        // de facturación.
+        if (!invoicePaid) {
+          try {
+            await this.invoicesService.sendInvoice(invoiceResult.id, 'system');
+          } catch (sendErr: any) {
+            this.logger.error(
+              `[AutoRenew] factura ${invoiceResult.invoiceNumber} generada pero el envío falló: ${sendErr?.message || sendErr}. Enviar manualmente desde /facturacion.`,
+            );
+            await this.auditService
+              .log(sub.tenantId, 'system', 'invoice.autosend_failed', 'invoice', invoiceResult.id, {
+                invoiceNumber: invoiceResult.invoiceNumber,
+                error: String(sendErr?.message || sendErr).slice(0, 500),
+                requiresImmediateAction: true,
+              })
+              .catch(() => undefined);
+          }
+        }
 
         // Fase 0 / Tarea 0.2.3 — Audit log de renovacion exitosa con
         // referencia a la factura generada. Util para reconciliacion
@@ -1686,9 +1799,23 @@ export class SubscriptionsService {
           `[AutoRenew] Subscription ${sub.id} (tenant ${sub.tenantId}) SUSPENDED — autoRenew is off`,
         );
       }
+      } catch (subErr: any) {
+        // Cualquier error no manejado por los try internos: se registra y
+        // se sigue con la próxima suscripción. El próximo run reintenta
+        // esta (nextBillingDate no avanzó).
+        loopErrors++;
+        this.logger.error(
+          `[AutoRenew] error no manejado procesando sub ${sub.id} (tenant ${sub.tenantId}): ${subErr?.message || subErr}`,
+        );
+        await this.auditService
+          .log(sub.tenantId, 'system', 'subscription.renewal_error', 'subscription', sub.id, {
+            error: String(subErr?.message || subErr).slice(0, 500),
+          })
+          .catch(() => undefined);
+      }
     }
 
-    return { renewed, suspended, invoicesGenerated, invoiceErrors };
+    return { renewed, suspended, invoicesGenerated, invoiceErrors, loopErrors };
   }
 
   // ─── AI Add-on Packs ──────────────────────────────────────────────────
