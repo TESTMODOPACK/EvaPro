@@ -7,6 +7,16 @@
  * - create subscription: plan válido requerido, cancel subs anteriores
  * - findMySubscription: devuelve suscripción con plan
  */
+// Fase A (auditoría facturación) — convertToCLP se usa en el auto-cobro del
+// cron. Mock determinístico: sin él, los tests harían fetch real a
+// mindicador.cl. Tasa fija 40.000 para aserciones legibles.
+jest.mock('../../common/utils/currency-converter', () => ({
+  convertToCLP: jest.fn(async (amount: number, currency: string) =>
+    currency === 'CLP'
+      ? { amount: Math.round(amount), currency: 'CLP', rate: 1, originalAmount: amount, originalCurrency: 'CLP' }
+      : { amount: Math.round(amount * 40000), currency: 'CLP', rate: 40000, originalAmount: amount, originalCurrency: currency },
+  ),
+}));
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException, ConflictException } from '@nestjs/common';
 import { getRepositoryToken } from '@nestjs/typeorm';
@@ -42,6 +52,7 @@ describe('SubscriptionsService', () => {
   let cacheManager: any;
   let invoicesService: any;
   let auditService: any;
+  let paymentMethodsService: any;
 
   beforeEach(async () => {
     planRepo = createMockRepository();
@@ -59,6 +70,8 @@ describe('SubscriptionsService', () => {
         invoiceNumber: 'EVA-2026-0001',
         total: 11.9,
       }),
+      // Fase A — el cobro automático exitoso marca la factura como pagada.
+      markAsPaid: jest.fn().mockResolvedValue(undefined),
       // Fase 2 / Tarea 2.4.1 — approveRequest llama estos metodos para
       // emitir credit note auto cuando hay prorrateo > 0.
       findLatestPaidInvoiceByTenant: jest.fn().mockResolvedValue(null),
@@ -91,9 +104,9 @@ describe('SubscriptionsService', () => {
         // null) -> auto-renewal procede via flow manual, igual que pre-T1.3.
         {
           provide: PaymentMethodsService,
-          useValue: {
+          useValue: (paymentMethodsService = {
             chargeWithDefault: jest.fn().mockResolvedValue(null),
-          },
+          }),
         },
         { provide: CACHE_MANAGER, useValue: cacheManager },
         // B6-11/B6-12: SubscriptionsService inyecta DataSource para
@@ -442,6 +455,67 @@ describe('SubscriptionsService', () => {
         sub.id,
         expect.any(Object),
       );
+    });
+
+    /**
+     * Fase A (auditoría facturación) — el cobro automático debe convertir
+     * el total de la factura (UF) a CLP antes de llamar al provider. El
+     * bug original pasaba 4.165 UF con currency 'CLP' → Stripe cobraba
+     * Math.round(4.165) = 4 PESOS y la factura quedaba PAID.
+     */
+    describe('conversión de moneda en el cobro automático (Fase A)', () => {
+      it('convierte UF→CLP antes de cobrar con la tarjeta default', async () => {
+        const sub = buildSub();
+        mockOverdueSubs([sub]);
+        invoicesService.generateInvoice.mockResolvedValueOnce({
+          id: fakeUuid(701),
+          invoiceNumber: 'EVA-2026-0050',
+          total: 3.5,
+          currency: 'UF',
+        });
+        paymentMethodsService.chargeWithDefault.mockResolvedValueOnce({
+          chargeId: 'ch_test_1',
+          status: 'succeeded',
+          paymentMethodId: 'pm_1',
+        });
+
+        await service.processAutoRenewals();
+
+        expect(paymentMethodsService.chargeWithDefault).toHaveBeenCalledWith(
+          expect.objectContaining({
+            amount: 140000, // 3.5 UF × 40.000 (tasa del mock)
+            currency: 'CLP',
+            metadata: expect.objectContaining({
+              original_amount: '3.5',
+              original_currency: 'UF',
+              conversion_rate: '40000',
+            }),
+          }),
+        );
+        // Cobro OK → factura marcada como pagada.
+        expect(invoicesService.markAsPaid).toHaveBeenCalledWith(
+          fakeUuid(701),
+          expect.objectContaining({ paymentMethod: 'stripe_auto', transactionRef: 'ch_test_1' }),
+          'system',
+        );
+      });
+
+      it('una factura ya emitida en CLP se cobra tal cual (tasa 1)', async () => {
+        const sub = buildSub();
+        mockOverdueSubs([sub]);
+        invoicesService.generateInvoice.mockResolvedValueOnce({
+          id: fakeUuid(702),
+          invoiceNumber: 'EVA-2026-0051',
+          total: 47600,
+          currency: 'CLP',
+        });
+
+        await service.processAutoRenewals();
+
+        expect(paymentMethodsService.chargeWithDefault).toHaveBeenCalledWith(
+          expect.objectContaining({ amount: 47600, currency: 'CLP' }),
+        );
+      });
     });
 
     it('isolates failures: bad sub does not block good ones in same batch', async () => {

@@ -46,6 +46,38 @@ export class PaymentsService {
     private readonly paymentMethodsService: PaymentMethodsService,
   ) {}
 
+  /**
+   * Convierte un monto de refund desde la moneda del provider (lo que la
+   * pasarela realmente movió, CLP) a la moneda de la factura (UF/CLP), que
+   * es la unidad en que se emiten las credit notes.
+   *
+   * La conversión es PROPORCIONAL al cobro real de la sesión — no a la tasa
+   * UF del día — para que un refund total produzca una NC por exactamente el
+   * total de la factura aunque la UF haya cambiado desde el pago:
+   *
+   *   credit = refund × (invoice.total / session.amount)
+   *
+   * Si la sesión no tiene monto utilizable (dato legacy corrupto), se
+   * devuelve el monto tal cual: issueCreditNote lo validará contra el total
+   * y el caso caerá en el flujo de "emitir NC manual" ya existente.
+   */
+  private refundAmountInInvoiceCurrency(
+    refundAmount: number,
+    session: Pick<PaymentSession, 'amount' | 'currency'>,
+    invoice: Pick<Invoice, 'total' | 'currency'>,
+  ): number {
+    if (invoice.currency === session.currency) return refundAmount;
+    const sessionAmount = Number(session.amount);
+    const invoiceTotal = Number(invoice.total);
+    if (!isFinite(sessionAmount) || sessionAmount <= 0 || !isFinite(invoiceTotal) || invoiceTotal <= 0) {
+      return refundAmount;
+    }
+    const proportional = (refundAmount / sessionAmount) * invoiceTotal;
+    // Cap al total: el redondeo a 2 decimales de un refund total no debe
+    // exceder el chequeo de over-credit por 0.01.
+    return Math.min(invoiceTotal, Math.round(proportional * 100) / 100);
+  }
+
   /** Lookup a provider adapter by name. Throws if not enabled. */
   private getProvider(name: PaymentProviderName): PaymentProvider {
     const map: Record<PaymentProviderName, PaymentProvider> = {
@@ -424,13 +456,26 @@ export class PaymentsService {
       // Provider envia amount en unidades del provider (CLP entero, USD
       // x100). Para Stripe charge.refunded el amount viene en
       // smallest currency unit; para CLP equivale a peso integer ya.
-      const refundAmountForNc = event.amount ?? Number(session.amount);
+      const refundInProviderUnits = event.amount ?? Number(session.amount);
+      // Fase A — misma conversión que refundInvoice: la NC se emite en la
+      // moneda de la FACTURA, no en la del provider. Sin esto, un refund
+      // de una factura en UF chocaba siempre con el chequeo de over-credit
+      // (165.000 CLP > 4,17 UF) y la NC caía a emisión manual.
+      const invoiceForNc = await this.invoiceRepo.findOne({
+        where: { id: session.invoiceId },
+        select: ['id', 'total', 'currency'],
+      });
+      const refundAmountForNc = invoiceForNc
+        ? this.refundAmountInInvoiceCurrency(refundInProviderUnits, session, invoiceForNc)
+        : refundInProviderUnits;
       const cn = await this.invoicesService.issueCreditNote(
         session.invoiceId,
         {
           amount: refundAmountForNc,
           reason: `Refund recibido via webhook ${provider} (originado en dashboard del provider)`,
-          notes: `Provider event externalId: ${event.externalId}`,
+          notes:
+            `Provider event externalId: ${event.externalId}. ` +
+            `Refund provider: ${refundInProviderUnits} ${event.currency ?? session.currency}.`,
         },
         // userId='system' — el refund no tiene actor humano del lado
         // Eva360. Audit log queda con system para distinguir de
@@ -862,14 +907,31 @@ export class PaymentsService {
 
     // Auto-emitir credit note vinculada (T2.3.3). InvoicesService es
     // responsable del enum/numeracion/PDF.
+    //
+    // Auditoría facturación/cobros — Fase A. `refundAmount` está en la
+    // moneda del PROVIDER (CLP: lo que Stripe devolvió), pero la NC valida
+    // contra `invoice.total`, que está en la moneda de la FACTURA (UF).
+    // ANTES se pasaba el CLP directo: para una factura de 4,17 UF cobrada
+    // como ~165.000 CLP, el chequeo de over-credit (165000 > 4,17)
+    // rechazaba SIEMPRE — el refund salía en Stripe pero la NC contable
+    // jamás se emitía. Se convierte proporcional al cobro real registrado
+    // en la sesión (no a la tasa del día), así un refund total produce una
+    // NC por exactamente el total de la factura.
+    const creditAmount = this.refundAmountInInvoiceCurrency(
+      refundAmount,
+      session,
+      invoice,
+    );
     let creditNote;
     try {
       creditNote = await this.invoicesService.issueCreditNote(
         invoice.id,
         {
-          amount: refundAmount,
+          amount: creditAmount,
           reason: `Refund automatico via ${session.provider}: ${dto.reason}`,
-          notes: `Provider refund id: ${refundResult.refundId}`,
+          notes:
+            `Provider refund id: ${refundResult.refundId}. ` +
+            `Refund provider: ${refundAmount} ${session.currency}.`,
         },
         userId,
         invoice.tenantId,

@@ -39,6 +39,7 @@ import { NotificationType } from '../notifications/entities/notification.entity'
 import { PlanFeature } from '../../common/constants/plan-features';
 import { InvoicesService } from './invoices.service';
 import { PaymentMethodsService } from '../payments/payment-methods.service';
+import { convertToCLP } from '../../common/utils/currency-converter';
 
 @Injectable()
 export class SubscriptionsService {
@@ -1489,8 +1490,12 @@ export class SubscriptionsService {
         // generateInvoice ya usa continuidad historica (Tarea 0.1.1), por
         // lo que cubre `[lastInvoice.periodEnd, +1 ciclo]` correctamente
         // sin depender de nextBillingDate.
-        let invoiceResult: { id: string; invoiceNumber: string; total: number } | null =
-          null;
+        let invoiceResult: {
+          id: string;
+          invoiceNumber: string;
+          total: number;
+          currency: string;
+        } | null = null;
         try {
           const generated = await this.invoicesService.generateInvoice(
             sub.id,
@@ -1500,6 +1505,7 @@ export class SubscriptionsService {
             id: generated.id,
             invoiceNumber: generated.invoiceNumber,
             total: Number(generated.total),
+            currency: generated.currency || 'UF',
           };
           invoicesGenerated++;
         } catch (err: any) {
@@ -1534,13 +1540,20 @@ export class SubscriptionsService {
         // cobro falla, dejamos la invoice en DRAFT/SENT y el cron de
         // dunning + email de aviso se encargaran.
         try {
+          // Auditoría facturación/cobros — Fase A. La factura está en su
+          // moneda (UF para todos los planes hoy) y Stripe cobra en CLP.
+          // ANTES se pasaba el total en UF con currency 'CLP': el provider
+          // redondeaba Math.round(4.165) y cobraba 4 PESOS por un plan de
+          // 3,5 UF — y encima la factura quedaba PAID. La conversión es la
+          // misma que usa el checkout manual (createCheckout).
+          const conversion = await convertToCLP(
+            invoiceResult.total,
+            invoiceResult.currency,
+          );
           const chargeResult = await this.paymentMethodsService.chargeWithDefault({
             tenantId: sub.tenantId,
-            // Invoice total -> CLP conversion la hace el chargeStored
-            // si la moneda no es CLP. Aqui pasamos el valor en la
-            // moneda de la invoice; provider convierte si es UF/USD.
-            amount: invoiceResult.total,
-            currency: 'CLP', // TODO multi-currency Fase 5
+            amount: conversion.amount,
+            currency: conversion.currency,
             description: `Eva360 — Factura ${invoiceResult.invoiceNumber}`,
             metadata: {
               tenant_id: sub.tenantId,
@@ -1548,9 +1561,17 @@ export class SubscriptionsService {
               invoice_id: invoiceResult.id,
               invoice_number: invoiceResult.invoiceNumber,
               source: 'auto_renewal_charge',
+              // Trazabilidad de la conversión para conciliación.
+              original_amount: String(conversion.originalAmount),
+              original_currency: conversion.originalCurrency,
+              conversion_rate: String(conversion.rate),
             },
             // Idempotency deterministica: misma invoice -> mismo key
-            // -> Stripe retorna el cargo existente sin duplicar.
+            // -> Stripe retorna el cargo existente sin duplicar. Si la
+            // tasa UF cambia entre reintentos, Stripe rechaza el key
+            // reusado con params distintos; el cobro queda para el run
+            // siguiente (los keys expiran a las 24h) — preferible a
+            // arriesgar un doble cobro usando keys por-monto.
             idempotencyKey: `auto-renew-${invoiceResult.id}`,
           });
           if (chargeResult && chargeResult.status === 'succeeded') {
@@ -1560,7 +1581,10 @@ export class SubscriptionsService {
               {
                 paymentMethod: 'stripe_auto',
                 transactionRef: chargeResult.chargeId,
-                notes: 'Cobro automatico con tarjeta default en renovacion.',
+                notes:
+                  `Cobro automatico con tarjeta default en renovacion: ` +
+                  `${conversion.amount} ${conversion.currency} ` +
+                  `(${conversion.originalAmount} ${conversion.originalCurrency}, tasa ${conversion.rate}).`,
               },
               'system',
             );

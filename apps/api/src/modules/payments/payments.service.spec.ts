@@ -323,6 +323,32 @@ describe('PaymentsService — applyWebhookEvent (Fase 0 / Tarea 0.4)', () => {
       expect(invoicesService.issueCreditNote).not.toHaveBeenCalled();
     });
 
+    it('webhook refund de factura UF: la NC se convierte a la moneda de la factura (Fase A)', async () => {
+      sessionRepo.findOne.mockResolvedValue(
+        buildSession({ status: 'paid', amount: '165000', currency: 'CLP' }),
+      );
+      // El handler carga la factura para conocer su moneda/total.
+      invoiceRepo.findOne.mockResolvedValue({
+        id: invoiceId,
+        total: 4.17,
+        currency: 'UF',
+      });
+
+      await service.applyWebhookEvent('stripe', {
+        type: 'payment.refunded',
+        externalId: 'ext_abc',
+        amount: 165000,
+        currency: 'CLP',
+      });
+
+      expect(invoicesService.issueCreditNote).toHaveBeenCalledWith(
+        invoiceId,
+        expect.objectContaining({ amount: 4.17 }),
+        'system',
+        tenantId,
+      );
+    });
+
     it('webhook OK pero issueCreditNote falla: audit invoice.credit_note_pending_manual', async () => {
       sessionRepo.findOne.mockResolvedValue(buildSession({ status: 'paid' }));
       invoicesService.issueCreditNote.mockRejectedValueOnce(
@@ -388,6 +414,93 @@ describe('PaymentsService — applyWebhookEvent (Fase 0 / Tarea 0.4)', () => {
         sessionId,
         expect.objectContaining({ manualRefund: true }),
       );
+    });
+
+    /**
+     * Fase A (auditoría facturación) — la NC se emite en la MONEDA DE LA
+     * FACTURA, no en la del provider. El bug original pasaba el CLP del
+     * refund a una NC que valida contra el total en UF: 165.000 > 4,17
+     * → over-credit → la NC jamás se emitía.
+     */
+    describe('conversión de moneda del refund a la NC (Fase A)', () => {
+      function setupUfInvoicePaidInClp() {
+        invoiceRepo.findOne.mockResolvedValue({
+          id: invoiceId,
+          tenantId,
+          status: 'paid',
+          total: 4.17,
+          currency: 'UF',
+        });
+        sessionRepo.findOne.mockResolvedValue(
+          buildSession({
+            status: 'paid',
+            externalId: 'cs_test_uf',
+            amount: '165000',
+            currency: 'CLP',
+          }),
+        );
+      }
+
+      it('refund total: el provider recibe CLP y la NC se emite por el total en UF', async () => {
+        setupUfInvoicePaidInClp();
+
+        await service.refundInvoice(invoiceId, { reason: 'Reembolso total' }, fakeUuid(200));
+
+        // Al provider va el monto en su moneda (lo que realmente cobró).
+        expect(stripeProvider.refundPayment).toHaveBeenCalledWith(
+          expect.objectContaining({ amount: 165000 }),
+        );
+        // La NC va en la moneda de la factura, por el total exacto.
+        expect(invoicesService.issueCreditNote).toHaveBeenCalledWith(
+          invoiceId,
+          expect.objectContaining({ amount: 4.17 }),
+          expect.any(String),
+          tenantId,
+        );
+      });
+
+      it('refund parcial: la NC es proporcional al cobro real', async () => {
+        setupUfInvoicePaidInClp();
+
+        await service.refundInvoice(
+          invoiceId,
+          { amount: 66000, reason: 'Reembolso parcial 40%' },
+          fakeUuid(200),
+        );
+
+        expect(stripeProvider.refundPayment).toHaveBeenCalledWith(
+          expect.objectContaining({ amount: 66000 }),
+        );
+        // 66000/165000 = 40% de 4.17 UF = 1.67 (redondeado a 2 decimales).
+        expect(invoicesService.issueCreditNote).toHaveBeenCalledWith(
+          invoiceId,
+          expect.objectContaining({ amount: 1.67 }),
+          expect.any(String),
+          tenantId,
+        );
+      });
+
+      it('factura en CLP (misma moneda): el monto pasa sin conversión', async () => {
+        invoiceRepo.findOne.mockResolvedValue({
+          id: invoiceId,
+          tenantId,
+          status: 'paid',
+          total: 165000,
+          currency: 'CLP',
+        });
+        sessionRepo.findOne.mockResolvedValue(
+          buildSession({ status: 'paid', externalId: 'cs_clp', amount: '165000', currency: 'CLP' }),
+        );
+
+        await service.refundInvoice(invoiceId, { reason: 'Reembolso' }, fakeUuid(200));
+
+        expect(invoicesService.issueCreditNote).toHaveBeenCalledWith(
+          invoiceId,
+          expect.objectContaining({ amount: 165000 }),
+          expect.any(String),
+          tenantId,
+        );
+      });
     });
 
     it('rechaza si invoice no esta PAID', async () => {
