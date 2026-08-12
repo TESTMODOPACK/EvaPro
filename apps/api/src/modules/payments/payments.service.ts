@@ -627,6 +627,20 @@ export class PaymentsService {
         notes: `Pago procesado vía ${provider}`,
       }, session.initiatedBy);
     } catch (err: any) {
+      // Fase C — carrera con el markAsPaid manual: si la factura YA está
+      // pagada, el estado deseado ya existe. Antes revertíamos la session
+      // a pending y el provider reintentaba para siempre (cada retry
+      // volvía a chocar con "ya está pagada"). Idempotente: session queda
+      // paid y respondemos OK.
+      if (
+        err instanceof BadRequestException &&
+        /ya está pagada|ya fue pagada/i.test(String(err?.message || ''))
+      ) {
+        this.logger.log(
+          `Invoice ${session.invoiceId} ya estaba pagada al procesar el webhook (markAsPaid manual ganó la carrera); session ${session.id} queda paid.`,
+        );
+        return { handled: true, reason: 'invoice already paid (concurrent manual mark)' };
+      }
       // CRÍTICO: markAsPaid falló DESPUÉS de que ya marcamos la session
       // como paid. Si dejamos así, dunning seguirá enviando emails al
       // cliente que ya pagó (invoice queda en SENT). Revertimos el lock

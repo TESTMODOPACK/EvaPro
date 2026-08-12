@@ -4,6 +4,7 @@ import { Repository, Between, In, MoreThanOrEqual, LessThanOrEqual } from 'typeo
 import { Subscription, SubscriptionStatus } from './entities/subscription.entity';
 import { Invoice, InvoiceStatus, InvoiceType } from './entities/invoice.entity';
 import { BillingPeriod } from './entities/payment-history.entity';
+import { PriceOverridesService } from './price-overrides.service';
 
 /**
  * Fase 4 / Tarea 4.2 — Metricas SaaS para el dashboard ejecutivo del
@@ -39,6 +40,9 @@ export class BillingMetricsService {
     private readonly subRepo: Repository<Subscription>,
     @InjectRepository(Invoice)
     private readonly invoiceRepo: Repository<Invoice>,
+    // Fase C — el MRR debe reflejar los descuentos negociados (price
+    // overrides); antes sumaba el precio de lista y sobreestimaba.
+    private readonly priceOverridesService: PriceOverridesService,
   ) {}
 
   /**
@@ -54,7 +58,22 @@ export class BillingMetricsService {
     let currency = 'UF';
     for (const sub of subs) {
       if (!sub.plan) continue;
-      const monthly = this.monthlyEquivalent(sub.plan, sub.billingPeriod);
+      // Fase C — el precio efectivo considera el override activo de la
+      // sub (descuento negociado). Sin esto, un tenant con 30% de
+      // descuento inflaba el MRR con el precio de lista.
+      const override = await this.priceOverridesService
+        .getActiveOverride(sub.id)
+        .catch(() => null);
+      const effectivePlan = override
+        ? {
+            ...sub.plan,
+            monthlyPrice: override.monthlyPrice ?? sub.plan.monthlyPrice,
+            quarterlyPrice: override.quarterlyPrice ?? sub.plan.quarterlyPrice,
+            semiannualPrice: override.semiannualPrice ?? sub.plan.semiannualPrice,
+            yearlyPrice: override.yearlyPrice ?? sub.plan.yearlyPrice,
+          }
+        : sub.plan;
+      const monthly = this.monthlyEquivalent(effectivePlan, sub.billingPeriod);
       mrr += monthly;
       // Mostramos currency del primer plan encontrado; mixto = inconsistencia
       // operacional que ya alertamos en audit anterior (T0/T2).

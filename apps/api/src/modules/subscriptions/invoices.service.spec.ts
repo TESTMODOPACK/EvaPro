@@ -67,6 +67,8 @@ describe('InvoicesService', () => {
   let lineRepo: any;
   let subRepo: any;
   let dataSource: any;
+  let billingSettings: any;
+  let auditServiceMock: any;
 
   const tenantId = fakeUuid(100);
 
@@ -99,7 +101,7 @@ describe('InvoicesService', () => {
           useValue: createMockRepository(),
         },
         { provide: getRepositoryToken(User), useValue: createMockRepository() },
-        { provide: AuditService, useValue: createMockAuditService() },
+        { provide: AuditService, useValue: (auditServiceMock = createMockAuditService()) },
         { provide: EmailService, useValue: createMockEmailService() },
         {
           provide: NotificationsService,
@@ -125,7 +127,7 @@ describe('InvoicesService', () => {
         // defaults Chile que mantienen el comportamiento pre-T4.5.
         {
           provide: require('./billing-settings.service').BillingSettingsService,
-          useValue: {
+          useValue: (billingSettings = {
             get: jest.fn().mockResolvedValue({
               id: 'singleton',
               issuerName: 'Ascenda Performance SpA',
@@ -144,7 +146,7 @@ describe('InvoicesService', () => {
             }),
             update: jest.fn(),
             invalidateCache: jest.fn(),
-          },
+          }),
         },
       ],
     }).compile();
@@ -1302,4 +1304,182 @@ describe('InvoicesService', () => {
       expect(savedInvoice.total).toBeCloseTo(11.9, 2);
     });
   });
+
+  // ─── Fase C (auditoría facturación y cobros) ─────────────────────────
+
+  describe('Fase C: taxRate 0 es válido (facturación exenta)', () => {
+    it('generateInvoice respeta taxRate=0 configurado en vez de forzar 19%', async () => {
+      billingSettings.get.mockResolvedValue({
+        invoicePrefix: 'EVA',
+        creditNotePrefix: 'EVA-NC',
+        taxRate: 0,
+        dueDays: 15,
+        invoiceAdvanceDays: 7,
+        defaultCurrency: 'UF',
+      });
+      subRepo.findOne.mockResolvedValue(buildMockSub());
+
+      await service.generateInvoice(fakeUuid(600), fakeUuid(1));
+
+      const savedInvoice = dataSource.txSavedEntities[0];
+      expect(savedInvoice.taxRate).toBe(0);
+      expect(savedInvoice.taxAmount).toBe(0);
+      expect(savedInvoice.total).toBe(savedInvoice.subtotal);
+    });
+
+    it('issueCreditNote hereda taxRate=0 de la factura original exenta', async () => {
+      invoiceRepo.findOne.mockResolvedValue({
+        id: fakeUuid(610),
+        tenantId,
+        type: 'invoice',
+        status: 'paid',
+        total: 10,
+        taxRate: 0,
+        currency: 'UF',
+        subscriptionId: fakeUuid(600),
+        invoiceNumber: 'EVA-2026-0001',
+        periodStart: new Date('2026-05-01'),
+        periodEnd: new Date('2026-06-01'),
+        tenant: { id: tenantId, name: 'Demo' },
+        billingSnapshot: { name: 'Demo' },
+      });
+      invoiceRepo.find.mockResolvedValue([]); // sin NCs previas
+
+      await service.issueCreditNote(
+        fakeUuid(610),
+        { amount: 5, reason: 'ajuste comercial' },
+        fakeUuid(1),
+      );
+
+      const nc = dataSource.txSavedEntities[0];
+      expect(nc.taxRate).toBe(0);
+      expect(nc.taxAmount).toBe(0);
+      // Con 0% el subtotal ES el monto (no se descuenta IVA inexistente).
+      expect(nc.subtotal).toBe(5);
+    });
+  });
+
+  describe('Fase C: markAsPaid con claim atómico', () => {
+    function mockPayableInvoice(overrides: Record<string, any> = {}) {
+      invoiceRepo.findOne.mockResolvedValue({
+        id: fakeUuid(620),
+        tenantId,
+        type: 'invoice',
+        status: 'sent',
+        total: 11.9,
+        currency: 'UF',
+        subscriptionId: fakeUuid(600),
+        invoiceNumber: 'EVA-2026-0002',
+        periodStart: new Date('2026-05-01'),
+        periodEnd: new Date('2026-06-01'),
+        ...overrides,
+      });
+    }
+
+    it('marca pagada cuando gana el claim (flujo normal)', async () => {
+      mockPayableInvoice();
+      subRepo.findOne.mockResolvedValue(buildMockSub({ status: 'suspended' }));
+
+      const result = await service.markAsPaid(
+        fakeUuid(620),
+        { paymentMethod: 'transferencia' },
+        fakeUuid(1),
+      );
+
+      expect(result.status).toBe('paid');
+      expect(result.paidAt).toBeInstanceOf(Date);
+    });
+
+    it('el perdedor del claim concurrente recibe BadRequest y no crea PaymentHistory', async () => {
+      mockPayableInvoice();
+      subRepo.findOne.mockResolvedValue(null);
+      const paymentSaves: any[] = [];
+      (dataSource.transaction as jest.Mock).mockImplementationOnce(async (cb: any) =>
+        cb({
+          // El otro proceso ya la marcó PAID: el UPDATE condicionado no matchea.
+          update: jest.fn().mockResolvedValue({ affected: 0 }),
+          save: jest.fn((e: any) => { paymentSaves.push(e); return Promise.resolve(e); }),
+          getRepository: () => ({
+            create: (d: any) => d,
+            save: jest.fn((e: any) => { paymentSaves.push(e); return Promise.resolve(e); }),
+          }),
+        }),
+      );
+
+      await expect(
+        service.markAsPaid(fakeUuid(620), {}, fakeUuid(1)),
+      ).rejects.toThrow(/concurrente/);
+      expect(paymentSaves).toHaveLength(0);
+    });
+
+    it('rechaza marcar como pagada una nota de crédito', async () => {
+      mockPayableInvoice({ type: 'credit_note', status: 'draft' });
+
+      await expect(
+        service.markAsPaid(fakeUuid(620), {}, fakeUuid(1)),
+      ).rejects.toThrow(/nota de crédito/i);
+    });
+  });
+
+  describe('Fase C: cancelInvoice con guards de ciclo de vida', () => {
+    it('rechaza cancelar una NC ya APLICADA (el descuento vive en otra factura)', async () => {
+      invoiceRepo.findOne.mockResolvedValue({
+        id: fakeUuid(630),
+        tenantId,
+        type: 'credit_note',
+        status: 'applied',
+        invoiceNumber: 'EVA-NC-2026-0001',
+        appliedToInvoiceId: fakeUuid(631),
+      });
+
+      await expect(service.cancelInvoice(fakeUuid(630), fakeUuid(1))).rejects.toThrow(
+        /ya fue aplicada/,
+      );
+    });
+
+    it('al cancelar una factura, libera las NCs que tenía aplicadas', async () => {
+      invoiceRepo.findOne.mockResolvedValue({
+        id: fakeUuid(640),
+        tenantId,
+        type: 'invoice',
+        status: 'sent',
+        invoiceNumber: 'EVA-2026-0010',
+      });
+      invoiceRepo.find.mockResolvedValue([
+        { id: fakeUuid(641), invoiceNumber: 'EVA-NC-2026-0002', status: 'applied' },
+      ]);
+      const updates: Array<{ criteria: any; patch: any }> = [];
+      (dataSource.transaction as jest.Mock).mockImplementationOnce(async (cb: any) =>
+        cb({
+          update: jest.fn((_e: any, criteria: any, patch: any) => {
+            updates.push({ criteria, patch });
+            return Promise.resolve({ affected: 1 });
+          }),
+          save: jest.fn(),
+          getRepository: () => ({ create: (d: any) => d, save: jest.fn() }),
+        }),
+      );
+
+      await service.cancelInvoice(fakeUuid(640), fakeUuid(1));
+
+      // 1er update: la factura a CANCELLED.
+      expect(updates[0].criteria).toEqual({ id: fakeUuid(640) });
+      expect(updates[0].patch).toEqual({ status: 'cancelled' });
+      // 2do update: la NC vuelve a estar disponible.
+      expect(updates[1].criteria).toEqual({ id: fakeUuid(641) });
+      expect(updates[1].patch).toEqual(
+        expect.objectContaining({ status: 'sent', appliedToInvoiceId: null, appliedAt: null }),
+      );
+      // La auditoría deja constancia de las NCs liberadas.
+      expect(auditServiceMock.log).toHaveBeenCalledWith(
+        tenantId,
+        fakeUuid(1),
+        'invoice.cancelled',
+        'invoice',
+        fakeUuid(640),
+        expect.objectContaining({ releasedCreditNotes: ['EVA-NC-2026-0002'] }),
+      );
+    });
+  });
+
 });

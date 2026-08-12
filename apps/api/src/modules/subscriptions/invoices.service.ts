@@ -12,6 +12,7 @@ import {
   DataSource,
   Repository,
   In,
+  Not,
   Between,
   LessThanOrEqual,
   MoreThanOrEqual,
@@ -98,6 +99,16 @@ export class InvoicesService {
    * guion). Sirve para ambos formatos: `EVA-2026-0042` -> 0042 y
    * `EVA-NC-2026-0007` -> 0007.
    */
+  /**
+   * Fase C — Resuelve un taxRate donde 0 ES VÁLIDO (facturación exenta).
+   * Solo valores ausentes, no numéricos o negativos caen al default 19.
+   * Reemplaza el patrón `Number(x) || 19`, que pisaba el 0 configurado.
+   */
+  private resolveTaxRate(raw: unknown, fallback = 19): number {
+    const n = Number(raw);
+    return raw != null && Number.isFinite(n) && n >= 0 ? n : fallback;
+  }
+
   private async getNextInvoiceNumber(
     type: InvoiceType = InvoiceType.INVOICE,
   ): Promise<string> {
@@ -382,7 +393,11 @@ export class InvoicesService {
             Math.round(lines.reduce((s, l) => s + (l.total || 0), 0) * 100) / 100,
           );
           // Fase 4 / T4.5 — taxRate desde billing_settings (default 19 Chile).
-          const taxRate = Number(settings.taxRate) || 19;
+          // Fase C — `|| 19` convertía un taxRate=0 configurado (exento/
+          // exportación) en 19%: el 0 es un valor válido, igual que en
+          // dueDaysOverride. Solo caen al default los valores ausentes o
+          // no numéricos.
+          const taxRate = this.resolveTaxRate(settings.taxRate);
           const taxAmount = Math.round(subtotal * (taxRate / 100) * 100) / 100;
           const total = Math.round((subtotal + taxAmount) * 100) / 100;
 
@@ -556,7 +571,8 @@ export class InvoicesService {
     if (options.dryRun) {
       // Fase 4 / T4.7 — solo preview, no commit.
       const settings = await this.billingSettingsService.get();
-      const taxRate = Number(settings.taxRate) || 19;
+      // Fase C — 0% válido (ver resolveTaxRate).
+      const taxRate = this.resolveTaxRate(settings.taxRate);
       const now = new Date();
       const preview = await Promise.all(
         subs.map(async (sub) => {
@@ -804,6 +820,12 @@ export class InvoicesService {
       relations: ['tenant', 'lines'],
     });
     if (!invoice) throw new NotFoundException('Factura no encontrada');
+    // Fase C — una nota de crédito no es cobrable: pagarla duplicaría el
+    // crédito en payment_history.
+    if (invoice.type === InvoiceType.CREDIT_NOTE)
+      throw new BadRequestException(
+        'Una nota de crédito no se puede marcar como pagada.',
+      );
     if (invoice.status === InvoiceStatus.PAID)
       throw new BadRequestException('La factura ya está pagada');
     if (invoice.status === InvoiceStatus.CANCELLED)
@@ -818,14 +840,32 @@ export class InvoicesService {
     const sub = await this.subRepo.findOne({
       where: { id: invoice.subscriptionId },
     });
+    const paidAt = new Date();
     await this.dataSource.transaction(async (manager) => {
-      const invRepoTx = manager.getRepository(Invoice);
       const payRepoTx = manager.getRepository(PaymentHistory);
       const subRepoTx = manager.getRepository(Subscription);
 
+      // Fase C — claim ATÓMICO del estado. El chequeo de arriba es
+      // check-then-act: dos callers concurrentes (webhook + clic manual
+      // del super_admin) podían pasar ambos la validación y crear DOS
+      // PaymentHistory por la misma factura (descuadre SII). El UPDATE
+      // condicionado garantiza que solo uno gana; el perdedor recibe
+      // affected=0 y aborta la transacción completa.
+      const claim = await manager.update(
+        Invoice,
+        {
+          id: invoiceId,
+          status: Not(In([InvoiceStatus.PAID, InvoiceStatus.CANCELLED])),
+        },
+        { status: InvoiceStatus.PAID, paidAt },
+      );
+      if ((claim.affected ?? 0) === 0) {
+        throw new BadRequestException(
+          'La factura ya fue pagada o cancelada por otro proceso concurrente.',
+        );
+      }
       invoice.status = InvoiceStatus.PAID;
-      invoice.paidAt = new Date();
-      await invRepoTx.save(invoice);
+      invoice.paidAt = paidAt;
 
       const payment = payRepoTx.create({
         tenantId: invoice.tenantId,
@@ -842,12 +882,12 @@ export class InvoicesService {
         concept: `Factura ${invoice.invoiceNumber}`,
         isAddon: false,
         invoiceId: invoice.id,
-        paidAt: new Date(),
+        paidAt,
       });
       await payRepoTx.save(payment);
 
       if (sub) {
-        sub.lastPaymentDate = new Date();
+        sub.lastPaymentDate = paidAt;
         sub.lastPaymentAmount = Number(invoice.total);
         if (
           sub.status === SubscriptionStatus.SUSPENDED ||
@@ -1074,8 +1114,53 @@ export class InvoicesService {
         'No se puede cancelar una factura ya pagada',
       );
 
+    // Fase C — guards de ciclo de vida que faltaban:
+    //
+    // 1. Una NC APPLIED no se puede cancelar: su descuento ya se
+    //    materializó como línea negativa en otra factura. Cancelarla
+    //    dejaba el descuento vigente Y la sacaba del control de
+    //    over-credit (que excluye CANCELLED) → se podía re-emitir la
+    //    misma NC y duplicar el crédito.
+    if (
+      invoice.type === InvoiceType.CREDIT_NOTE &&
+      invoice.status === InvoiceStatus.APPLIED
+    ) {
+      throw new BadRequestException(
+        'Esta nota de crédito ya fue aplicada como descuento en otra factura. ' +
+          'Para revertirla, cancele primero la factura donde se aplicó.',
+      );
+    }
+
+    // 2. Cancelar una factura que consumió NCs debe LIBERARLAS: si no,
+    //    el crédito del cliente se evaporaba junto con la factura.
+    //    Atómico: cancelación + liberación en la misma transacción.
+    const appliedNotes = await this.invoiceRepo.find({
+      where: {
+        appliedToInvoiceId: invoice.id,
+        type: InvoiceType.CREDIT_NOTE,
+        status: InvoiceStatus.APPLIED,
+      },
+    });
+
+    await this.dataSource.transaction(async (manager) => {
+      await manager.update(
+        Invoice,
+        { id: invoice.id },
+        { status: InvoiceStatus.CANCELLED },
+      );
+      for (const cn of appliedNotes) {
+        await manager.update(
+          Invoice,
+          { id: cn.id },
+          {
+            status: InvoiceStatus.SENT,
+            appliedToInvoiceId: null,
+            appliedAt: null,
+          },
+        );
+      }
+    });
     invoice.status = InvoiceStatus.CANCELLED;
-    await this.invoiceRepo.save(invoice);
 
     await this.auditService
       .log(
@@ -1084,7 +1169,10 @@ export class InvoicesService {
         'invoice.cancelled',
         'invoice',
         invoiceId,
-        { invoiceNumber: invoice.invoiceNumber },
+        {
+          invoiceNumber: invoice.invoiceNumber,
+          releasedCreditNotes: appliedNotes.map((cn) => cn.invoiceNumber),
+        },
       )
       .catch(() => {});
 
@@ -1190,7 +1278,9 @@ export class InvoicesService {
 
         // IVA proporcional. Asumimos misma taxRate que la original (19%
         // por defecto). El subtotal de la NC es amount / (1 + taxRate).
-        const taxRate = Number(original.taxRate) || 19;
+        // Fase C — una factura emitida exenta (0%) genera NC exenta; el
+        // `|| 19` anterior le inventaba IVA a la nota de crédito.
+        const taxRate = this.resolveTaxRate(original.taxRate);
         const subtotal = Math.round((dto.amount / (1 + taxRate / 100)) * 100) / 100;
         const taxAmount = Math.round((dto.amount - subtotal) * 100) / 100;
         const total = Math.round(dto.amount * 100) / 100;

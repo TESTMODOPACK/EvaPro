@@ -7,6 +7,7 @@
  * en mercadopago-provider.ts:187).
  */
 import { Test, TestingModule } from '@nestjs/testing';
+import { BadRequestException } from '@nestjs/common';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { PaymentsService } from './payments.service';
 import { PaymentSession } from './entities/payment-session.entity';
@@ -123,6 +124,42 @@ describe('PaymentsService — applyWebhookEvent (Fase 0 / Tarea 0.4)', () => {
   }
 
   // ─── payment.refunded ──────────────────────────────────────────────
+
+  describe('payment.succeeded — carrera con markAsPaid manual (Fase C)', () => {
+    it('si la factura ya estaba pagada, la session queda paid y NO se revierte', async () => {
+      sessionRepo.findOne.mockResolvedValue(buildSession({ status: 'pending' }));
+      invoicesService.markAsPaid.mockRejectedValueOnce(
+        new BadRequestException('La factura ya está pagada'),
+      );
+      const updateQb = sessionRepo.createQueryBuilder();
+
+      const result = await service.applyWebhookEvent('stripe', {
+        type: 'payment.succeeded',
+        externalId: 'ext_abc',
+      });
+
+      expect(result.handled).toBe(true);
+      expect(result.reason).toContain('already paid');
+      // Un solo update (pending→paid). El revert a pending NO ocurrió.
+      expect(updateQb.execute).toHaveBeenCalledTimes(1);
+    });
+
+    it('un fallo genuino de markAsPaid sí revierte la session y rethrow', async () => {
+      sessionRepo.findOne.mockResolvedValue(buildSession({ status: 'pending' }));
+      invoicesService.markAsPaid.mockRejectedValueOnce(new Error('db down'));
+      const updateQb = sessionRepo.createQueryBuilder();
+
+      await expect(
+        service.applyWebhookEvent('stripe', {
+          type: 'payment.succeeded',
+          externalId: 'ext_abc',
+        }),
+      ).rejects.toThrow('db down');
+
+      // pending→paid y luego el revert paid→pending.
+      expect(updateQb.execute).toHaveBeenCalledTimes(2);
+    });
+  });
 
   describe('payment.refunded', () => {
     it('transitions paid -> refunded and audits payment.refunded', async () => {
