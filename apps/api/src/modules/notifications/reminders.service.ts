@@ -1471,24 +1471,32 @@ export class RemindersService {
     // facturas duplicadas al cliente. Este es el bug financiero más caro.
     // F4 A3 — runAsSystem (scan cross-tenant de subs por renovar; las
     // mutations internas usan tenantId del propio sub).
-    await runWithCronLock('processAutoRenewals', this.dataSource, this.logger, async () => {
-      await this.tenantCronRunner.runAsSystem('processAutoRenewals', async () => {
-        this.logger.log('[Cron] Processing auto-renewals...');
-        try {
+    //
+    // Incidente 2026-08: dos subs llevaban 74 y 65 días vencidas en ACTIVE y
+    // la auditoría tenía CERO entradas de este cron — ni éxito, ni fallo, ni
+    // heartbeat. Ese silencio hizo indistinguible "no corre" de "corre y no ve
+    // filas" durante meses. De ahí los dos cambios de abajo:
+    //   1. El try/catch envuelve TODO (lock + runAsSystem incluidos): antes,
+    //      un throw de esas capas salía sin pasar por recordCronFailure.
+    //   2. Heartbeat SIEMPRE en auditoría, aunque el resultado sea 0/0/0.
+    //      Un día sin 'subscription.auto_renewals_run' = el cron no corrió.
+    try {
+      await runWithCronLock('processAutoRenewals', this.dataSource, this.logger, async () => {
+        await this.tenantCronRunner.runAsSystem('processAutoRenewals', async () => {
+          this.logger.log('[Cron] Processing auto-renewals...');
           const result = await this.subscriptionsService.processAutoRenewals();
-          if (result.renewed > 0 || result.suspended > 0 || result.invoiceErrors > 0) {
-            // Fase 0 / Tarea 0.2 — log expandido: ahora incluye invoices
-            // generadas y errores de generacion (cron ahora factura).
-            this.logger.log(
-              `[Cron] Auto-renewals: ${result.renewed} renewed, ${result.suspended} suspended, ${result.invoicesGenerated} invoices generated, ${result.invoiceErrors} invoice errors`,
-            );
-          }
-        } catch (error) {
-          this.logger.error(`[Cron] Error in processAutoRenewals: ${error}`);
-          await this.recordCronFailure('processAutoRenewals', error);
-        }
+          this.logger.log(
+            `[Cron] Auto-renewals: ${result.renewed} renewed, ${result.suspended} suspended, ${result.invoicesGenerated} invoices generated, ${result.invoiceErrors} invoice errors`,
+          );
+          await this.auditService
+            .log(null, 'system', 'subscription.auto_renewals_run', 'Cron', undefined, { ...result })
+            .catch(() => undefined);
+        });
       });
-    });
+    } catch (error) {
+      this.logger.error(`[Cron] Error in processAutoRenewals: ${error}`);
+      await this.recordCronFailure('processAutoRenewals', error);
+    }
   }
 
   // ─── 16. Resumen semanal para managers (lunes 8am) ────────────────

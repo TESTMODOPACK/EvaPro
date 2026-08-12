@@ -1358,6 +1358,96 @@ export class SubscriptionsService {
    *
    * Returns count of processed subscriptions.
    */
+  /**
+   * Diagnóstico de SOLO LECTURA de la auto-renovación.
+   *
+   * Nació de un incidente real: dos suscripciones llevaban 74 y 65 días
+   * vencidas, seguían en ACTIVE, y en la auditoría no había NI UNA entrada de
+   * renovación, fallo ni suspensión. Sin rastro no se podía distinguir entre
+   * "el cron no se ejecuta" y "se ejecuta pero la query no ve las filas", y la
+   * única forma de probar era esperar a las 2am.
+   *
+   * Corre EXACTAMENTE la misma query que `processAutoRenewals` sin mutar nada,
+   * y agrega los conteos de control necesarios para que un cero sea
+   * interpretable (un cero sin denominador no prueba nada).
+   */
+  async getAutoRenewalDiagnostics(): Promise<{
+    now: string;
+    wouldProcess: Array<Record<string, any>>;
+    countByStatus: Array<{ status: string; n: number }>;
+    overdueIgnoredForNullBillingDate: Array<Record<string, any>>;
+  }> {
+    const now = new Date();
+
+    // Misma query que el cron, carácter por carácter.
+    const overdue = await this.subRepo
+      .createQueryBuilder('s')
+      .leftJoinAndSelect('s.plan', 'p')
+      .where('s.status = :status', { status: SubscriptionStatus.ACTIVE })
+      .andWhere('s.next_billing_date IS NOT NULL')
+      .andWhere('s.next_billing_date <= :now', { now })
+      .getMany();
+
+    // Control: si `wouldProcess` viene vacío, esto dice si es porque no hay
+    // filas o porque la query está ciega.
+    const raw = await this.subRepo
+      .createQueryBuilder('s')
+      .select('s.status', 'status')
+      .addSelect('COUNT(*)', 'n')
+      .groupBy('s.status')
+      .getRawMany();
+
+    // Punto ciego conocido: el cron exige next_billing_date NOT NULL, así que
+    // una sub vencida por end_date con esa fecha en NULL es invisible para
+    // siempre — no renueva, no suspende, no vence.
+    const nullBilling = await this.subRepo
+      .createQueryBuilder('s')
+      .where('s.status IN (:...statuses)', {
+        statuses: [SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIAL],
+      })
+      .andWhere('s.next_billing_date IS NULL')
+      .andWhere('s.end_date IS NOT NULL')
+      .andWhere('s.end_date <= :now', { now })
+      .getMany();
+
+    const summarize = (s: Subscription) => ({
+      id: s.id,
+      tenantId: s.tenantId,
+      status: s.status,
+      autoRenew: s.autoRenew,
+      billingPeriod: s.billingPeriod,
+      nextBillingDate: s.nextBillingDate,
+      endDate: s.endDate,
+      plan: (s as any).plan?.name ?? null,
+    });
+
+    return {
+      now: now.toISOString(),
+      wouldProcess: overdue.map(summarize),
+      countByStatus: raw.map((r: any) => ({ status: r.status, n: Number(r.n) })),
+      overdueIgnoredForNullBillingDate: nullBilling.map(summarize),
+    };
+  }
+
+  /**
+   * Ejecución bajo demanda de la auto-renovación (endpoint super_admin).
+   * Misma lógica que el cron; solo cambia la atribución en la auditoría.
+   */
+  async runAutoRenewalsManually(triggeredBy: string): Promise<{
+    renewed: number;
+    suspended: number;
+    invoicesGenerated: number;
+    invoiceErrors: number;
+  }> {
+    const result = await this.processAutoRenewals();
+    await this.auditService
+      .log(null, triggeredBy, 'subscription.auto_renewals_manual_run', 'subscription', undefined, {
+        ...result,
+      })
+      .catch(() => undefined);
+    return result;
+  }
+
   async processAutoRenewals(): Promise<{
     renewed: number;
     suspended: number;

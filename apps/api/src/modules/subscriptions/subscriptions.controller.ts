@@ -250,6 +250,31 @@ export class SubscriptionsController {
     return this.subscriptionsService.rejectRequest(id, req.user.userId, body.reason || '');
   }
 
+  // ─── Operación: auto-renovación ────────────────────────────────────────
+  //
+  // Nacieron del incidente de suscripciones vencidas-pero-activas: el cron de
+  // las 2am no dejaba NINGÚN rastro y no había forma de ejercitarlo bajo
+  // demanda. Ambas rutas van ANTES de `@Get(':id')` para no caer en el
+  // ParseUUIDPipe del catch-all.
+
+  /** Solo lectura: qué vería el cron si corriera ahora mismo. */
+  @Get('auto-renewals/diagnostics')
+  @Roles('super_admin')
+  getAutoRenewalDiagnostics() {
+    return this.subscriptionsService.getAutoRenewalDiagnostics();
+  }
+
+  /**
+   * Dispara la MISMA lógica del cron de las 2am, bajo demanda.
+   * Idempotente por diseño: generateInvoice rechaza períodos duplicados y el
+   * avance de nextBillingDate solo ocurre tras factura exitosa.
+   */
+  @Post('auto-renewals/run')
+  @Roles('super_admin')
+  runAutoRenewals(@Request() req: any) {
+    return this.subscriptionsService.runAutoRenewalsManually(req.user.userId);
+  }
+
   // ─── Subscriptions ─────────────────────────────────────────────────────
 
   @Get('stats')

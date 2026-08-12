@@ -580,7 +580,13 @@ export default function MiSuscripcionPage() {
             if (!expiryDate) return null;
             const daysLeft = Math.ceil((new Date(expiryDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
             if (daysLeft > 10) return null;
+            // Vencimiento YA pasado: sin esta rama, daysLeft negativo pasaba el
+            // filtro de arriba y se renderizaba "vence en -74 día" (singular,
+            // porque -74 > 1 es falso).
+            const isOverdue = daysLeft <= 0;
+            const daysOverdue = Math.abs(daysLeft);
             const isUrgent = daysLeft <= 3;
+            const plural = (n: number) => (n === 1 ? 'día' : 'días');
             return (
               <div className="card" style={{
                 padding: '1.25rem 1.5rem',
@@ -589,10 +595,16 @@ export default function MiSuscripcionPage() {
                 borderLeft: `4px solid ${isUrgent ? 'var(--danger)' : 'var(--warning)'}`,
               }}>
                 <div style={{ fontWeight: 700, color: isUrgent ? 'var(--danger)' : 'var(--warning)', marginBottom: '0.25rem' }}>
-                  {isUrgent ? `Tu suscripción vence en ${daysLeft} día${daysLeft > 1 ? 's' : ''}` : `Tu suscripción vence pronto (${daysLeft} días)`}
+                  {isOverdue
+                    ? (daysOverdue === 0
+                        ? 'Tu suscripción vence hoy'
+                        : `Tu suscripción venció hace ${daysOverdue} ${plural(daysOverdue)}`)
+                    : isUrgent
+                      ? `Tu suscripción vence en ${daysLeft} ${plural(daysLeft)}`
+                      : `Tu suscripción vence pronto (${daysLeft} días)`}
                 </div>
                 <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                  Fecha de vencimiento: {new Date(expiryDate).toLocaleDateString('es-CL')}. {isUrgent ? 'Renueva ahora para evitar la suspensión del servicio.' : 'Recuerda renovar a tiempo.'}
+                  Fecha de vencimiento: {new Date(expiryDate).toLocaleDateString('es-CL')}. {isOverdue ? 'Renueva ahora para regularizar el servicio.' : isUrgent ? 'Renueva ahora para evitar la suspensión del servicio.' : 'Recuerda renovar a tiempo.'}
                 </div>
               </div>
             );

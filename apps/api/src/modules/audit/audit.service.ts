@@ -35,6 +35,10 @@ export class AuditService {
     private readonly userRepo: Repository<User>,
   ) {}
 
+  /** user_id es columna uuid: cualquier otro formato rompe el INSERT. */
+  private static readonly UUID_RE =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
   async log(
     tenantId: string | null,
     userId: string | null,
@@ -44,13 +48,41 @@ export class AuditService {
     metadata?: any,
     ipAddress?: string,
   ): Promise<void> {
+    // Incidente 2026-08 (suscripciones vencidas-pero-activas): media docena de
+    // call sites de crons pasaban 'system' como userId. Al ser user_id una
+    // columna uuid, Postgres rechazaba el INSERT, el `.catch(() => {})` del
+    // caller lo tragaba, y TODO el rastro de auditoría del billing automático
+    // se descartó en silencio durante meses. Saneamos acá, en el único punto
+    // por el que pasan todos: un userId no-uuid se preserva como actor en
+    // metadata y user_id queda NULL, que la columna sí acepta.
+    let effectiveUserId = userId ?? undefined;
+    let effectiveMetadata = metadata ?? undefined;
+    if (effectiveUserId && !AuditService.UUID_RE.test(effectiveUserId)) {
+      effectiveMetadata = { ...(effectiveMetadata || {}), actor: effectiveUserId };
+      effectiveUserId = undefined;
+    }
+    // Mismo problema con entity_id (uuid): recordCronFailure pasaba el NOMBRE
+    // del cron como entityId (y roles.guard pasa "GET /ruta"), así que NINGÚN
+    // 'cron.failed' ni 'access.denied' se escribió jamás — ambos flujos de
+    // registro de fallos estuvieron muertos desde el día 1.
+    let effectiveEntityId = entityId ?? undefined;
+    if (effectiveEntityId && !AuditService.UUID_RE.test(effectiveEntityId)) {
+      effectiveMetadata = { ...(effectiveMetadata || {}), entityRef: effectiveEntityId };
+      effectiveEntityId = undefined;
+    }
+    // Y con tenant_id (uuid): invoices.sendReminders pasaba 'system'.
+    let effectiveTenantId = tenantId ?? undefined;
+    if (effectiveTenantId && !AuditService.UUID_RE.test(effectiveTenantId)) {
+      effectiveMetadata = { ...(effectiveMetadata || {}), tenantRef: effectiveTenantId };
+      effectiveTenantId = undefined;
+    }
     const entry = this.auditRepo.create({
-      tenantId: tenantId ?? undefined,
-      userId: userId ?? undefined,
+      tenantId: effectiveTenantId,
+      userId: effectiveUserId,
       action,
       entityType: entityType ?? undefined,
-      entityId: entityId ?? undefined,
-      metadata: metadata ?? undefined,
+      entityId: effectiveEntityId,
+      metadata: effectiveMetadata,
       ipAddress: ipAddress ?? undefined,
     } as any);
     await this.auditRepo.save(entry);
